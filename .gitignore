@@ -11,11 +11,13 @@ Thumbs.db
 **/node_modules/
 **/dist/
 **/.output/
+**/.nuxt/
 /package-lock.json
 /yarn.lock
 
 # PHP / Laravel
 **/vendor/
+**/vendor_tmp/
 **/.phpunit.result.cache
 **/.phpactor
 **/storage/*.key
