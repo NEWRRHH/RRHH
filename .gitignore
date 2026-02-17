@@ -1,0 +1,39 @@
+# Root .gitignore for monorepo RRHH
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.*
+
+# Node
+**/node_modules/
+**/dist/
+**/.output/
+/package-lock.json
+/yarn.lock
+
+# PHP / Laravel
+**/vendor/
+**/.phpunit.result.cache
+**/.phpactor
+**/storage/*.key
+/back_vendor
+
+# IDEs / editors
+/.idea
+/.vscode
+/.phpstorm.meta.php
+
+# Docker
+**/.docker
+**/docker-compose.override.yml
+
+# Build / runtime
+/public/build
+/public/hot
+/storage/framework/cache/data
+
+# OneDrive
+~lock*

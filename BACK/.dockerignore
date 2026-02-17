@@ -1,0 +1,14 @@
+/vendor
+/node_modules
+/public/storage
+/.env
+/.idea
+/.vscode
+/.git
+/.gitignore
+/docker-compose.override.yml
+/docker-compose.*.yml
+/README.md
+/storage/*.key
+/storage/*.log
+/.DS_Store
