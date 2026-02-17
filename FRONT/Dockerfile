@@ -15,9 +15,6 @@ RUN npm install --no-audit --no-fund
 COPY . .
 RUN npm run build
 
-# prune dev deps to reduce final image size
-RUN npm prune --production || true
-
 
 # --- runner: production image that runs the Nuxt server ---
 FROM node:20-alpine AS runner

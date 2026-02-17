@@ -1,12 +1,15 @@
 <template>
-  <div class="container">
-    <h1>Dashboard</h1>
-    <div v-if="loading">Cargando...</div>
-    <div v-else>
-      <p>{{ data.message }}</p>
-      <pre>{{ data.stats }}</pre>
+  <div class="max-w-4xl mx-auto mt-12 p-6 bg-white rounded-lg shadow">
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-2xl font-semibold">Dashboard</h1>
+      <button @click="onLogout" class="px-3 py-1 bg-red-500 text-white rounded">Logout</button>
     </div>
-    <button @click="onLogout">Logout</button>
+
+    <div v-if="loading" class="text-gray-500">Cargando...</div>
+    <div v-else>
+      <p class="mb-4 text-gray-700">{{ data.message }}</p>
+      <pre class="bg-gray-50 p-4 rounded text-sm text-gray-700">{{ data.stats }}</pre>
+    </div>
   </div>
 </template>
 
@@ -35,7 +38,3 @@ const onLogout = async () => {
   router.push('/login')
 }
 </script>
-
-<style scoped>
-.container{max-width:960px;margin:48px auto;padding:20px}
-</style>
