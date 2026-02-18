@@ -38,7 +38,7 @@
       <main class="flex-1 p-6 space-y-6 overflow-auto">
 
         <!-- Welcome banner -->
-        <div class="relative overflow-hidden bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-8 shadow-xl shadow-blue-900/40">
+        <div class="relative overflow-hidden bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-6 sm:p-8 shadow-xl shadow-blue-900/40">
           <div class="absolute -top-10 -right-10 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
           <div class="absolute -bottom-8 -left-8 w-32 h-32 bg-white/5 rounded-full blur-xl pointer-events-none"></div>
           <div class="relative">
@@ -50,93 +50,54 @@
           </div>
         </div>
 
+        <!-- KPI + quick search -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+          <div class="flex gap-3 items-center">
+            <div class="bg-white/5 border border-white/5 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm">
+              <div class="text-2xl text-blue-300 font-semibold">{{ data.stats?.users_count ?? 0 }}</div>
+              <div class="text-xs text-gray-300">Usuarios</div>
+            </div>
+            <div class="bg-white/5 border border-white/5 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm">
+              <div class="text-2xl text-blue-300 font-semibold">{{ data.stats?.posts_count ?? 0 }}</div>
+              <div class="text-xs text-gray-300">Publicaciones</div>
+            </div>
+            <div class="bg-white/5 border border-white/5 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm hidden md:flex">
+              <div class="text-2xl text-blue-300 font-semibold">{{ data.stats?.attendances_today ?? 0 }}</div>
+              <div class="text-xs text-gray-300">Asistencias hoy</div>
+            </div>
+          </div>
+
+          <div class="md:col-span-2">
+            <div class="flex items-center gap-3">
+              <div class="relative w-full max-w-lg">
+                <input v-model="searchTerm" @input="onSearch" placeholder="Buscar personas, tareas o publicaciones..." class="w-full bg-gray-800 border border-gray-700 text-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-600" />
+                <div v-if="searchTerm && searchResults.length" class="absolute left-0 right-0 mt-2 bg-gray-900 border border-gray-800 rounded-lg shadow-lg overflow-hidden z-20">
+                  <div v-for="r in searchResults.slice(0,6)" :key="r._uid" class="flex items-center gap-3 px-3 py-2 hover:bg-gray-800 cursor-pointer">
+                    <div class="w-8 h-8 rounded-full bg-gray-800 overflow-hidden flex items-center justify-center text-gray-400">
+                      <img v-if="r.photo" :src="r.photo" class="w-full h-full object-cover" />
+                      <span v-else class="text-sm">{{ (r.first_name || r.full_name || '?').charAt(0) }}</span>
+                    </div>
+                    <div class="flex-1 text-sm text-gray-200 truncate">{{ r.full_name || r.first_name }}</div>
+                    <div class="text-xs text-gray-400">{{ r.source }}</div>
+                  </div>
+                </div>
+              </div>
+              <button class="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 text-sm">Buscar</button>
+            </div>
+          </div>
+        </div>
+
         <!-- Content grid: Birthdays (left) + Stats (right) -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
 
           <!-- Birthdays card -->
           <div class="lg:col-span-1 flex justify-center lg:justify-end">
-            <div class="bg-gray-900 border border-gray-800 rounded-2xl p-4 w-[230px] max-w-full flex flex-col">
-              <h3 class="text-sm text-gray-400 mb-3">Cumpleaños</h3>
-
-              <div v-if="birthdaysLoading" class="space-y-4">
-                <div class="h-36 rounded-2xl bg-gray-800 animate-pulse"></div>
-                <div class="flex items-center gap-3">
-                  <div class="h-10 w-10 rounded-full bg-gray-800 animate-pulse"></div>
-                  <div class="flex-1 h-4 bg-gray-800 animate-pulse rounded"></div>
-                </div>
-              </div>
-
-              <div v-else>
-                <div class="grid grid-cols-1 gap-4 md:grid-cols">
-                  <div>
-                    <div v-if="birthdays.length">
-                      <div class="flex flex-col items-center text-center">
-                        <div class="w-20 h-20 rounded-full bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center text-white text-lg font-bold overflow-hidden">
-                          <img v-if="birthdays[0].photo" :src="birthdays[0].photo" class="w-full h-full object-cover" />
-                          <span v-else>{{ (birthdays[0].first_name || birthdays[0].full_name || '?').charAt(0) }}</span>
-                        </div>
-                        <div class="mt-2">
-                          <div class="text-white font-semibold">{{ birthdays[0].full_name || birthdays[0].first_name }}</div>
-                          <div class="text-sm text-gray-400 mt-1">{{ formatDate(birthdays[0].next_birthday) }} — {{ birthdays[0].age }} años</div>
-                        </div>
-                      </div>
-
-                      <div class="mt-4 grid grid-cols-2 gap-3 justify-items-center">
-                        <div v-for="(b, i) in birthdays.slice(1,3)" :key="b.id" class="flex flex-col items-center text-center gap-2">
-                          <div class="w-12 h-12 rounded-full bg-gray-800 flex items-center justify-center text-gray-400 overflow-hidden">
-                            <img v-if="b.photo" :src="b.photo" class="w-full h-full object-cover" />
-                            <span v-else class="text-sm">{{ (b.first_name || b.full_name || '?').charAt(0) }}</span>
-                          </div>
-                          <div class="text-sm text-gray-200">{{ b.full_name || b.first_name }}</div>
-                          <div class="text-xs text-gray-400">{{ formatDate(b.next_birthday) }}</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div v-else class="p-6 rounded-xl bg-gray-800/50 text-center text-gray-400">
-                      <div class="animate-pulse h-6 w-3/4 mx-auto bg-gray-700 rounded mb-3"></div>
-                      <div class="text-sm">No upcoming birthdays</div>
-                    </div>
-                  </div>
-
-
-                </div>
-              </div>
-            </div>
+            <BirthdayCard :birthdays="birthdays" :loading="birthdaysLoading" />
           </div>
 
           <!-- Workers card (moved out) -->
           <div class="lg:col-span-1 flex justify-center lg:justify-start">
-            <div class="bg-gray-900 border border-gray-800 rounded-2xl p-3 h-full w-[180px] max-w-full flex flex-col">
-              <h3 class="text-sm text-gray-400 mb-3">En trabajo</h3>
-              <div class="flex-1">
-                <div v-if="workingLoading" class="flex items-center gap-3">
-                  <div class="h-10 w-10 rounded-full bg-gray-800 animate-pulse"></div>
-                  <div class="h-10 w-10 rounded-full bg-gray-800 animate-pulse"></div>
-                  <div class="h-10 w-10 rounded-full bg-gray-800 animate-pulse"></div>
-                </div>
-                <div v-else>
-                  <div v-if="workingUsers.length" class="flex items-center gap-3 overflow-x-auto py-1">
-                    <div
-                      v-for="w in workingUsers"
-                      :key="w.id"
-                      class="flex items-center gap-2 min-w-[130px] flex-shrink-0"
-                      :title="w.full_name || w.first_name"
-                    >
-                      <div class="relative">
-                        <div class="w-12 h-12 rounded-full overflow-hidden bg-gray-800 flex items-center justify-center text-gray-400">
-                          <img v-if="w.photo" :src="w.photo" class="w-full h-full object-cover" />
-                          <span v-else class="text-sm">{{ (w.first_name || w.full_name || '?').charAt(0) }}</span>
-                        </div>
-                        <span class="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-400 rounded-full ring-2 ring-gray-900"></span>
-                      </div>
-                      <span class="text-xs text-gray-200 truncate">{{ w.full_name || w.first_name }}</span>
-                    </div>
-                  </div>
-                  <div v-else class="text-sm text-gray-400">No hay trabajadores en trabajo</div>
-                </div>
-              </div>
-            </div>
+            <WorkingUsersCard :users="workingUsers" :loading="workingLoading" />
           </div>
 
           <!-- Right column: general stats (kept, but no welcome header) -->
@@ -152,9 +113,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onBeforeMount } from 'vue'
+import { ref, onBeforeMount, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
+import BirthdayCard from '../components/BirthdayCard.vue'
+import WorkingUsersCard from '../components/WorkingUsersCard.vue'
 
 declare const $fetch: any
 
@@ -168,6 +131,23 @@ const birthdays = ref<any[]>([])
 const birthdaysLoading = ref(true)
 const workingUsers = ref<any[]>([])
 const workingLoading = ref(true)
+
+// quick search
+const searchTerm = ref('')
+const searchResults = computed(() => {
+  const q = (searchTerm.value || '').toLowerCase().trim()
+  if (!q) return []
+  const items = [
+    ...birthdays.value.map((b: any) => ({ _uid: `b-${b.id}`, first_name: b.first_name, full_name: b.full_name, photo: b.photo, source: 'Cumpleaños' })),
+    ...workingUsers.value.map((w: any) => ({ _uid: `w-${w.id}`, first_name: w.first_name, full_name: w.full_name, photo: w.photo, source: 'En trabajo' })),
+  ]
+  return items.filter((it: any) => (it.full_name || it.first_name || '').toLowerCase().includes(q))
+})
+
+const onSearch = () => {
+  // keep local-only quick search; button can trigger full search later
+  return
+}
 
 onBeforeMount(async () => {
   // try to restore token from localStorage on client before redirecting

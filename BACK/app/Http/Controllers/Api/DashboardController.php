@@ -12,10 +12,24 @@ class DashboardController extends Controller
 {
     public function index(Request $request)
     {
+        $today = Carbon::today();
+
+        $usersCount = User::count();
+        $postsCount = DB::table('posts')->count();
+        $attendancesToday = DB::table('attendances')
+            ->where('date', $today->toDateString())
+            ->count();
+        $birthdaysToday = User::whereNotNull('birth_date')
+            ->whereRaw('MONTH(birth_date) = ? AND DAY(birth_date) = ?', [$today->month, $today->day])
+            ->count();
+
         return response()->json([
             'message' => 'Welcome to the API dashboard',
             'stats' => [
-                'users_count' => User::count(),
+                'users_count' => $usersCount,
+                'posts_count' => $postsCount,
+                'attendances_today' => $attendancesToday,
+                'birthdays_today' => $birthdaysToday,
             ],
         ])->header('Access-Control-Allow-Origin', '*');
     }
