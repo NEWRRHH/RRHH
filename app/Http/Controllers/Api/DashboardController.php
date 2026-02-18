@@ -99,46 +99,39 @@ class DashboardController extends Controller
     }
 
     /**
-     * Return next vacation (or ongoing) for the authenticated user.
+     * Return next vacation event for the authenticated user.
+     * Reads from events JOIN event_types where type name contains 'vacaci'.
      */
-    public function nextVacation(Request $request)
+    public function vacationsMe(Request $request)
     {
-        $user = $request->user();
+        $user  = $request->user();
         $today = Carbon::today();
 
-        // find event_type id for "Vacaciones"
-        $vacType = DB::table('event_types')->where('name', 'Vacaciones')->first();
-        if (! $vacType) {
-            return response()->json(null)->header('Access-Control-Allow-Origin', '*');
-        }
-
         $event = DB::table('events')
-            ->where('user_id', $user->id)
-            ->where('event_type_id', $vacType->id)
-            ->where(function ($q) use ($today) {
-                $q->whereDate('end_at', '>=', $today->toDateString())
-                  ->orWhereDate('start_at', '>=', $today->toDateString());
-            })
-            ->orderBy('start_at', 'asc')
+            ->join('event_types', 'events.event_type_id', '=', 'event_types.id')
+            ->where('events.user_id', $user->id)
+            ->whereNull('events.deleted_at')
+            ->whereRaw('LOWER(event_types.name) LIKE ?', ['%vacaci%'])
+            ->where('events.start_at', '>=', $today->toDateTimeString())
+            ->orderBy('events.start_at', 'asc')
+            ->select('events.start_at', 'events.end_at')
             ->first();
 
-        if (! $event) {
-            return response()->json(null)->header('Access-Control-Allow-Origin', '*');
+        if (!$event) {
+            return response()->json([
+                'days_until_vacation' => null,
+                'vacation_days'       => null,
+            ])->header('Access-Control-Allow-Origin', '*');
         }
 
-        $start = Carbon::parse($event->start_at);
-        $end = $event->end_at ? Carbon::parse($event->end_at) : $start;
-
-        $daysUntil = $start->isFuture() ? $today->diffInDays($start) : 0;
-        $durationDays = max(1, $start->diffInDays($end) + 1);
+        $start        = Carbon::parse($event->start_at)->startOfDay();
+        $end          = $event->end_at ? Carbon::parse($event->end_at)->startOfDay() : $start->copy();
+        $daysUntil    = (int) $today->diffInDays($start, false);
+        $vacationDays = (int) $start->diffInDays($end) + 1; // inclusive
 
         return response()->json([
-            'id' => $event->id,
-            'title' => $event->title,
-            'start_at' => $start->toDateString(),
-            'end_at' => $end->toDateString(),
-            'days_until' => $daysUntil,
-            'duration_days' => $durationDays,
+            'days_until_vacation' => max(0, $daysUntil),
+            'vacation_days'       => $vacationDays,
         ])->header('Access-Control-Allow-Origin', '*');
     }
 }
