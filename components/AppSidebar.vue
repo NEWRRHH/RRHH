@@ -24,15 +24,8 @@
       <span v-if="!collapsed" class="text-white font-bold text-base tracking-tight truncate">RRHH</span>
     </div>
 
-    <!-- Collapse toggle (floating tab on right edge, desktop only) -->
-    <button
-      class="hidden lg:flex absolute -right-3 top-[52px] z-50 w-6 h-6 rounded-full bg-gray-800 border border-gray-700 items-center justify-center text-gray-400 hover:text-white hover:bg-blue-600 hover:border-blue-600 shadow-lg transition-all duration-200"
-      @click="collapsed = !collapsed"
-    >
-      <svg class="w-3 h-3 transition-transform duration-300" :class="collapsed ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
-      </svg>
-    </button>
+    <!-- Collapse toggle (local) -->
+    <DashboardSidebarCollapse :collapsed="collapsed" @toggle="collapsed = !collapsed" />
 
     <!-- Body / Nav -->
     <nav class="flex flex-col flex-1 overflow-y-auto overflow-x-hidden py-4 px-2 gap-1">
@@ -57,7 +50,7 @@
       <button
         @click="$emit('logout')"
         :class="[
-          'flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-gray-400 bg-red-500/15 hover:bg-red-500/25 hover:text-white transition-all duration-200',
+          'flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-gray-400 bg-blue-600/10 hover:bg-blue-600/20 hover:text-white transition-all duration-200',
           collapsed ? 'justify-center' : ''
         ]"
       >
@@ -71,6 +64,9 @@
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import DashboardSidebarCollapse from './DashboardSidebarCollapse.vue'
+
 defineEmits<{ logout: [] }>()
 
 const collapsed = ref(false)

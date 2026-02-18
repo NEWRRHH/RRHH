@@ -1,4 +1,10 @@
-import { useRuntimeConfig, useState } from '#app'
+// Ambient declarations to silence IDE/TS for Nuxt auto-imports used at runtime
+declare const $fetch: any
+declare const process: any
+declare function useRuntimeConfig(): any
+declare function useState<T>(key: string, factory?: () => T): any
+
+// useRuntimeConfig/useState are provided by Nuxt at runtime (we declared them above)
 
 export const useAuth = () => {
   const config = useRuntimeConfig()
@@ -57,6 +63,12 @@ export const useAuth = () => {
     })
     setToken(null)
     user.value = null
+  }
+
+  // hydrate token from localStorage on the client so full reloads keep session
+  if (process.client && !token.value) {
+    const saved = localStorage.getItem('rrhh_token')
+    if (saved) setToken(saved)
   }
 
   return { apiBase, token, user, login, register, logout, fetchUser, setToken }
