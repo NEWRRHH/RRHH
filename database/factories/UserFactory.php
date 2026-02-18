@@ -28,14 +28,21 @@ class UserFactory extends Factory
     {
         return [
             'name' => fake()->name(),
+            'first_name' => fake()->firstName(),
+            'last_name' => fake()->lastName(),
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
+            'birth_date' => fake()->dateTimeBetween('-60 years', '-18 years')->format('Y-m-d'),
+            'photo' => 'https://i.pravatar.cc/150?u=' . fake()->unique()->safeEmail(),
             'two_factor_secret' => null,
             'two_factor_recovery_codes' => null,
             'remember_token' => Str::random(10),
             'profile_photo_path' => null,
             'current_team_id' => null,
+            'user_type_id' => 2,
+            'team_id' => 1,
+            'role' => 'user',
         ];
     }
 
