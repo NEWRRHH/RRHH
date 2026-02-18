@@ -14,6 +14,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', [AuthController::class, 'user']);
     Route::get('/dashboard', [DashboardController::class, 'index']);
+    // upcoming birthdays for dashboard UI
+    Route::get('/birthdays', [DashboardController::class, 'birthdays']);
+    // workers currently "en_trabajo"
+    Route::get('/working', [DashboardController::class, 'working']);
 });
 
 // health endpoint (public) used by external checks
