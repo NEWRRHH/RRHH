@@ -50,8 +50,8 @@
           </div>
         </div>
 
-        <!-- KPI header (search removed) -->
-        <div class="flex flex-wrap gap-3 items-center">
+        <!-- KPI stats -->
+        <div class="flex flex-wrap gap-3">
           <div class="bg-white/5 border border-white/5 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm">
             <div class="text-2xl text-blue-300 font-semibold">{{ data.stats?.users_count ?? 0 }}</div>
             <div class="text-xs text-gray-300">Usuarios</div>
@@ -60,30 +60,21 @@
             <div class="text-2xl text-blue-300 font-semibold">{{ data.stats?.posts_count ?? 0 }}</div>
             <div class="text-xs text-gray-300">Publicaciones</div>
           </div>
-          <div class="bg-white/5 border border-white/5 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm hidden sm:flex">
+          <div class="bg-white/5 border border-white/5 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm">
             <div class="text-2xl text-blue-300 font-semibold">{{ data.stats?.attendances_today ?? 0 }}</div>
             <div class="text-xs text-gray-300">Asistencias hoy</div>
           </div>
         </div>
 
-        <!-- Content grid: Birthdays (left) + Stats (right) -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
-
-          <!-- Birthdays card -->
-          <div class="lg:col-span-1 flex justify-center lg:justify-end">
-            <BirthdayCard :birthdays="birthdays" :loading="birthdaysLoading" />
-          </div>
-
-          <!-- Workers card (moved out) -->
-          <div class="lg:col-span-1 flex justify-center lg:justify-start">
-            <WorkingUsersCard :users="workingUsers" :loading="workingLoading" />
-          </div>
-
-          <!-- Right column: Vacation card -->
-          <div class="lg:col-span-1">
-            <VacationCard :vacation="nextVacation" :loading="nextVacationLoading" />
-          </div>
-
+        <!-- Cards row: Birthdays + Workers + Vacations -->
+        <div class="flex flex-wrap gap-3">
+          <BirthdayCard :birthdays="birthdays" :loading="birthdaysLoading" />
+          <WorkingUsersCard :users="workingUsers" :loading="workingLoading" />
+          <VacationCard
+            :days-until-vacation="vacationInfo.daysUntilVacation"
+            :vacation-days="vacationInfo.vacationDays"
+            :loading="vacationLoading"
+          />
         </div>
 
       </main>
@@ -111,8 +102,13 @@ const birthdays = ref<any[]>([])
 const birthdaysLoading = ref(true)
 const workingUsers = ref<any[]>([])
 const workingLoading = ref(true)
-const nextVacation = ref<any | null>(null)
-const nextVacationLoading = ref(true)
+
+// vacation
+const vacationLoading = ref(true)
+const vacationInfo = ref<{ daysUntilVacation: number | null; vacationDays: number | null }>({
+  daysUntilVacation: null,
+  vacationDays: null,
+})
 
 onBeforeMount(async () => {
   // try to restore token from localStorage on client before redirecting
@@ -171,18 +167,20 @@ onBeforeMount(async () => {
     workingLoading.value = false
   }
 
-  // fetch next vacation for logged user
-  nextVacationLoading.value = true
+  // fetch vacation info for logged-in user
+  vacationLoading.value = true
   try {
-    const nv = await $fetch(`${apiBase || 'http://localhost:8000'}/api/next-vacation`, {
+    const vac = await $fetch(`${apiBase || 'http://localhost:8000'}/api/vacations/me`, {
       headers: { Authorization: `Bearer ${token.value}` },
     })
-    nextVacation.value = nv || null
-  } catch (err) {
-    console.error('next vacation fetch failed', err)
-    nextVacation.value = null
+    vacationInfo.value = {
+      daysUntilVacation: vac?.days_until_vacation != null ? Math.round(Number(vac.days_until_vacation)) : null,
+      vacationDays: vac?.vacation_days != null ? Math.round(Number(vac.vacation_days)) : null,
+    }
+  } catch (e) {
+    console.error('vacation fetch failed', e)
   } finally {
-    nextVacationLoading.value = false
+    vacationLoading.value = false
   }
 })
 

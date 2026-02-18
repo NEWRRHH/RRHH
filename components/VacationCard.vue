@@ -1,51 +1,55 @@
 <template>
-  <div class="w-full max-w-[260px]">
-    <div class="bg-gray-900 border border-gray-800 rounded-2xl p-4 flex flex-col shadow-lg shadow-black/20">
-      <h3 class="text-xs text-gray-300 uppercase tracking-wide mb-3">Próximas vacaciones</h3>
+  <div class="w-full max-w-[230px]">
+    <div class="relative overflow-hidden bg-gray-900 border border-gray-800 rounded-2xl p-4 flex flex-col shadow-lg shadow-black/40 transition-transform hover:-translate-y-0.5">
 
-      <div v-if="loading" class="flex-1 flex flex-col justify-center items-center gap-3 py-6">
-        <div class="h-6 w-24 bg-gray-800 rounded animate-pulse"></div>
-        <div class="h-4 w-12 bg-gray-800 rounded animate-pulse"></div>
+      <!-- subtle teal glow top-right -->
+      <div class="absolute -top-6 -right-6 w-24 h-24 bg-teal-500/10 rounded-full blur-2xl pointer-events-none"></div>
+
+      <!-- header -->
+      <div class="flex items-center gap-2 mb-4">
+        <div class="w-7 h-7 rounded-lg bg-teal-500/15 flex items-center justify-center shrink-0">
+          <svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364-.707.707M6.343 17.657l-.707.707m12.728 0-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/>
+          </svg>
+        </div>
+        <h3 class="text-xs text-gray-300 uppercase tracking-wide font-medium">Vacaciones</h3>
       </div>
 
-      <div v-else>
-        <div v-if="vacation">
-          <div class="text-sm text-white font-semibold">{{ vacation.title || 'Vacaciones' }}</div>
-          <div class="text-xs text-gray-400 mt-1">{{ formatDate(vacation.start_at) }} — {{ formatDate(vacation.end_at) }}</div>
+      <!-- loading -->
+      <div v-if="loading" class="space-y-3 animate-pulse">
+        <div class="h-14 rounded-xl bg-gray-800"></div>
+        <div class="h-px bg-gray-800"></div>
+        <div class="h-14 rounded-xl bg-gray-800"></div>
+      </div>
 
-          <div class="mt-4 flex items-center gap-3">
-            <div class="flex flex-col items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-blue-700 to-blue-600 text-white">
-              <div class="text-lg font-bold">{{ vacation.days_until }}</div>
-              <div class="text-[10px]">días</div>
-            </div>
-            <div class="flex-1">
-              <div class="text-xs text-gray-300">Faltan</div>
-              <div class="text-sm text-white font-semibold">{{ vacation.days_until === 0 ? 'Comienzan hoy' : vacation.days_until + ' días' }}</div>
-              <div class="text-xs text-gray-400 mt-1">Duración: {{ vacation.duration_days }} días</div>
-            </div>
+      <!-- content -->
+      <div v-else class="flex flex-col gap-3 relative">
+
+        <div class="rounded-xl bg-teal-500/5 border border-teal-500/10 px-4 py-3">
+          <div class="text-3xl font-extrabold text-teal-300 leading-none tabular-nums">
+            {{ daysUntilVacation ?? '—' }}
           </div>
+          <div class="text-xs text-gray-400 mt-1">días para vacaciones</div>
         </div>
-        <div v-else class="py-6 text-center text-gray-400">No hay próximas vacaciones</div>
+
+        <div class="h-px bg-gray-800"></div>
+
+        <div class="rounded-xl bg-teal-500/5 border border-teal-500/10 px-4 py-3">
+          <div class="text-3xl font-extrabold text-teal-300 leading-none tabular-nums">
+            {{ vacationDays ?? '—' }}
+          </div>
+          <div class="text-xs text-gray-400 mt-1">días de vacaciones</div>
+        </div>
+
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import type { PropType } from 'vue'
-
-const props = defineProps({
-  vacation: { type: Object as PropType<Record<string, any> | null>, default: null },
-  loading: { type: Boolean as PropType<boolean>, default: false },
-})
-
-const formatDate = (iso?: string) => {
-  if (!iso) return ''
-  try {
-    const d = new Date(iso)
-    return d.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
-  } catch (e) {
-    return iso || ''
-  }
-}
+defineProps<{
+  daysUntilVacation?: number | null
+  vacationDays?: number | null
+  loading?: boolean
+}>()
 </script>
