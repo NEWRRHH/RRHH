@@ -50,40 +50,19 @@
           </div>
         </div>
 
-        <!-- KPI + quick search -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
-          <div class="flex gap-3 items-center">
-            <div class="bg-white/5 border border-white/5 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm">
-              <div class="text-2xl text-blue-300 font-semibold">{{ data.stats?.users_count ?? 0 }}</div>
-              <div class="text-xs text-gray-300">Usuarios</div>
-            </div>
-            <div class="bg-white/5 border border-white/5 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm">
-              <div class="text-2xl text-blue-300 font-semibold">{{ data.stats?.posts_count ?? 0 }}</div>
-              <div class="text-xs text-gray-300">Publicaciones</div>
-            </div>
-            <div class="bg-white/5 border border-white/5 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm hidden md:flex">
-              <div class="text-2xl text-blue-300 font-semibold">{{ data.stats?.attendances_today ?? 0 }}</div>
-              <div class="text-xs text-gray-300">Asistencias hoy</div>
-            </div>
+        <!-- KPI header (search removed) -->
+        <div class="flex flex-wrap gap-3 items-center">
+          <div class="bg-white/5 border border-white/5 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm">
+            <div class="text-2xl text-blue-300 font-semibold">{{ data.stats?.users_count ?? 0 }}</div>
+            <div class="text-xs text-gray-300">Usuarios</div>
           </div>
-
-          <div class="md:col-span-2">
-            <div class="flex items-center gap-3">
-              <div class="relative w-full max-w-lg">
-                <input v-model="searchTerm" @input="onSearch" placeholder="Buscar personas, tareas o publicaciones..." class="w-full bg-gray-800 border border-gray-700 text-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-600" />
-                <div v-if="searchTerm && searchResults.length" class="absolute left-0 right-0 mt-2 bg-gray-900 border border-gray-800 rounded-lg shadow-lg overflow-hidden z-20">
-                  <div v-for="r in searchResults.slice(0,6)" :key="r._uid" class="flex items-center gap-3 px-3 py-2 hover:bg-gray-800 cursor-pointer">
-                    <div class="w-8 h-8 rounded-full bg-gray-800 overflow-hidden flex items-center justify-center text-gray-400">
-                      <img v-if="r.photo" :src="r.photo" class="w-full h-full object-cover" />
-                      <span v-else class="text-sm">{{ (r.first_name || r.full_name || '?').charAt(0) }}</span>
-                    </div>
-                    <div class="flex-1 text-sm text-gray-200 truncate">{{ r.full_name || r.first_name }}</div>
-                    <div class="text-xs text-gray-400">{{ r.source }}</div>
-                  </div>
-                </div>
-              </div>
-              <button class="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 text-sm">Buscar</button>
-            </div>
+          <div class="bg-white/5 border border-white/5 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm">
+            <div class="text-2xl text-blue-300 font-semibold">{{ data.stats?.posts_count ?? 0 }}</div>
+            <div class="text-xs text-gray-300">Publicaciones</div>
+          </div>
+          <div class="bg-white/5 border border-white/5 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm hidden sm:flex">
+            <div class="text-2xl text-blue-300 font-semibold">{{ data.stats?.attendances_today ?? 0 }}</div>
+            <div class="text-xs text-gray-300">Asistencias hoy</div>
           </div>
         </div>
 
@@ -100,9 +79,9 @@
             <WorkingUsersCard :users="workingUsers" :loading="workingLoading" />
           </div>
 
-          <!-- Right column: general stats (kept, but no welcome header) -->
+          <!-- Right column: Vacation card -->
           <div class="lg:col-span-1">
-
+            <VacationCard :vacation="nextVacation" :loading="nextVacationLoading" />
           </div>
 
         </div>
@@ -113,11 +92,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onBeforeMount, computed } from 'vue'
+import { ref, onBeforeMount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import BirthdayCard from '../components/BirthdayCard.vue'
 import WorkingUsersCard from '../components/WorkingUsersCard.vue'
+import VacationCard from '../components/VacationCard.vue'
 
 declare const $fetch: any
 
@@ -131,23 +111,8 @@ const birthdays = ref<any[]>([])
 const birthdaysLoading = ref(true)
 const workingUsers = ref<any[]>([])
 const workingLoading = ref(true)
-
-// quick search
-const searchTerm = ref('')
-const searchResults = computed(() => {
-  const q = (searchTerm.value || '').toLowerCase().trim()
-  if (!q) return []
-  const items = [
-    ...birthdays.value.map((b: any) => ({ _uid: `b-${b.id}`, first_name: b.first_name, full_name: b.full_name, photo: b.photo, source: 'Cumpleaños' })),
-    ...workingUsers.value.map((w: any) => ({ _uid: `w-${w.id}`, first_name: w.first_name, full_name: w.full_name, photo: w.photo, source: 'En trabajo' })),
-  ]
-  return items.filter((it: any) => (it.full_name || it.first_name || '').toLowerCase().includes(q))
-})
-
-const onSearch = () => {
-  // keep local-only quick search; button can trigger full search later
-  return
-}
+const nextVacation = ref<any | null>(null)
+const nextVacationLoading = ref(true)
 
 onBeforeMount(async () => {
   // try to restore token from localStorage on client before redirecting
@@ -204,6 +169,20 @@ onBeforeMount(async () => {
     workingUsers.value = []
   } finally {
     workingLoading.value = false
+  }
+
+  // fetch next vacation for logged user
+  nextVacationLoading.value = true
+  try {
+    const nv = await $fetch(`${apiBase || 'http://localhost:8000'}/api/next-vacation`, {
+      headers: { Authorization: `Bearer ${token.value}` },
+    })
+    nextVacation.value = nv || null
+  } catch (err) {
+    console.error('next vacation fetch failed', err)
+    nextVacation.value = null
+  } finally {
+    nextVacationLoading.value = false
   }
 })
 
