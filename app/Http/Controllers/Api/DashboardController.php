@@ -97,4 +97,48 @@ class DashboardController extends Controller
 
         return response()->json($rows)->header('Access-Control-Allow-Origin', '*');
     }
+
+    /**
+     * Return next vacation (or ongoing) for the authenticated user.
+     */
+    public function nextVacation(Request $request)
+    {
+        $user = $request->user();
+        $today = Carbon::today();
+
+        // find event_type id for "Vacaciones"
+        $vacType = DB::table('event_types')->where('name', 'Vacaciones')->first();
+        if (! $vacType) {
+            return response()->json(null)->header('Access-Control-Allow-Origin', '*');
+        }
+
+        $event = DB::table('events')
+            ->where('user_id', $user->id)
+            ->where('event_type_id', $vacType->id)
+            ->where(function ($q) use ($today) {
+                $q->whereDate('end_at', '>=', $today->toDateString())
+                  ->orWhereDate('start_at', '>=', $today->toDateString());
+            })
+            ->orderBy('start_at', 'asc')
+            ->first();
+
+        if (! $event) {
+            return response()->json(null)->header('Access-Control-Allow-Origin', '*');
+        }
+
+        $start = Carbon::parse($event->start_at);
+        $end = $event->end_at ? Carbon::parse($event->end_at) : $start;
+
+        $daysUntil = $start->isFuture() ? $today->diffInDays($start) : 0;
+        $durationDays = max(1, $start->diffInDays($end) + 1);
+
+        return response()->json([
+            'id' => $event->id,
+            'title' => $event->title,
+            'start_at' => $start->toDateString(),
+            'end_at' => $end->toDateString(),
+            'days_until' => $daysUntil,
+            'duration_days' => $durationDays,
+        ])->header('Access-Control-Allow-Origin', '*');
+    }
 }
