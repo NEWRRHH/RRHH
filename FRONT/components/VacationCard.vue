@@ -1,6 +1,6 @@
 <template>
-  <div class="w-full max-w-[230px]">
-    <div class="relative overflow-hidden bg-gray-900 border border-gray-800 rounded-2xl p-4 flex flex-col shadow-lg shadow-black/40 transition-transform hover:-translate-y-0.5">
+  <div class="w-full max-w-[230px] h-72">
+    <div class="relative overflow-hidden bg-gray-900 border border-gray-800 rounded-2xl p-4 flex flex-col h-full shadow-lg shadow-black/40 transition-transform hover:-translate-y-0.5">
 
       <!-- subtle teal glow top-right -->
       <div class="absolute -top-6 -right-6 w-24 h-24 bg-teal-500/10 rounded-full blur-2xl pointer-events-none"></div>

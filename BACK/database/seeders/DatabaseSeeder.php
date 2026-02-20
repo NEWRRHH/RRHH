@@ -25,6 +25,7 @@ class DatabaseSeeder extends Seeder
             PostsSeeder::class,
             FollowsSeeder::class,
             AttendancesSeeder::class,
+            SchedulesSeeder::class,
         ]);
     }
 }
