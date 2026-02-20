@@ -16,9 +16,29 @@ class DashboardController extends Controller
 
         $usersCount = User::count();
         $postsCount = DB::table('posts')->count();
+        // total open attendances in the system (used previously as "attendances_today")
+        // requirements changed: only records that are unfinished
         $attendancesToday = DB::table('attendances')
-            ->where('date', $today->toDateString())
+            ->where(function ($q) {
+                $q->where('status', 'en_trabajo')
+                  ->orWhereNull('end_time')
+                  ->orWhereNull('end_date');
+            })
             ->count();
+
+        // notifications list for current user from notifications table
+        $notifications = [];
+        $unreadCount = 0;
+        if ($request->user()) {
+            $notifications = DB::table('notifications')
+                ->where('user_id', $request->user()->id)
+                ->orderBy('created_at', 'desc')
+                ->get();
+            $unreadCount = DB::table('notifications')
+                ->where('user_id', $request->user()->id)
+                ->where('read', 0)
+                ->count();
+        }
         $birthdaysToday = User::whereNotNull('birth_date')
             ->whereRaw('MONTH(birth_date) = ? AND DAY(birth_date) = ?', [$today->month, $today->day])
             ->count();
@@ -31,6 +51,8 @@ class DashboardController extends Controller
                 'attendances_today' => $attendancesToday,
                 'birthdays_today' => $birthdaysToday,
             ],
+            'notifications' => $notifications,
+            'unread_notifications' => $unreadCount,
         ])->header('Access-Control-Allow-Origin', '*');
     }
 

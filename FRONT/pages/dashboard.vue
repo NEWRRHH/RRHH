@@ -62,7 +62,8 @@
           </div>
         </div>
 
-        <!-- Cards row: Birthdays + Workers + Vacations -->
+
+        <!-- Cards row: Birthdays + Workers + Vacations + Notifications -->
         <div class="flex flex-wrap gap-3">
           <BirthdayCard :birthdays="birthdays" :loading="birthdaysLoading" />
           <WorkingUsersCard :users="workingUsers" :loading="workingLoading" />
@@ -71,6 +72,7 @@
             :vacation-days="vacationInfo.vacationDays"
             :loading="vacationLoading"
           />
+          <NotificationCard :notifications="data.notifications || []" :unread-count="data.unread_notifications || 0" />
         </div>
 
       </main>
@@ -87,6 +89,7 @@ declare const process: any
 import BirthdayCard from '../components/BirthdayCard.vue'
 import WorkingUsersCard from '../components/WorkingUsersCard.vue'
 import VacationCard from '../components/VacationCard.vue'
+import NotificationCard from '../components/NotificationCard.vue'
 import AttendanceButton from '../components/AttendanceButton.vue'
 import UserMenu from '../components/UserMenu.vue'
 
