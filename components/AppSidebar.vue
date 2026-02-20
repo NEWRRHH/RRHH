@@ -45,20 +45,9 @@
       </template>
     </nav>
 
-    <!-- Footer -->
+    <!-- Footer removed: logout is now in avatar menu -->
     <div class="shrink-0 px-2 py-3 border-t border-gray-800 overflow-hidden">
-      <button
-        @click="$emit('logout')"
-        :class="[
-          'flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-gray-400 bg-blue-600/10 hover:bg-blue-600/20 hover:text-white transition-all duration-200',
-          collapsed ? 'justify-center' : ''
-        ]"
-      >
-        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
-        </svg>
-        <span v-if="!collapsed">Cerrar sesión</span>
-      </button>
+      <!-- intentionally left empty -->
     </div>
   </aside>
 </template>

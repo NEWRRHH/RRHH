@@ -13,7 +13,7 @@
     <div class="flex-1 flex flex-col min-w-0 relative z-10">
 
       <!-- Top bar -->
-      <header class="h-16 shrink-0 flex items-center gap-4 px-6 border-b border-gray-800 bg-gray-900/60 backdrop-blur">
+      <header class="relative z-40 h-16 shrink-0 flex items-center gap-4 px-6 border-b border-gray-800 bg-gray-900/60 backdrop-blur">
         <!-- Mobile sidebar toggle -->
         <button
           class="lg:hidden flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition"
@@ -27,15 +27,15 @@
         <h1 class="text-base font-semibold text-white">Dashboard</h1>
 
         <div class="ml-auto flex items-center gap-3">
-          <span class="text-sm text-gray-400">{{ user?.name }}</span>
-          <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold">
-            {{ user?.name?.charAt(0)?.toUpperCase() ?? '?' }}
-          </div>
+          <!-- attendance control button placed before user info -->
+          <AttendanceButton class="!text-[11px]" />
+          <!-- avatar/menu component -->
+          <UserMenu />
         </div>
       </header>
 
       <!-- Page body -->
-      <main class="flex-1 p-6 space-y-6 overflow-auto">
+      <main class="relative z-10 flex-1 p-6 space-y-6 overflow-auto">
 
         <!-- Welcome banner -->
         <div class="relative overflow-hidden bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-6 sm:p-8 shadow-xl shadow-blue-900/40">
@@ -55,10 +55,6 @@
           <div class="bg-white/5 border border-white/5 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm">
             <div class="text-2xl text-blue-300 font-semibold">{{ data.stats?.users_count ?? 0 }}</div>
             <div class="text-xs text-gray-300">Usuarios</div>
-          </div>
-          <div class="bg-white/5 border border-white/5 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm">
-            <div class="text-2xl text-blue-300 font-semibold">{{ data.stats?.posts_count ?? 0 }}</div>
-            <div class="text-xs text-gray-300">Publicaciones</div>
           </div>
           <div class="bg-white/5 border border-white/5 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm">
             <div class="text-2xl text-blue-300 font-semibold">{{ data.stats?.attendances_today ?? 0 }}</div>
@@ -86,9 +82,13 @@
 import { ref, onBeforeMount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
+
+declare const process: any
 import BirthdayCard from '../components/BirthdayCard.vue'
 import WorkingUsersCard from '../components/WorkingUsersCard.vue'
 import VacationCard from '../components/VacationCard.vue'
+import AttendanceButton from '../components/AttendanceButton.vue'
+import UserMenu from '../components/UserMenu.vue'
 
 declare const $fetch: any
 
@@ -97,6 +97,7 @@ const router = useRouter()
 const data = ref<any>({})
 const loading = ref(true)
 const sidebar = ref<{ open: boolean } | null>(null)
+
 
 const birthdays = ref<any[]>([])
 const birthdaysLoading = ref(true)
