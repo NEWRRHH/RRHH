@@ -72,7 +72,11 @@
             :vacation-days="vacationInfo.vacationDays"
             :loading="vacationLoading"
           />
-          <NotificationCard :notifications="data.notifications || []" :unread-count="data.unread_notifications || 0" />
+          <NotificationCard
+            :notifications="data.notifications || []"
+            :unread-count="data.unread_notifications || 0"
+            @notification-read="markRead"
+          />
         </div>
 
       </main>
@@ -96,6 +100,16 @@ import UserMenu from '../components/UserMenu.vue'
 declare const $fetch: any
 
 const { token, user, fetchUser, logout, apiBase, setToken } = useAuth()
+
+function markRead(id: number) {
+  if (data.value.notifications) {
+    // remove from the array so card updates immediately
+    data.value.notifications = data.value.notifications.filter((n: any) => n.id !== id)
+  }
+  if (data.value.unread_notifications > 0) {
+    data.value.unread_notifications--
+  }
+}
 const router = useRouter()
 const data = ref<any>({})
 const loading = ref(true)
