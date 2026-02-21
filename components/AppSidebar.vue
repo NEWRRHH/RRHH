@@ -42,7 +42,7 @@
           <span class="shrink-0 inline-flex items-center" v-html="item.icon" />
           <span v-if="!collapsed" class="truncate">{{ item.label }}</span>
           <span
-            v-if="item.badge && item.badge.value > 0 && !collapsed"
+            v-if="item.badge && item.badge.value > 0"
             class="ml-auto inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-600 text-white"
           >
             {{ item.badge.value }}
