@@ -44,10 +44,11 @@ class DashboardController extends Controller
                 $conv->sender_name = trim(($conv->sender->first_name ?? '') . ' ' . ($conv->sender->last_name ?? ''));
                 // recorrer cada mensaje para generar items individuales
                 $msgs = $conv->conversation ?: [];
+                $idx = 0;
                 foreach ($msgs as $msg) {
                     if (isset($msg['sender_id']) && $msg['sender_id'] != $userId && empty($msg['read'])) {
                         $notifications[] = [
-                            'id' => $conv->id,
+                            'message_id' => $conv->id . '_' . $idx,
                             'conversation_id' => $conv->id,
                             'sender_id' => $conv->sender_id,
                             'sender_name' => $conv->sender_name,
@@ -57,6 +58,7 @@ class DashboardController extends Controller
                         ];
                         $unreadCount++;
                     }
+                    $idx++;
                 }
             }
             // ordenar por fecha descendente
