@@ -36,7 +36,14 @@ Route::middleware('auth:sanctum')->group(function () {
     // vacation info for the logged-in user
     Route::get('/vacations/me', [DashboardController::class, 'vacationsMe']);
     // mark notification read
+    // legacy mark-notification-read (kept for compatibility)
     Route::post('/notification/{id}/read', [DashboardController::class, 'markNotificationRead']);
+
+    // chat-style notifications endpoints
+    Route::get('/notifications/conversations', [\App\Http\Controllers\Api\NotificationController::class, 'conversations']);
+    Route::get('/notifications/conversation/{userId}', [\App\Http\Controllers\Api\NotificationController::class, 'conversation']);
+    Route::post('/notifications/send', [\App\Http\Controllers\Api\NotificationController::class, 'send']);
+    Route::get('/notifications/users', [\App\Http\Controllers\Api\NotificationController::class, 'users']);
 });
 
 // health endpoint (public) used by external checks

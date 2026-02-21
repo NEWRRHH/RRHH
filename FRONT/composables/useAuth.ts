@@ -11,6 +11,7 @@ export const useAuth = () => {
   const apiBase = config.public.apiBase || 'http://localhost:8000'
   const token = useState<string | null>('auth_token', () => (process.client ? localStorage.getItem('rrhh_token') : null))
   const user = useState<any | null>('auth_user', () => null)
+  const unreadNotifications = useState<number>('unread_notifications', () => 0)
 
   const setToken = (t: string | null) => {
     token.value = t
@@ -42,6 +43,7 @@ export const useAuth = () => {
     })
     setToken(res.token)
     await fetchUser()
+    await fetchUnread()
     return res
   }
 
@@ -63,6 +65,7 @@ export const useAuth = () => {
     })
     setToken(null)
     user.value = null
+    unreadNotifications.value = 0
   }
 
   // hydrate token from localStorage on the client so full reloads keep session
@@ -71,5 +74,20 @@ export const useAuth = () => {
     if (saved) setToken(saved)
   }
 
-  return { apiBase, token, user, login, register, logout, fetchUser, setToken }
+  /**
+   * Fetch latest unread notifications count for current user.
+   */
+  const fetchUnread = async () => {
+    if (!token.value) return
+    try {
+      const res: any = await $fetch(`${apiBase}/api/dashboard`, {
+        headers: { Authorization: `Bearer ${token.value}` },
+      })
+      unreadNotifications.value = res.unread_notifications || 0
+    } catch (e) {
+      console.error('failed to refresh unread count', e)
+    }
+  }
+
+  return { apiBase, token, user, login, register, logout, fetchUser, setToken, unreadNotifications, fetchUnread }
 }

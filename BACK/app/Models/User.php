@@ -77,4 +77,29 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
+
+    /**
+     * Notifications this user has sent (chat messages).
+     */
+    public function notificationsSent()
+    {
+        return $this->hasMany(Notification::class, 'sender_id');
+    }
+
+    /**
+     * Notifications this user has received.
+     */
+    public function notificationsReceived()
+    {
+        return $this->hasMany(Notification::class, 'receiver_id');
+    }
+
+    /**
+     * Shortcut for unread received messages.
+     */
+    public function unreadReceived()
+    {
+        return $this->notificationsReceived()->where('read', 0);
+    }
 }
+

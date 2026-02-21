@@ -28,18 +28,22 @@ class DashboardController extends Controller
             })
             ->count();
 
-        // notifications list for current user from notifications table
+        // notificaciones entrantes para el usuario actual
         $notifications = [];
         $unreadCount = 0;
         if ($request->user()) {
-            // return only unread notifications for the card
-            $notifications = DB::table('notifications')
-                ->where('user_id', $request->user()->id)
+            $userId = $request->user()->id;
+            // obtener sólo las notificaciones no leídas donde él es receptor
+            // incluir nombre del remitente cargando relación
+            $notifications = \App\Models\Notification::with('sender')
+                ->where('receiver_id', $userId)
                 ->where('read', 0)
-                ->whereNull('deleted_at')
                 ->orderBy('created_at', 'desc')
-                ->get();
-            // count of unread (same as above query)
+                ->get()
+                ->map(function ($n) {
+                    $n->sender_name = trim(($n->sender->first_name ?? '') . ' ' . ($n->sender->last_name ?? ''));
+                    return $n;
+                });
             $unreadCount = $notifications->count();
         }
         $birthdaysToday = User::whereNotNull('birth_date')
@@ -136,13 +140,13 @@ class DashboardController extends Controller
             return response()->json(['message' => 'Unauthenticated'], 401);
         }
 
-        // ensure the notification belongs to the current user
-        $updated = DB::table('notifications')
-            ->where('id', $id)
-            ->where('user_id', $user->id)
-            ->update(['read' => 1, 'updated_at' => now()]);
-
-        if ($updated) {
+        // ensure the notification belongs to the current user as receptor
+        $note = \App\Models\Notification::where('id', $id)
+            ->where('receiver_id', $user->id)
+            ->first();
+        if ($note) {
+            $note->read = 1;
+            $note->save();
             return response()->json(['success' => true]);
         }
 

@@ -99,7 +99,7 @@ import UserMenu from '../components/UserMenu.vue'
 
 declare const $fetch: any
 
-const { token, user, fetchUser, logout, apiBase, setToken } = useAuth()
+const { token, user, fetchUser, logout, apiBase, setToken, fetchUnread } = useAuth()
 
 function markRead(id: number) {
   if (data.value.notifications) {
@@ -109,6 +109,8 @@ function markRead(id: number) {
   if (data.value.unread_notifications > 0) {
     data.value.unread_notifications--
   }
+  // actualizar contador global
+  fetchUnread()
 }
 const router = useRouter()
 const data = ref<any>({})
