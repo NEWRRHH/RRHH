@@ -91,8 +91,8 @@
               </p>
             </div>
 
-            <!-- schedule for admins -->
-            <div v-if="isAdmin" class="mb-6 pt-4 border-t border-gray-700">
+            <!-- schedule (visible to all users) -->
+            <div class="mb-6 pt-4 border-t border-gray-700">
               <h3 class="text-sm text-gray-300 mb-2">Horario de trabajo</h3>
               <div class="flex gap-2">
                 <input
@@ -148,7 +148,8 @@ const form = ref<any>({
 const loading = ref(false)
 const preview = ref<string | null>(null)
 
-const isAdmin = computed(() => user.value?.user_type_id === 1)
+// if other logic is needed keep the computed; for now it's unused
+  const isAdmin = computed(() => user.value?.user_type_id === 1)
 
 onBeforeMount(async () => {
   if (user.value) {
@@ -163,8 +164,8 @@ function fillForm() {
   form.value.name = user.value.name || ''
   form.value.email = user.value.email || ''
   if (user.value.photo) preview.value = user.value.photo
-  if (isAdmin.value && user.value.id) {
-    // fetch schedule info
+  // fetch schedule info for every user
+  if (user.value.id) {
     fetchSchedule()
   }
 }
@@ -230,20 +231,18 @@ const save = async () => {
       }
     }
 
-    // schedule update if admin
-    if (isAdmin.value) {
-      try {
-        await $fetch(`${apiBase}/api/user/schedule`, {
-          method: 'PUT',
-          headers: { Authorization: `Bearer ${token.value}` },
-          body: {
-            start_time: form.value.start_time,
-            end_time: form.value.end_time,
-          },
-        })
-      } catch (err) {
-        console.error('schedule update failed', err)
-      }
+    // schedule update for all users
+    try {
+      await $fetch(`${apiBase}/api/user/schedule`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token.value}` },
+        body: {
+          start_time: form.value.start_time,
+          end_time: form.value.end_time,
+        },
+      })
+    } catch (err) {
+      console.error('schedule update failed', err)
     }
 
     alert('Perfil actualizado')
