@@ -35,7 +35,7 @@
                   @click="openModal(note)"
                   class="cursor-pointer p-2 rounded-lg border transition bg-gray-800 border-gray-700 text-white font-medium hover:bg-gray-800"
                 >
-                  <h4 class="text-sm font-semibold leading-tight mb-1 truncate">{{ note.title || 'Sin título' }}</h4>
+                  <h4 class="text-sm font-semibold leading-tight mb-1 truncate">{{ note.sender_name || 'Desconocido' }}</h4>
                   <p class="text-xs leading-snug truncate">{{ note.content }}</p>
                 </div>
               </li>
@@ -71,7 +71,7 @@ const modalTitle = ref('Notificación')
 const modalContent = ref('')
 
 async function openModal(note: any) {
-  modalTitle.value = note.title || 'Notificación'
+  modalTitle.value = note.sender_name || 'Notificación'
   modalContent.value = note.content || ''
   showModal.value = true
 

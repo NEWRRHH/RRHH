@@ -11,8 +11,8 @@
         <span v-else>{{ initial }}</span>
       </div>
       <span
-        v-if="user?.session_token"
-        class="absolute bottom-0 right-0 w-2 h-2 bg-green-400 border-2 border-gray-800 rounded-full"
+        v-if="attendanceWorking !== null"
+        :class="['absolute bottom-0 right-0 w-2 h-2 border-2 border-gray-800 rounded-full', attendanceWorking ? 'bg-green-400' : 'bg-red-400']"
       ></span>
     </button>
     <div
@@ -27,12 +27,38 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { useRouter } from 'vue-router'
+declare const $fetch: any
 import { useAuth } from '../composables/useAuth'
+import { useRouter } from 'vue-router'
 
 declare const process: any
 
-const { user, logout } = useAuth()
+const { user, logout, apiBase, token, fetchUser } = useAuth()
+
+const attendanceWorking = ref<boolean | null>(null)
+
+async function loadAttendanceStatus() {
+  try {
+    await fetchUser()
+    const res: any = await $fetch(`${apiBase}/api/attendance/status`, {
+      headers: { Authorization: `Bearer ${token.value}` }
+    })
+    attendanceWorking.value = res.working
+  } catch (e) {
+    console.error('failed to load attendance status', e)
+    attendanceWorking.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', (e: MouseEvent) => {
+    const target = e.target as HTMLElement
+    if (!target.closest('.avatar-container')) {
+      open.value = false
+    }
+  })
+  loadAttendanceStatus()
+})
 const router = useRouter()
 const open = ref(false)
 
@@ -50,12 +76,4 @@ function logoutAndClose() {
   logout().then(() => router.push('/login'))
 }
 
-onMounted(() => {
-  document.addEventListener('click', (e: MouseEvent) => {
-    const target = e.target as HTMLElement
-    if (!target.closest('.avatar-container')) {
-      open.value = false
-    }
-  })
-})
 </script>
