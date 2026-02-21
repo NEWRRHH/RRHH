@@ -33,7 +33,7 @@ class UserFactory extends Factory
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
-            'birth_date' => fake()->dateTimeBetween('-60 years', '-18 years')->format('Y-m-d'),
+            'birth_date' => fake()->dateTimeBetween('-40 years', '-18 years')->format('Y-m-d'),
             'photo' => 'https://i.pravatar.cc/150?u=' . fake()->unique()->safeEmail(),
             'two_factor_secret' => null,
             'two_factor_recovery_codes' => null,
