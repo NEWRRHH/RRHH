@@ -39,15 +39,8 @@ class NotificationController extends Controller
         $conversations = $users->map(function ($u) use ($userId) {
             $convRow = Notification::conversationWith($userId, $u->id)->first();
             $lastMessage = $convRow ? $convRow->last_message : null;
-            // compute unread messages count for receiver
-            $unread = 0;
-            if ($convRow && is_array($convRow->conversation)) {
-                foreach ($convRow->conversation as $msg) {
-                    if ($msg['sender_id'] === $u->id && $msg['sender_id'] !== $userId) {
-                        $unread++;
-                    }
-                }
-            }
+            // compute unread messages count for this user using model helper
+            $unread = $convRow ? $convRow->unreadCountFor($userId) : 0;
             return [
                 'user' => [
                     'id' => $u->id,
@@ -98,11 +91,8 @@ class NotificationController extends Controller
         $conversation = [];
         if ($convRow) {
             $conversation = $convRow->conversation ?: [];
-            // mark conversation as read for this user
-            if ($convRow->receiver_id === $userId) {
-                $convRow->read = 1;
-                $convRow->save();
-            }
+            // mark individual messages as read for this user
+            $convRow->markMessagesReadFor($userId);
         }
 
         return response()->json($conversation);
