@@ -12,6 +12,8 @@ return new class extends Migration
             $table->increments('id');
             $table->unsignedBigInteger('user_id');
             $table->unsignedInteger('notification_type_id');
+            // new title field added later in migrations; include for fresh installs
+            $table->string('title', 255)->nullable();
             $table->string('content', 500);
             $table->integer('read')->default(0);
             $table->dateTime('created_at');

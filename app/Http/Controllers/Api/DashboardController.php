@@ -18,7 +18,9 @@ class DashboardController extends Controller
         $postsCount = DB::table('posts')->count();
         // total open attendances in the system (used previously as "attendances_today")
         // requirements changed: only records that are unfinished
+        // only consider records for today with unfinished state
         $attendancesToday = DB::table('attendances')
+            ->whereDate('date', $today)
             ->where(function ($q) {
                 $q->where('status', 'en_trabajo')
                   ->orWhereNull('end_time')
@@ -30,14 +32,15 @@ class DashboardController extends Controller
         $notifications = [];
         $unreadCount = 0;
         if ($request->user()) {
+            // return only unread notifications for the card
             $notifications = DB::table('notifications')
                 ->where('user_id', $request->user()->id)
+                ->where('read', 0)
+                ->whereNull('deleted_at')
                 ->orderBy('created_at', 'desc')
                 ->get();
-            $unreadCount = DB::table('notifications')
-                ->where('user_id', $request->user()->id)
-                ->where('read', 0)
-                ->count();
+            // count of unread (same as above query)
+            $unreadCount = $notifications->count();
         }
         $birthdaysToday = User::whereNotNull('birth_date')
             ->whereRaw('MONTH(birth_date) = ? AND DAY(birth_date) = ?', [$today->month, $today->day])
@@ -118,6 +121,32 @@ class DashboardController extends Controller
             });
 
         return response()->json($rows)->header('Access-Control-Allow-Origin', '*');
+    }
+
+    /**
+     * Mark a single notification as read (authenticated user only).
+     *
+     * The frontend will call this when opening the modal so the "read" flag
+     * is updated in the database immediately.
+     */
+    public function markNotificationRead(Request $request, $id)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        // ensure the notification belongs to the current user
+        $updated = DB::table('notifications')
+            ->where('id', $id)
+            ->where('user_id', $user->id)
+            ->update(['read' => 1, 'updated_at' => now()]);
+
+        if ($updated) {
+            return response()->json(['success' => true]);
+        }
+
+        return response()->json(['success' => false], 404);
     }
 
     /**

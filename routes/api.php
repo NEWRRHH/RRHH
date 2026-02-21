@@ -35,6 +35,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/working', [DashboardController::class, 'working']);
     // vacation info for the logged-in user
     Route::get('/vacations/me', [DashboardController::class, 'vacationsMe']);
+    // mark notification read
+    Route::post('/notification/{id}/read', [DashboardController::class, 'markNotificationRead']);
 });
 
 // health endpoint (public) used by external checks
