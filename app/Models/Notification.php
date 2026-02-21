@@ -54,6 +54,44 @@ class Notification extends Model
     }
 
     /**
+     * Count unread messages for a user within this conversation.
+     */
+    public function unreadCountFor($userId)
+    {
+        $conv = $this->conversation ?: [];
+        $count = 0;
+        foreach ($conv as $msg) {
+            if (isset($msg['sender_id']) && $msg['sender_id'] != $userId && empty($msg['read'])) {
+                $count++;
+            }
+        }
+        return $count;
+    }
+
+    /**
+     * Mark all incoming messages as read for a user and save row.
+     * Returns true if any change was made.
+     */
+    public function markMessagesReadFor($userId)
+    {
+        $conv = $this->conversation ?: [];
+        $changed = false;
+        foreach ($conv as &$msg) {
+            if (isset($msg['sender_id']) && $msg['sender_id'] != $userId && empty($msg['read'])) {
+                $msg['read'] = true;
+                $changed = true;
+            }
+        }
+        if ($changed) {
+            $this->conversation = $conv;
+            // update row-level flag if no unread remain
+            $this->read = ($this->unreadCountFor($userId) === 0) ? 1 : 0;
+            $this->save();
+        }
+        return $changed;
+    }
+
+    /**
      * Scope conversation between two users, ordered by timestamp.
      */
     public function scopeConversationWith($query, $userId, $otherId)

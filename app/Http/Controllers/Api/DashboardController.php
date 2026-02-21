@@ -33,18 +33,36 @@ class DashboardController extends Controller
         $unreadCount = 0;
         if ($request->user()) {
             $userId = $request->user()->id;
-            // obtener sólo las notificaciones no leídas donde él es receptor
-            // incluir nombre del remitente cargando relación
-            $notifications = \App\Models\Notification::with('sender')
-                ->where('receiver_id', $userId)
-                ->where('read', 0)
-                ->orderBy('created_at', 'desc')
-                ->get()
-                ->map(function ($n) {
-                    $n->sender_name = trim(($n->sender->first_name ?? '') . ' ' . ($n->sender->last_name ?? ''));
-                    return $n;
-                });
-            $unreadCount = $notifications->count();
+            // cargar todas las conversaciones donde participa
+            $convs = \App\Models\Notification::with('sender')
+                ->where(function ($q) use ($userId) {
+                    $q->where('sender_id', $userId)
+                      ->orWhere('receiver_id', $userId);
+                })->get();
+
+            foreach ($convs as $conv) {
+                $conv->sender_name = trim(($conv->sender->first_name ?? '') . ' ' . ($conv->sender->last_name ?? ''));
+                // recorrer cada mensaje para generar items individuales
+                $msgs = $conv->conversation ?: [];
+                foreach ($msgs as $msg) {
+                    if (isset($msg['sender_id']) && $msg['sender_id'] != $userId && empty($msg['read'])) {
+                        $notifications[] = [
+                            'id' => $conv->id,
+                            'conversation_id' => $conv->id,
+                            'sender_id' => $conv->sender_id,
+                            'sender_name' => $conv->sender_name,
+                            'content' => $msg['content'] ?? '',
+                            'created_at' => $msg['created_at'] ?? null,
+                            'read' => false,
+                        ];
+                        $unreadCount++;
+                    }
+                }
+            }
+            // ordenar por fecha descendente
+            usort($notifications, function ($a, $b) {
+                return strtotime($b['created_at']) <=> strtotime($a['created_at']);
+            });
         }
         $birthdaysToday = User::whereNotNull('birth_date')
             ->whereRaw('MONTH(birth_date) = ? AND DAY(birth_date) = ?', [$today->month, $today->day])
