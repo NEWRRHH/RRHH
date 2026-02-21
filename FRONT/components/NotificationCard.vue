@@ -30,7 +30,7 @@
         <div v-else class="flex-1 overflow-y-auto">
           <div v-if="unreadNotes && unreadNotes.length">
             <ul class="space-y-2">
-              <li v-for="note in unreadNotes" :key="note.id">
+              <li v-for="note in unreadNotes" :key="note.message_id || note.id">
                 <div
                   @click="openModal(note)"
                   class="cursor-pointer p-2 rounded-lg border transition bg-gray-800 border-gray-700 text-white font-medium hover:bg-gray-800"
@@ -49,6 +49,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+declare const $fetch: any
 import type { PropType } from 'vue'
 import { useAuth } from '../composables/useAuth'
 
@@ -62,7 +63,9 @@ const props = defineProps({
 const { token, apiBase } = useAuth()
 
 // only unread notes are shown in the card
-const unreadNotes = computed(() => props.notifications.filter((n: any) => n.read === 0))
+const unreadNotes = computed(() =>
+  props.notifications.filter((n: any) => n.read === 0 || n.read === false || n.read === null)
+)
 
 const emit = defineEmits(['notification-read'])
 
