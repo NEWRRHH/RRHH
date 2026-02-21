@@ -103,8 +103,8 @@ const { token, user, fetchUser, logout, apiBase, setToken, fetchUnread } = useAu
 
 function markRead(id: number) {
   if (data.value.notifications) {
-    // remove from the array so card updates immediately
-    data.value.notifications = data.value.notifications.filter((n: any) => n.id !== id)
+    // remove all messages belonging to this conversation
+    data.value.notifications = data.value.notifications.filter((n: any) => n.conversation_id !== id)
   }
   if (data.value.unread_notifications > 0) {
     data.value.unread_notifications--

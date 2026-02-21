@@ -75,14 +75,14 @@ async function openModal(note: any) {
   modalContent.value = note.content || ''
   showModal.value = true
 
-  // mark as read on the server
+  // mark as read via conversation endpoint
   try {
-    await fetch(`${apiBase}/api/notification/${note.id}/read`, {
-      method: 'POST',
+    await $fetch(`${apiBase}/api/notifications/conversation/${note.sender_id}`, {
       headers: { Authorization: `Bearer ${token.value}` },
     })
-    note.read = 1 // update local state
-    emit('notification-read', note.id)
+    // update local state: remove this message
+    note.read = true
+    emit('notification-read', note.conversation_id || note.id)
   } catch (e) {
     console.error('failed to mark notification read', e)
   }
