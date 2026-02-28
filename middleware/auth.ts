@@ -2,6 +2,7 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
   const { token, fetchUser, setToken } = useAuth()
   const isProtected = to.meta?.auth === true
   if (!isProtected) return
+  console.log('auth middleware start', to.path, 'token', token.value)
 
   // middleware should be no-op during SSR (localStorage is client-only)
   if (process.server) return

@@ -94,6 +94,8 @@
 
 <script setup lang="ts">
 import { ref, onBeforeMount, onMounted } from 'vue'
+
+definePageMeta({ auth: true })
 import { useRouter } from 'vue-router'
 import { useAuth } from '../../composables/useAuth'
 import AppSidebar from '../../components/AppSidebar.vue'

@@ -39,9 +39,17 @@ const attendanceWorking = ref<boolean | null>(null)
 
 async function loadAttendanceStatus() {
   try {
+    if (!token.value) {
+      attendanceWorking.value = false
+      return
+    }
+
     await fetchUser()
     const res: any = await $fetch(`${apiBase}/api/attendance/status`, {
-      headers: { Authorization: `Bearer ${token.value}` }
+      headers: {
+        Authorization: `Bearer ${token.value}`,
+        Accept: 'application/json'
+      }
     })
     attendanceWorking.value = res.working
   } catch (e) {

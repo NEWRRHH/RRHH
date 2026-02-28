@@ -86,15 +86,20 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 const { login } = useAuth()
 const router = useRouter()
 const form = ref({ email: '', password: '' })
 
 const onSubmit = async () => {
   try {
+    console.log('submitting', form.value)
     await login(form.value)
+    console.log('login successful, pushing')
     await router.push('/dashboard')
+    console.log('current route', router.currentRoute.value)
   } catch (err: any) {
+    console.error('login error', err)
     alert(err?.data?.message || 'Login failed')
   }
 }
