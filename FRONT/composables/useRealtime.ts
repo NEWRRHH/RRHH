@@ -32,6 +32,7 @@ export function useRealtime() {
     appId: string;
     key: string;
     token?: string;
+    authEndpoint?: string;
   }) {
     if (echo) {
       return echo;
@@ -39,7 +40,6 @@ export function useRealtime() {
 
     const opts = {
       broadcaster: 'reverb',
-      host: `${config.host}:${config.port}`,
       key: config.key,
       appId: config.appId,
       wsHost: config.host,
@@ -47,9 +47,13 @@ export function useRealtime() {
       wssPort: Number(config.port),
       forceTLS: false,
       disableStats: true,
+      // The auth endpoint must be reachable from the browser.
+      // Default: http://localhost:8000/broadcasting/auth
+      authEndpoint: config.authEndpoint || 'http://localhost:8000/broadcasting/auth',
       auth: {
         headers: {
           Authorization: config.token ? `Bearer ${config.token}` : '',
+          Accept: 'application/json',
         },
       },
     };

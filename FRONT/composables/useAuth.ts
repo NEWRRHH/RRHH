@@ -9,7 +9,11 @@ import { useRealtime } from './useRealtime';
 
 export const useAuth = () => {
   const config = useRuntimeConfig()
-  const apiBase = config.public.apiBase || 'http://localhost:8000'
+  // SSR (Node inside Docker): use private config.apiBase = http://back_nginx
+  // Client (browser):         use public config.apiBase = http://localhost:8000
+  const apiBase: string = process.server
+    ? (config.apiBase as string || 'http://back_nginx')
+    : (config.public.apiBase as string || 'http://localhost:8000')
   const token = useState<string | null>('auth_token', () => (process.client ? localStorage.getItem('rrhh_token') : null))
   const user = useState<any | null>('auth_user', () => null)
   const unreadNotifications = useState<number>('unread_notifications', () => 0)
@@ -47,6 +51,7 @@ export const useAuth = () => {
             appId: config.public.reverbAppId,
             key: config.public.reverbAppKey,
             token: token.value,
+            authEndpoint: `${config.public.apiBase}/broadcasting/auth`,
           });
           // also listen for incoming messages and update unread counter
           echo.private(`user.${user.value.id}`)
@@ -92,6 +97,7 @@ export const useAuth = () => {
           appId: config.public.reverbAppId,
           key: config.public.reverbAppKey,
           token: token.value,
+          authEndpoint: `${config.public.apiBase}/broadcasting/auth`,
         }).private(`user.${user.value.id}`)
           .listen('MessageSent', (e: any) => {
             // increment unread counter when a message arrives for this user
