@@ -74,7 +74,7 @@
           />
           <NotificationCard
             :notifications="data.notifications || []"
-            :unread-count="data.unread_notifications || 0"
+            :unread-count="unreadNotifications || 0"
             @notification-read="markRead"
           />
         </div>
@@ -85,7 +85,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onBeforeMount } from 'vue'
+import { ref, onBeforeMount, watch, onBeforeUnmount } from 'vue'
 
 // require authentication to view this page
 definePageMeta({ auth: true })
@@ -102,18 +102,15 @@ import UserMenu from '../components/UserMenu.vue'
 
 declare const $fetch: any
 
-const { token, user, fetchUser, logout, apiBase, setToken, fetchUnread } = useAuth()
+const { token, user, fetchUser, logout, apiBase, setToken, fetchUnread, unreadNotifications, lastReceivedMessage } = useAuth()
 
-function markRead(id: number) {
+async function markRead(id: number) {
   if (data.value.notifications) {
     // remove all messages belonging to this conversation
     data.value.notifications = data.value.notifications.filter((n: any) => n.conversation_id !== id)
   }
-  if (data.value.unread_notifications > 0) {
-    data.value.unread_notifications--
-  }
-  // actualizar contador global
-  fetchUnread()
+  await fetchUnread()
+  data.value.unread_notifications = unreadNotifications.value || 0
 }
 const router = useRouter()
 const data = ref<any>({})
@@ -206,6 +203,33 @@ onBeforeMount(async () => {
   } finally {
     vacationLoading.value = false
   }
+})
+
+async function refreshDashboardNotifications() {
+  if (!token.value) return
+  try {
+    const fresh = await $fetch(`${apiBase || 'http://localhost:8000'}/api/dashboard`, {
+      headers: { Authorization: `Bearer ${token.value}` },
+    })
+    data.value.notifications = fresh?.notifications || []
+    data.value.unread_notifications = unreadNotifications.value || fresh?.unread_notifications || 0
+  } catch (e) {
+    console.error('dashboard realtime refresh failed', e)
+  }
+}
+
+const stopRealtimeWatch = watch(lastReceivedMessage, (e) => {
+  if (!e) return
+  refreshDashboardNotifications()
+})
+
+const stopUnreadWatch = watch(unreadNotifications, (count) => {
+  data.value.unread_notifications = count || 0
+})
+
+onBeforeUnmount(() => {
+  stopRealtimeWatch()
+  stopUnreadWatch()
 })
 
 const onLogout = async () => {

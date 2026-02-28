@@ -248,29 +248,22 @@ const processedRealtimeKeys = new Set<string>()
 function handleRealtime(e: any) {
   // e.conversation holds the entire conversation row
   const conv = e.conversation
-
-  // DEBUG: log evento y usuario actual
-  console.log('[Realtime] Evento recibido:', conv)
-  console.log('[Realtime] user.value.id:', user.value?.id)
-
-  // Antes: ignoraba si el usuario era el sender
-  if (conv.sender_id === user.value?.id) {
-    console.warn('[Realtime] Evento ignorado porque sender_id === user.value.id')
-    // (Ya no retornamos, procesamos igual para depurar)
-  }
+  const me = user.value?.id
+  const isOwnMessage = conv.sender_id === me
 
   // update conversations list: ensure partner exists and adjust unread_count
-  const partnerId = conv.sender_id === user.value.id ? conv.receiver_id : conv.sender_id
+  const partnerId = isOwnMessage ? conv.receiver_id : conv.sender_id
+  const isActiveConversation = !!currentPartner.value && currentPartner.value.id === partnerId
   let item = conversations.value.find(c => c.user.id === partnerId)
   if (!item) {
     // insert at top if new
     item = { user: {id: partnerId, name: 'Usuario'}, last_message: null, last_at: null, unread_count: 0 }
     conversations.value.unshift(item)
   }
-  item.unread_count = 1 // or increment as appropriate
+  item.unread_count = isActiveConversation ? 0 : ((item.unread_count || 0) + 1)
 
   // if the conversation currently open, append the message and scroll
-  if (currentPartner.value && currentPartner.value.id === partnerId) {
+  if (isActiveConversation) {
     const last = conv.conversation[conv.conversation.length - 1]
     const dedupeKey = `${last.sender_id}|${last.created_at}|${last.content}`
     if (processedRealtimeKeys.has(dedupeKey)) return
@@ -288,6 +281,12 @@ function handleRealtime(e: any) {
       const container = messagesContainer.value as HTMLElement
       container.scrollTop = container.scrollHeight
     })
+
+    // If user is focused on this chat, mark incoming message as read immediately
+    // so global badges (sidebar/dashboard) stay in sync.
+    if (!isOwnMessage) {
+      void markConversationReadRealtime(partnerId)
+    }
   }
 }
 
@@ -300,4 +299,20 @@ watch(currentPartner, (val) => {
 })
 
 const messagesContainer = ref<HTMLElement | null>(null)
+const markingReadFor = new Set<number>()
+
+async function markConversationReadRealtime(userId: number) {
+  if (!token.value || markingReadFor.has(userId)) return
+  markingReadFor.add(userId)
+  try {
+    await $fetch(`${apiBase}/api/notifications/conversation/${userId}`, {
+      headers: { Authorization: `Bearer ${token.value}` }
+    })
+    await fetchUnread()
+  } catch (e) {
+    console.error('failed to mark conversation read in realtime', e)
+  } finally {
+    markingReadFor.delete(userId)
+  }
+}
 </script>

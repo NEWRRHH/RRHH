@@ -84,16 +84,15 @@ onMounted(async () => {
   try {
     await fetchUser()
     await fetchUnread()
-    unreadCount.value = unreadNotifications.value
-  } catch (e) {
+      } catch (e) {
     console.error('failed to load unread count', e)
   }
 })
 
 const route = useRoute()
-const { apiBase, token, fetchUser, unreadNotifications, fetchUnread } = useAuth()
+const { fetchUser, unreadNotifications, fetchUnread } = useAuth()
 
-const unreadCount = ref(0)
+const unreadCount = computed(() => unreadNotifications.value || 0)
 
 const navItems = computed(() => [
   {
@@ -140,3 +139,4 @@ const navItems = computed(() => [
   }
 ])
 </script>
+
