@@ -111,6 +111,8 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, nextTick } from 'vue'
 
+definePageMeta({ auth: true })
+
 declare const $fetch: any
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
@@ -118,7 +120,7 @@ import AttendanceButton from '../components/AttendanceButton.vue'
 import UserMenu from '../components/UserMenu.vue'
 import AppSidebar from '../components/AppSidebar.vue'
 
-const { user, token, apiBase, fetchUser, unreadNotifications, fetchUnread, logout } = useAuth()
+const { user, token, apiBase, fetchUser, unreadNotifications, fetchUnread, logout, realtimeInstance } = useAuth()
 const router = useRouter()
 const sidebar = ref<{ open: boolean } | null>(null)
 
@@ -224,7 +226,40 @@ function formatDate(dt: string) {
 
 onMounted(() => {
   loadConversations()
+
+  // if websocket already connected, listen for incoming messages
+  const echo = realtimeInstance()
+  if (echo && user.value) {
+    echo.private(`user.${user.value.id}`).listen('MessageSent', handleRealtime)
+  }
 })
+
+function handleRealtime(e: any) {
+  // e.conversation holds the entire conversation row
+  const conv = e.conversation
+  // update global unread count / badge
+  unreadNotifications.value++
+
+  // update conversations list: ensure partner exists and adjust unread_count
+  const partnerId = conv.sender_id === user.value.id ? conv.receiver_id : conv.sender_id
+  let item = conversations.value.find(c => c.user.id === partnerId)
+  if (!item) {
+    // insert at top if new
+    item = { user: {id: partnerId, name: 'Usuario'}, last_message: null, last_at: null, unread_count: 0 }
+    conversations.value.unshift(item)
+  }
+  item.unread_count = 1 // or increment as appropriate
+
+  // if the conversation currently open, append the message and scroll
+  if (currentPartner.value && currentPartner.value.id === partnerId) {
+    const last = conv.conversation[conv.conversation.length - 1]
+    messages.value.push(last)
+    nextTick(() => {
+      const container = messagesContainer.value as HTMLElement
+      container.scrollTop = container.scrollHeight
+    })
+  }
+}
 
 watch(currentPartner, (val) => {
   if (val) {

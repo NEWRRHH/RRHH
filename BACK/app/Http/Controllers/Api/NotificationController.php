@@ -155,6 +155,9 @@ class NotificationController extends Controller
                 ]);
             }
 
+            // broadcast the new/updated conversation to the recipient via Reverb
+            event(new \App\Events\MessageSent($conversation));
+
             return response()->json($conversation, 201);
         } catch (\Exception $e) {
             // log error for debugging

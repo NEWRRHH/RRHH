@@ -34,6 +34,11 @@ WORKDIR /var/www/html
 # copy app (during development you'll mount the volume instead)
 COPY . /var/www/html
 
+# ensure the Laravel Reverb package is available inside the image
+# (container build will already read composer.json, but running require here
+#  makes builds idempotent when composer.json is edited manually later)
+RUN composer require laravel/reverb:^1.7 --no-interaction || true
+
 # ensure storage and cache directories exist with correct permissions
 RUN mkdir -p /var/www/html/storage /var/www/html/bootstrap/cache \
     && chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache \

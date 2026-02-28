@@ -86,6 +86,9 @@
 
 <script setup lang="ts">
 import { ref, onBeforeMount } from 'vue'
+
+// require authentication to view this page
+definePageMeta({ auth: true })
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 
@@ -131,6 +134,7 @@ const vacationInfo = ref<{ daysUntilVacation: number | null; vacationDays: numbe
 })
 
 onBeforeMount(async () => {
+  console.log('dashboard onBeforeMount, token=', token.value)
   // try to restore token from localStorage on client before redirecting
   if (!token.value) {
     if (process.client) {
