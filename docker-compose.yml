@@ -97,17 +97,19 @@ services:
     restart: unless-stopped
     working_dir: /app
     user: root
+    # load frontend‑specific variables (not the backend .env)
     env_file:
-      - ./BACK/.env
+      - ./FRONT/.env
     environment:
       - NODE_ENV=development
       - HOST=0.0.0.0
       - PORT=3000
       # runtime public config for Nuxt 3 (usa NUXT_PUBLIC_*)
-      - NUXT_PUBLIC_API_BASE=http://localhost:8000
+      # cuando el front corre en Docker, la API está en el servicio back_nginx
+      - NUXT_PUBLIC_API_BASE=http://back_nginx
       # Reverb websocket settings (pusher-compatible)
-      # browser should connect to localhost (mapped above)
-      - NUXT_PUBLIC_REVERB_HOST=localhost
+      # dentro del network el socket corre en back_reverb
+      - NUXT_PUBLIC_REVERB_HOST=back_reverb
       - NUXT_PUBLIC_REVERB_PORT=6001
     ports:
       - "3000:3000"
