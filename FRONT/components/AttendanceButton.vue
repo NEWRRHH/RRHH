@@ -20,12 +20,14 @@
       </div>
       <button
         @click="togglePause"
-        class="px-2 py-1 rounded text-black bg-yellow-400 hover:bg-yellow-500 transition text-[10px]"
+        :disabled="loading"
+        class="px-2 py-1 rounded text-black bg-yellow-400 hover:bg-yellow-500 transition text-[10px] disabled:opacity-50"
       >
         {{ paused ? 'Resume' : 'Pause' }}
       </button>
       <button
         @click="handleStop"
+        :disabled="loading"
         class="px-2 py-1 rounded text-white bg-red-500 hover:bg-red-600 transition text-[10px]"
       >
         salida
@@ -110,7 +112,10 @@ async function checkStatus() {
     if (res?.attendance && res.attendance.id) {
       attendance.value = res.attendance
       started.value = true
-      paused.value = false
+      // paused when pause_time is newer than resume_time (or resume missing)
+      const p = res.attendance.pause_time || null
+      const r = res.attendance.resume_time || null
+      paused.value = !!p && (!r || p > r)
       const startDate = parseTimeString(res.attendance.start_time)
       if (startDate) {
         elapsed.value = Math.floor((Date.now() - startDate.getTime()) / 60000)
@@ -167,7 +172,23 @@ const handleStop = async () => {
 }
 
 const togglePause = () => {
-  paused.value = !paused.value
+  if (!started.value || loading.value) return
+  loading.value = true
+  const endpoint = paused.value ? 'resume' : 'pause'
+  $fetch(`${apiBase || 'http://localhost:8000'}/api/attendance/${endpoint}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token.value}` },
+  })
+    .then(async () => {
+      await checkStatus()
+      emit('changed')
+    })
+    .catch((e: any) => {
+      console.error(`${endpoint} attendance failed`, e)
+    })
+    .finally(() => {
+      loading.value = false
+    })
 }
 
 onMounted(checkStatus)
