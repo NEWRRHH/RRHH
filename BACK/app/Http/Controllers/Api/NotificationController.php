@@ -92,7 +92,11 @@ class NotificationController extends Controller
         if ($convRow) {
             $conversation = $convRow->conversation ?: [];
             // mark individual messages as read for this user
-            $convRow->markMessagesReadFor($userId);
+            $changed = $convRow->markMessagesReadFor($userId);
+            if ($changed) {
+                // Notify the other participant that their messages were read.
+                event(new \App\Events\MessageRead($convRow, (int) $otherId, (int) $userId));
+            }
         }
 
         return response()->json($conversation);

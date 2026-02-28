@@ -21,6 +21,8 @@ export const useAuth = () => {
   // watch this instead of subscribing to Echo directly, so there is only ONE Echo
   // listener per session and no stale-closure / duplicate-listener problems.
   const lastReceivedMessage = useState<any>('last_received_message', () => null)
+  // Read-receipt events for sent messages (used to render WhatsApp-like checks).
+  const lastReadReceipt = useState<any>('last_read_receipt', () => null)
 
   const { connect: connectRealtime, disconnect: disconnectRealtime, instance: realtimeInstance, subscribedChannels } = useRealtime();
 
@@ -74,6 +76,9 @@ export const useAuth = () => {
                   // Publish the event to all interested pages via shared reactive state.
                   // This avoids pages having to subscribe to Echo directly.
                   lastReceivedMessage.value = e
+                })
+                .listen('.MessageRead', (e: any) => {
+                  lastReadReceipt.value = e
                 })
             }
           }
@@ -132,6 +137,8 @@ export const useAuth = () => {
     setToken(null)
     user.value = null
     unreadNotifications.value = 0
+    lastReceivedMessage.value = null
+    lastReadReceipt.value = null
   }
 
   // hydrate token from localStorage on the client so full reloads keep session
@@ -159,6 +166,6 @@ export const useAuth = () => {
   }
 
   // expose realtime helpers so pages/components can reuse the same echo instance
-  return { apiBase, token, user, login, register, logout, fetchUser, setToken, unreadNotifications, fetchUnread, realtimeInstance, connectRealtime, disconnectRealtime, lastReceivedMessage }
+  return { apiBase, token, user, login, register, logout, fetchUser, setToken, unreadNotifications, fetchUnread, realtimeInstance, connectRealtime, disconnectRealtime, lastReceivedMessage, lastReadReceipt }
 }
 

@@ -83,7 +83,12 @@
             <div v-for="msg in messages" :key="msg.id" class="mb-2 flex" :class="msg.sender_id === user?.id ? 'justify-end' : 'justify-start'">
               <div :class="[msg.sender_id === user?.id ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-100', 'rounded-lg px-3 py-2 max-w-xs']">
                 <div class="text-sm">{{ msg.content }}</div>
-                <div class="text-xs text-gray-400 mt-1 text-right">{{ formatDate(msg.created_at) }}</div>
+                <div class="text-xs text-gray-400 mt-1 text-right flex items-center justify-end gap-1">
+                  <span>{{ formatDate(msg.created_at) }}</span>
+                  <span v-if="msg.sender_id === user?.id" :class="msg.read ? 'text-blue-200' : 'text-gray-300'">
+                    {{ msg.read ? '✓✓' : '✓' }}
+                  </span>
+                </div>
               </div>
             </div>
             <div v-if="messages.length === 0" class="text-gray-400 text-center mt-6">Selecciona una conversación para comenzar</div>
@@ -120,7 +125,7 @@ import AttendanceButton from '../components/AttendanceButton.vue'
 import UserMenu from '../components/UserMenu.vue'
 import AppSidebar from '../components/AppSidebar.vue'
 
-const { user, token, apiBase, fetchUser, unreadNotifications, fetchUnread, logout, lastReceivedMessage } = useAuth()
+const { user, token, apiBase, fetchUser, fetchUnread, logout, lastReceivedMessage, lastReadReceipt } = useAuth()
 const router = useRouter()
 const sidebar = ref<{ open: boolean } | null>(null)
 
@@ -233,6 +238,9 @@ onMounted(() => {
   stopRealtimeWatch = watch(lastReceivedMessage, (e) => {
     if (e) handleRealtime(e)
   })
+  stopReadReceiptWatch = watch(lastReadReceipt, (e) => {
+    if (e) handleReadReceipt(e)
+  })
 })
 
 onBeforeUnmount(() => {
@@ -240,19 +248,26 @@ onBeforeUnmount(() => {
     stopRealtimeWatch()
     stopRealtimeWatch = null
   }
+  if (stopReadReceiptWatch) {
+    stopReadReceiptWatch()
+    stopReadReceiptWatch = null
+  }
 })
 
 let stopRealtimeWatch: null | (() => void) = null
+let stopReadReceiptWatch: null | (() => void) = null
 const processedRealtimeKeys = new Set<string>()
 
 function handleRealtime(e: any) {
   // e.conversation holds the entire conversation row
   const conv = e.conversation
+  const last = Array.isArray(conv?.conversation) ? conv.conversation[conv.conversation.length - 1] : null
+  if (!last) return
   const me = user.value?.id
-  const isOwnMessage = conv.sender_id === me
+  const isOwnMessage = last.sender_id === me
 
   // update conversations list: ensure partner exists and adjust unread_count
-  const partnerId = isOwnMessage ? conv.receiver_id : conv.sender_id
+  const partnerId = isOwnMessage ? conv.receiver_id : last.sender_id
   const isActiveConversation = !!currentPartner.value && currentPartner.value.id === partnerId
   let item = conversations.value.find(c => c.user.id === partnerId)
   if (!item) {
@@ -260,12 +275,11 @@ function handleRealtime(e: any) {
     item = { user: {id: partnerId, name: 'Usuario'}, last_message: null, last_at: null, unread_count: 0 }
     conversations.value.unshift(item)
   }
-  item.unread_count = isActiveConversation ? 0 : ((item.unread_count || 0) + 1)
+  item.unread_count = (isActiveConversation || isOwnMessage) ? 0 : ((item.unread_count || 0) + 1)
 
   // if the conversation currently open, append the message and scroll
   if (isActiveConversation) {
-    const last = conv.conversation[conv.conversation.length - 1]
-    const dedupeKey = `${last.sender_id}|${last.created_at}|${last.content}`
+    const dedupeKey = `${last.id || ''}|${last.sender_id}|${last.created_at}|${last.content}`
     if (processedRealtimeKeys.has(dedupeKey)) return
     processedRealtimeKeys.add(dedupeKey)
 
@@ -314,5 +328,18 @@ async function markConversationReadRealtime(userId: number) {
   } finally {
     markingReadFor.delete(userId)
   }
+}
+
+function handleReadReceipt(e: any) {
+  const readerId = Number(e?.reader_id || 0)
+  if (!readerId) return
+  if (!currentPartner.value || currentPartner.value.id !== readerId) return
+
+  messages.value = messages.value.map((m: any) => {
+    if (m.sender_id === user.value?.id) {
+      return { ...m, read: true }
+    }
+    return m
+  })
 }
 </script>
