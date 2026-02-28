@@ -6,14 +6,21 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DashboardController;
 
-Route::post('/register', [AuthController::class, 'register']);
-Route::post('/login', [AuthController::class, 'login']);
+// apply a proper middleware class that always attaches the CORS headers
+// (including on redirects such as the unauthorised login redirect). this
+// covers both public and protected routes. the catch-all OPTIONS route
+// below still explicitly returns the headers for preflight.
 
-// protected routes
-Route::middleware('auth:sanctum')->group(function () {
-    Route::post('/logout', [AuthController::class, 'logout']);
-    Route::get('/user', [AuthController::class, 'user']);
-    Route::put('/user', [AuthController::class, 'updateProfile']);
+Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
+
+    Route::post('/register', [AuthController::class, 'register']);
+    Route::post('/login', [AuthController::class, 'login']);
+
+    // protected routes
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('/logout', [AuthController::class, 'logout']);
+        Route::get('/user', [AuthController::class, 'user']);
+        Route::put('/user', [AuthController::class, 'updateProfile']);
     Route::put('/user/password', [AuthController::class, 'updatePassword']);
     Route::put('/user/schedule', [AuthController::class, 'updateSchedule']);
     Route::get('/employees', [AuthController::class, 'employees']);
@@ -44,6 +51,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/notifications/conversation/{userId}', [\App\Http\Controllers\Api\NotificationController::class, 'conversation']);
     Route::post('/notifications/send', [\App\Http\Controllers\Api\NotificationController::class, 'send']);
     Route::get('/notifications/users', [\App\Http\Controllers\Api\NotificationController::class, 'users']);
+    });
 });
 
 // health endpoint (public) used by external checks
@@ -52,9 +60,11 @@ Route::get('/health', function () {
 });
 
 // simple OPTIONS catch-all for CORS preflight (dev convenience)
+// also ensure our Cors middleware runs so we don't rely solely on this
+// hard‑coded header list.
 Route::options('{any}', function () {
     return response('', 200)
         ->header('Access-Control-Allow-Origin', '*')
         ->header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
         ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-})->where('any', '.*');
+})->where('any', '.*')->middleware(\App\Http\Middleware\Cors::class);
