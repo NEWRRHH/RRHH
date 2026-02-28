@@ -28,7 +28,7 @@
 
         <div class="ml-auto flex items-center gap-3">
           <!-- attendance control button placed before user info -->
-          <AttendanceButton class="!text-[11px]" />
+          <AttendanceButton class="!text-[11px]" @changed="handleAttendanceChanged" />
           <!-- avatar/menu component -->
           <UserMenu />
         </div>
@@ -174,19 +174,7 @@ onBeforeMount(async () => {
     birthdaysLoading.value = false
   }
 
-  // fetch workers currently "en_trabajo"
-  workingLoading.value = true
-  try {
-    const res2 = await $fetch(`${apiBase || 'http://localhost:8000'}/api/working`, {
-      headers: { Authorization: `Bearer ${token.value}` },
-    })
-    workingUsers.value = res2 || []
-  } catch (e) {
-    console.error('working fetch failed', e)
-    workingUsers.value = []
-  } finally {
-    workingLoading.value = false
-  }
+  await refreshWorkingUsers()
 
   // fetch vacation info for logged-in user
   vacationLoading.value = true
@@ -204,6 +192,34 @@ onBeforeMount(async () => {
     vacationLoading.value = false
   }
 })
+
+async function refreshWorkingUsers() {
+  workingLoading.value = true
+  try {
+    const res = await $fetch(`${apiBase || 'http://localhost:8000'}/api/working`, {
+      headers: { Authorization: `Bearer ${token.value}` },
+    })
+    workingUsers.value = res || []
+  } catch (e) {
+    console.error('working fetch failed', e)
+    workingUsers.value = []
+  } finally {
+    workingLoading.value = false
+  }
+}
+
+async function handleAttendanceChanged() {
+  await refreshWorkingUsers()
+  // Keep KPI in sync (attendances_today/open attendances) without full reload.
+  try {
+    const fresh = await $fetch(`${apiBase || 'http://localhost:8000'}/api/dashboard`, {
+      headers: { Authorization: `Bearer ${token.value}` },
+    })
+    data.value.stats = fresh?.stats || data.value.stats
+  } catch (e) {
+    console.error('dashboard stats refresh failed', e)
+  }
+}
 
 async function refreshDashboardNotifications() {
   if (!token.value) return
