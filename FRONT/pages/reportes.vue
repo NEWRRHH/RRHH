@@ -106,6 +106,39 @@
               Usuario seleccionado:
               <span class="text-gray-200 font-medium">{{ selectedUserName }}</span>
             </div>
+            <div class="mb-4 flex flex-wrap gap-2">
+              <div class="px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700 text-xs text-gray-300">
+                Horas trabajadas:
+                <span class="text-white font-semibold">{{ summary.worked_hhmm }}</span>
+              </div>
+              <div class="px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700 text-xs text-gray-300">
+                Horas a trabajar:
+                <span class="text-white font-semibold">{{ summary.target_hhmm }}</span>
+              </div>
+              <div class="px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700 text-xs text-gray-300">
+                Cumplimiento:
+                <span class="text-white font-semibold">{{ summaryPercent }}%</span>
+              </div>
+              <label class="px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700 inline-flex items-center gap-2 text-xs text-gray-300 cursor-pointer select-none">
+                <span>No laborables</span>
+                <button
+                  type="button"
+                  @click="includeNonWorkingDays = !includeNonWorkingDays"
+                  :class="[
+                    'relative inline-flex h-5 w-10 items-center rounded-full transition',
+                    includeNonWorkingDays ? 'bg-blue-600' : 'bg-gray-600'
+                  ]"
+                  aria-label="Mostrar no laborables"
+                >
+                  <span
+                    :class="[
+                      'inline-block h-4 w-4 transform rounded-full bg-white transition',
+                      includeNonWorkingDays ? 'translate-x-5' : 'translate-x-1'
+                    ]"
+                  />
+                </button>
+              </label>
+            </div>
 
             <div class="flex-1 min-h-0 overflow-y-auto overflow-x-auto rounded-2xl border border-gray-800">
               <div class="min-w-[980px]">
@@ -181,9 +214,16 @@ const canViewAll = ref(false)
 const users = ref<any[]>([])
 const teams = ref<any[]>([])
 const monthRows = ref<any[]>([])
+const summary = ref<{ worked_hhmm: string; target_hhmm: string; worked_minutes: number; target_minutes: number }>({
+  worked_hhmm: '00:00',
+  target_hhmm: '00:00',
+  worked_minutes: 0,
+  target_minutes: 0,
+})
 const selectedUserId = ref<number | null>(null)
 const teamFilter = ref('')
 const selectedMonth = ref(new Date().toISOString().slice(0, 7))
+const includeNonWorkingDays = ref(false)
 
 const dayStart = 6 * 60
 const dayEnd = 19 * 60
@@ -194,6 +234,10 @@ const hourTicks = computed(() => hourMarks.value.map((h) => ((h * 60 - dayStart)
 const selectedUserName = computed(() => {
   const u = users.value.find((x) => x.id === selectedUserId.value)
   return u?.full_name || 'Sin usuario'
+})
+const summaryPercent = computed(() => {
+  if (!summary.value.target_minutes) return 0
+  return Math.round((summary.value.worked_minutes / summary.value.target_minutes) * 100)
 })
 
 const monthLabel = computed(() => {
@@ -294,6 +338,7 @@ async function loadMonthData() {
   params.set('month', selectedMonth.value)
   if (teamFilter.value) params.set('team_id', teamFilter.value)
   if (selectedUserId.value) params.set('user_id', String(selectedUserId.value))
+  params.set('include_non_working', includeNonWorkingDays.value ? '1' : '0')
 
   const res: any = await $fetch(`${apiBase || 'http://localhost:8000'}/api/attendance/month?${params.toString()}`, {
     headers: { Authorization: `Bearer ${token.value}` },
@@ -303,6 +348,8 @@ async function loadMonthData() {
   users.value = res?.users || []
   teams.value = res?.teams || []
   monthRows.value = res?.rows || []
+  summary.value = res?.summary || summary.value
+  includeNonWorkingDays.value = !!res?.include_non_working
   selectedUserId.value = res?.selected_user_id || null
   selectedMonth.value = res?.month || selectedMonth.value
 }
@@ -318,7 +365,7 @@ const onLogout = async () => {
   router.push('/login')
 }
 
-watch([selectedMonth, teamFilter], () => {
+watch([selectedMonth, teamFilter, includeNonWorkingDays], () => {
   loadMonthData()
 })
 

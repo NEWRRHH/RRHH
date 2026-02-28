@@ -1,8 +1,8 @@
 <template>
-  <div class="flex min-h-screen bg-gray-950">
+  <div class="flex h-screen overflow-hidden bg-gray-950">
     <!-- sidebar y top bar reuse existing layout structure -->
     <AppSidebar ref="sidebar" @logout="onLogout" />
-    <div class="flex-1 flex flex-col min-w-0 relative z-10">
+    <div class="flex-1 h-screen flex flex-col min-w-0 relative z-10 overflow-hidden">
       <header class="relative z-40 h-16 shrink-0 flex items-center gap-4 px-6 border-b border-gray-800 bg-gray-900/60 backdrop-blur">
         <button
           class="lg:hidden flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition"
@@ -19,7 +19,7 @@
         </div>
       </header>
 
-      <main class="relative z-10 flex-1 p-0 overflow-hidden flex">
+      <main class="relative z-10 flex-1 min-h-0 p-0 overflow-hidden flex">
         <!-- conversation list + users -->
         <aside class="w-64 border-r border-gray-800 bg-gray-900 flex-shrink-0 overflow-y-auto">
           <div class="px-4 py-2 text-xs text-gray-400 uppercase tracking-wide">Usuarios</div>
@@ -73,13 +73,13 @@
         </aside>
 
         <!-- message area -->
-        <div class="flex-1 flex flex-col">
+        <div class="flex-1 min-h-0 flex flex-col">
           <div class="px-4 py-2 border-b border-gray-800 bg-gray-900 flex items-center justify-between">
             <span class="font-semibold text-white">
               {{ currentPartner ? currentPartner.name : 'Sin conversación seleccionada' }}
             </span>
           </div>
-          <div ref="messagesContainer" class="flex-1 overflow-y-auto p-4">
+          <div ref="messagesContainer" class="flex-1 min-h-0 overflow-y-auto p-4">
             <div v-for="msg in messages" :key="msg.id" class="mb-2 flex" :class="msg.sender_id === user?.id ? 'justify-end' : 'justify-start'">
               <div :class="[msg.sender_id === user?.id ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-100', 'rounded-lg px-3 py-2 max-w-xs']">
                 <div class="text-sm">{{ msg.content }}</div>
