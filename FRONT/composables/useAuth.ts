@@ -17,8 +17,12 @@ export const useAuth = () => {
   const token = useState<string | null>('auth_token', () => (process.client ? localStorage.getItem('rrhh_token') : null))
   const user = useState<any | null>('auth_user', () => null)
   const unreadNotifications = useState<number>('unread_notifications', () => 0)
+  // Last MessageSent event received via WebSocket. Pages (e.g. notificaciones.vue)
+  // watch this instead of subscribing to Echo directly, so there is only ONE Echo
+  // listener per session and no stale-closure / duplicate-listener problems.
+  const lastReceivedMessage = useState<any>('last_received_message', () => null)
 
-  const { connect: connectRealtime, disconnect: disconnectRealtime, instance: realtimeInstance } = useRealtime();
+  const { connect: connectRealtime, disconnect: disconnectRealtime, instance: realtimeInstance, subscribedChannels } = useRealtime();
 
   const setToken = (t: string | null) => {
     console.log('useAuth.setToken', t)
@@ -42,10 +46,13 @@ export const useAuth = () => {
       console.log('fetchUser: got user', u)
       user.value = u
 
-      // if we now have both user and token, ensure websocket connection
+      // Connect Echo client as soon as we have a valid user + token.
+      // Do NOT subscribe to channels here — pages register their own listeners.
+      // Subscribing here caused duplicate listeners on every fetchUser call
+      // (auth middleware calls fetchUser on every navigation).
       if (user.value && token.value) {
         try {
-          const echo = connectRealtime({
+          connectRealtime({
             host: config.public.reverbHost,
             port: config.public.reverbPort,
             appId: config.public.reverbAppId,
@@ -53,14 +60,25 @@ export const useAuth = () => {
             token: token.value,
             authEndpoint: `${config.public.apiBase}/broadcasting/auth`,
           });
-          // also listen for incoming messages and update unread counter
-          echo.private(`user.${user.value.id}`)
-            .listen('MessageSent', (e: any) => {
-              unreadNotifications.value++;
-            });
+          // Subscribe to the global unread badge exactly ONCE per session.
+          // We use subscribedChannels (module-level Set) as the guard.
+          // Cleared on logout → fresh login will re-subscribe.
+          const counterKey = `useAuth:unread:${user.value.id}`
+          if (!subscribedChannels.has(counterKey)) {
+            subscribedChannels.add(counterKey)
+            const echoInst = realtimeInstance()
+            if (echoInst) {
+              echoInst.private(`user.${user.value.id}`)
+                .listen('.MessageSent', (e: any) => {
+                  unreadNotifications.value++
+                  // Publish the event to all interested pages via shared reactive state.
+                  // This avoids pages having to subscribe to Echo directly.
+                  lastReceivedMessage.value = e
+                })
+            }
+          }
         } catch (err) {
           console.error('fetchUser: realtime connect failed', err)
-          // do not throw; we still consider fetchUser successful
         }
       }
 
@@ -86,27 +104,8 @@ export const useAuth = () => {
       body: credentials,
     })
     setToken(res.token)
-    await fetchUser()
+    await fetchUser()  // also connects Echo
     await fetchUnread()
-    // establish websocket connection after obtaining user and token
-    if (user.value && token.value) {
-      try {
-        connectRealtime({
-          host: config.public.reverbHost,
-          port: config.public.reverbPort,
-          appId: config.public.reverbAppId,
-          key: config.public.reverbAppKey,
-          token: token.value,
-          authEndpoint: `${config.public.apiBase}/broadcasting/auth`,
-        }).private(`user.${user.value.id}`)
-          .listen('MessageSent', (e: any) => {
-            // increment unread counter when a message arrives for this user
-            unreadNotifications.value++;
-          });
-      } catch (err) {
-        console.error('login realtime connect failed', err)
-      }
-    }
     return res
   }
 
@@ -160,6 +159,6 @@ export const useAuth = () => {
   }
 
   // expose realtime helpers so pages/components can reuse the same echo instance
-  return { apiBase, token, user, login, register, logout, fetchUser, setToken, unreadNotifications, fetchUnread, realtimeInstance, connectRealtime, disconnectRealtime }
+  return { apiBase, token, user, login, register, logout, fetchUser, setToken, unreadNotifications, fetchUnread, realtimeInstance, connectRealtime, disconnectRealtime, lastReceivedMessage }
 }
 

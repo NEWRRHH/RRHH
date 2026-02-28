@@ -94,6 +94,35 @@ services:
       - back_db
       - app
 
+  # Queue worker — processes any queued jobs (e.g. emails, notifications).
+  # NOTE: MessageSent now uses ShouldBroadcastNow so broadcasts bypass this queue,
+  # but keeping the worker ensures other queued jobs (mail, etc.) are processed.
+  queue:
+    build:
+      context: ./BACK
+      dockerfile: Dockerfile
+    image: rrhh_back_app:latest
+    restart: unless-stopped
+    working_dir: /var/www/html
+    command: php artisan queue:work --sleep=1 --tries=3 --timeout=60
+    volumes:
+      - ./BACK:/var/www/html:delegated
+      - back_vendor:/var/www/html/vendor
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - DB_CONNECTION=mysql
+      - DB_HOST=back_db
+      - DB_PORT=3306
+      - DB_DATABASE=laravel
+      - DB_USERNAME=laravel
+      - DB_PASSWORD=secret
+      - REVERB_HOST=back_reverb
+      - REVERB_PORT=6001
+    depends_on:
+      - back_db
+      - back_reverb
+
   # Frontend (Nuxt dev server) — puede consumir la API vía http://back_nginx
   front:
     build:

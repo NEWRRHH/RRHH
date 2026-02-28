@@ -109,7 +109,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 
 definePageMeta({ auth: true })
 
@@ -120,7 +120,7 @@ import AttendanceButton from '../components/AttendanceButton.vue'
 import UserMenu from '../components/UserMenu.vue'
 import AppSidebar from '../components/AppSidebar.vue'
 
-const { user, token, apiBase, fetchUser, unreadNotifications, fetchUnread, logout, realtimeInstance } = useAuth()
+const { user, token, apiBase, fetchUser, unreadNotifications, fetchUnread, logout, lastReceivedMessage } = useAuth()
 const router = useRouter()
 const sidebar = ref<{ open: boolean } | null>(null)
 
@@ -227,18 +227,37 @@ function formatDate(dt: string) {
 onMounted(() => {
   loadConversations()
 
-  // if websocket already connected, listen for incoming messages
-  const echo = realtimeInstance()
-  if (echo && user.value) {
-    echo.private(`user.${user.value.id}`).listen('MessageSent', handleRealtime)
+  // Watch the shared reactive state set by useAuth's single Echo listener.
+  // This avoids subscribing to Echo here (which caused stale closures and
+  // duplicate listeners on every mount/navigation).
+  stopRealtimeWatch = watch(lastReceivedMessage, (e) => {
+    if (e) handleRealtime(e)
+  })
+})
+
+onBeforeUnmount(() => {
+  if (stopRealtimeWatch) {
+    stopRealtimeWatch()
+    stopRealtimeWatch = null
   }
 })
+
+let stopRealtimeWatch: null | (() => void) = null
+const processedRealtimeKeys = new Set<string>()
 
 function handleRealtime(e: any) {
   // e.conversation holds the entire conversation row
   const conv = e.conversation
-  // update global unread count / badge
-  unreadNotifications.value++
+
+  // DEBUG: log evento y usuario actual
+  console.log('[Realtime] Evento recibido:', conv)
+  console.log('[Realtime] user.value.id:', user.value?.id)
+
+  // Antes: ignoraba si el usuario era el sender
+  if (conv.sender_id === user.value?.id) {
+    console.warn('[Realtime] Evento ignorado porque sender_id === user.value.id')
+    // (Ya no retornamos, procesamos igual para depurar)
+  }
 
   // update conversations list: ensure partner exists and adjust unread_count
   const partnerId = conv.sender_id === user.value.id ? conv.receiver_id : conv.sender_id
@@ -253,6 +272,17 @@ function handleRealtime(e: any) {
   // if the conversation currently open, append the message and scroll
   if (currentPartner.value && currentPartner.value.id === partnerId) {
     const last = conv.conversation[conv.conversation.length - 1]
+    const dedupeKey = `${last.sender_id}|${last.created_at}|${last.content}`
+    if (processedRealtimeKeys.has(dedupeKey)) return
+    processedRealtimeKeys.add(dedupeKey)
+
+    const alreadyExists = messages.value.some((m) =>
+      m.sender_id === last.sender_id &&
+      m.created_at === last.created_at &&
+      m.content === last.content
+    )
+    if (alreadyExists) return
+
     messages.value.push(last)
     nextTick(() => {
       const container = messagesContainer.value as HTMLElement

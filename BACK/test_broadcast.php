@@ -26,7 +26,7 @@ try {
 // 2) Queue a real MessageSent event (processed by queue:work)
 $conv = (object)['receiver_id' => 1, 'sender_id' => 2, 'conversation' => []];
 try {
-    event(new App\Events\MessageSent($conv));
+    event(new App\Events\MessageSent($conv, 1));
     echo "EVENT QUEUED OK" . PHP_EOL;
 } catch (\Throwable $e) {
     echo "EVENT QUEUE ERROR: " . $e->getMessage() . PHP_EOL;

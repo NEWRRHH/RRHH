@@ -155,8 +155,10 @@ class NotificationController extends Controller
                 ]);
             }
 
-            // broadcast the new/updated conversation to the recipient via Reverb
-            event(new \App\Events\MessageSent($conversation));
+            // Broadcast to the recipient of THIS message.
+            // Do not use $conversation->receiver_id because that value is
+            // historical (first row owner) and can point to the wrong user.
+            event(new \App\Events\MessageSent($conversation, (int) $recipient));
 
             return response()->json($conversation, 201);
         } catch (\Exception $e) {
