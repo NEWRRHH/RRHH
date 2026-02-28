@@ -159,6 +159,6 @@ Si el seeder genera un usuario de prueba, las credenciales son:
 | Campo    | Valor              |
 |----------|--------------------|
 | Email    | `admin@rrhh.test`  |
-| Password | `password`         |
+| Password | `admin`         |
 
 > Revisar `BACK/database/seeders/` para confirmar los datos del seeder.
