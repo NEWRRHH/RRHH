@@ -40,6 +40,12 @@ class AuthController extends Controller
 
     public function login(Request $request)
     {
+        // force JSON response format (protect against missing Accept header from client)
+        $request->headers->set('Accept', 'application/json');
+
+        // debugging: log raw body and headers
+        logger('login raw content', ['content' => $request->getContent(), 'headers' => $request->headers->all()]);
+
         $data = $request->validate([
             'email' => 'required|email',
             'password' => 'required',
