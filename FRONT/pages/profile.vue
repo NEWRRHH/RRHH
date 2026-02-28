@@ -106,6 +106,15 @@
                   class="w-1/2 px-3 py-2 bg-gray-700/60 placeholder-gray-400 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
                 />
               </div>
+              <div class="mt-3">
+                <label class="block text-xs text-gray-400 mb-2">Días laborables</label>
+                <div class="flex flex-wrap gap-2">
+                  <label v-for="d in dayOptions" :key="d" class="inline-flex items-center gap-2 text-xs text-gray-300 bg-gray-800 px-2 py-1 rounded">
+                    <input type="checkbox" :value="d" v-model="form.days" class="accent-blue-500" />
+                    <span>{{ d }}</span>
+                  </label>
+                </div>
+              </div>
             </div>
 
             <div class="flex justify-end">
@@ -144,9 +153,11 @@ const form = ref<any>({
   password_confirmation: '',
   start_time: '',
   end_time: '',
+  days: ['L', 'M', 'X', 'J', 'V'],
 })
 const loading = ref(false)
 const preview = ref<string | null>(null)
+const dayOptions = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
 // if other logic is needed keep the computed; for now it's unused
   const isAdmin = computed(() => user.value?.user_type_id === 1)
@@ -178,6 +189,9 @@ const fetchSchedule = async () => {
     if (res?.schedule) {
       form.value.start_time = res.schedule.start_time || ''
       form.value.end_time = res.schedule.end_time || ''
+      form.value.days = Array.isArray(res.schedule.days) && res.schedule.days.length
+        ? res.schedule.days
+        : ['L', 'M', 'X', 'J', 'V']
     }
   } catch (e) {
     console.error('schedule fetch failed', e)
@@ -239,6 +253,7 @@ const save = async () => {
         body: {
           start_time: form.value.start_time,
           end_time: form.value.end_time,
+          days: form.value.days,
         },
       })
     } catch (err) {

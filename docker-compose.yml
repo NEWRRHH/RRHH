@@ -23,6 +23,9 @@ services:
       - DB_DATABASE=laravel
       - DB_USERNAME=laravel
       - DB_PASSWORD=secret
+      # Reverb: app container must reach the back_reverb service by Docker hostname
+      - REVERB_HOST=back_reverb
+      - REVERB_PORT=6001
     healthcheck:
       test: ["CMD-SHELL", "php -r 'exit(@fsockopen(\"127.0.0.1\",9000) ? 0 : 1);'"]
       interval: 10s
@@ -80,13 +83,45 @@ services:
       - DB_PORT=3306
       - DB_DATABASE=laravel
       - DB_USERNAME=laravel
-      - DB_PASSWORD=secret
+      - DB_PASSWORD=secretsecret
+      # Reverb sólo necesita la DB para el cache de "restart signal".
+      # Usar cache de archivo evita el fallo si la DB todavía no está lista.
+      - CACHE_STORE=file
     ports:
       - "6001:6001"
     command: php artisan reverb:start --host=0.0.0.0 --port=6001
     depends_on:
       - back_db
       - app
+
+  # Queue worker — processes any queued jobs (e.g. emails, notifications).
+  # NOTE: MessageSent now uses ShouldBroadcastNow so broadcasts bypass this queue,
+  # but keeping the worker ensures other queued jobs (mail, etc.) are processed.
+  queue:
+    build:
+      context: ./BACK
+      dockerfile: Dockerfile
+    image: rrhh_back_app:latest
+    restart: unless-stopped
+    working_dir: /var/www/html
+    command: php artisan queue:work --sleep=1 --tries=3 --timeout=60
+    volumes:
+      - ./BACK:/var/www/html:delegated
+      - back_vendor:/var/www/html/vendor
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - DB_CONNECTION=mysql
+      - DB_HOST=back_db
+      - DB_PORT=3306
+      - DB_DATABASE=laravel
+      - DB_USERNAME=laravel
+      - DB_PASSWORD=secret
+      - REVERB_HOST=back_reverb
+      - REVERB_PORT=6001
+    depends_on:
+      - back_db
+      - back_reverb
 
   # Frontend (Nuxt dev server) — puede consumir la API vía http://back_nginx
   front:
@@ -104,12 +139,11 @@ services:
       - NODE_ENV=development
       - HOST=0.0.0.0
       - PORT=3000
-      # runtime public config for Nuxt 3 (usa NUXT_PUBLIC_*)
-      # cuando el front corre en Docker, la API está en el servicio back_nginx
-      - NUXT_PUBLIC_API_BASE=http://back_nginx
-      # Reverb websocket settings (pusher-compatible)
-      # dentro del network el socket corre en back_reverb
-      - NUXT_PUBLIC_REVERB_HOST=back_reverb
+      # apiBase apunta al host donde corre nginx; el navegador lo llama
+      # directamente (CORS * está habilitado en el backend).
+      - NUXT_PUBLIC_API_BASE=http://localhost:8000
+      # Reverb: el navegador se conecta al puerto 6001 expuesto en el host.
+      - NUXT_PUBLIC_REVERB_HOST=localhost
       - NUXT_PUBLIC_REVERB_PORT=6001
     ports:
       - "3000:3000"

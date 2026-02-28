@@ -30,10 +30,14 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
 
     // attendance control
     Route::post('/attendance/start', [AuthController::class, 'startAttendance']);
+    Route::post('/attendance/pause', [AuthController::class, 'pauseAttendance']);
+    Route::post('/attendance/resume', [AuthController::class, 'resumeAttendance']);
     Route::get('/attendance/status', [AuthController::class, 'attendanceStatus']);
     Route::get('/attendance/current', [AuthController::class, 'currentAttendance']);
     Route::post('/attendance/stop', [AuthController::class, 'stopAttendance']);
     Route::get('/attendance/info', [AuthController::class, 'attendanceInfo']);
+    Route::get('/attendance/day', [AuthController::class, 'attendanceDay']);
+    Route::get('/attendance/month', [AuthController::class, 'attendanceMonth']);
 
     Route::get('/dashboard', [DashboardController::class, 'index']);
     // upcoming birthdays for dashboard UI

@@ -78,6 +78,15 @@
                 <input v-model="form.start_time" type="time" class="w-1/2 px-3 py-2 bg-gray-700/60 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 <input v-model="form.end_time" type="time" class="w-1/2 px-3 py-2 bg-gray-700/60 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
+              <div class="mt-3">
+                <label class="block text-xs text-gray-400 mb-2">Días laborables</label>
+                <div class="flex flex-wrap gap-2">
+                  <label v-for="d in dayOptions" :key="d" class="inline-flex items-center gap-2 text-xs text-gray-300 bg-gray-800 px-2 py-1 rounded">
+                    <input type="checkbox" :value="d" v-model="form.days" class="accent-blue-500" />
+                    <span>{{ d }}</span>
+                  </label>
+                </div>
+              </div>
             </div>
 
             <div class="flex justify-end gap-2">
@@ -119,9 +128,11 @@ const form = ref<any>({
   password_confirmation: '',
   start_time: '',
   end_time: '',
+  days: ['L', 'M', 'X', 'J', 'V'],
   photo: null,
 })
 const preview = ref<string | null>(null)
+const dayOptions = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
 function openSidebar() {
   if (sidebar.value) sidebar.value.open = true
@@ -163,6 +174,9 @@ async function loadEmployee() {
     const schedule = res?.schedule || null
     form.value.start_time = schedule?.start_time || ''
     form.value.end_time = schedule?.end_time || ''
+    form.value.days = Array.isArray(schedule?.days) && schedule.days.length
+      ? schedule.days
+      : ['L', 'M', 'X', 'J', 'V']
     teams.value = res?.teams || []
   } catch (e: any) {
     console.error('failed to load employee', e)
@@ -193,6 +207,7 @@ async function save() {
     }
     if (form.value.start_time) data.append('start_time', form.value.start_time)
     if (form.value.end_time) data.append('end_time', form.value.end_time)
+    for (const d of form.value.days || []) data.append('days[]', d)
     if (form.value.photo) data.append('photo', form.value.photo)
 
     await $fetch(`${apiBase || 'http://localhost:8000'}/api/employees/${employeeId}`, {

@@ -26,6 +26,21 @@
           <div class="px-5 py-4 border-b border-gray-800">
             <h2 class="text-white font-semibold">Listado de empleados</h2>
           </div>
+          <div class="px-5 py-3 border-b border-gray-800 flex flex-wrap gap-2">
+            <button
+              v-for="team in teamTabs"
+              :key="team"
+              @click="selectedTeam = team"
+              :class="[
+                'px-3 py-1.5 rounded-lg text-xs font-medium transition',
+                selectedTeam === team
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+              ]"
+            >
+              {{ team }}
+            </button>
+          </div>
 
           <div class="overflow-x-auto">
             <table class="min-w-full text-sm">
@@ -38,7 +53,7 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="employee in employees" :key="employee.id" class="border-t border-gray-800 text-gray-200">
+                <tr v-for="employee in filteredEmployees" :key="employee.id" class="border-t border-gray-800 text-gray-200">
                   <td class="px-4 py-3">
                     <div class="flex items-center gap-3">
                       <div class="w-9 h-9 rounded-full overflow-hidden bg-blue-600 flex items-center justify-center font-semibold">
@@ -79,7 +94,7 @@
                   </td>
                 </tr>
 
-                <tr v-if="!employees.length">
+                <tr v-if="!filteredEmployees.length">
                   <td colspan="4" class="px-4 py-6 text-center text-gray-400">No hay empleados disponibles</td>
                 </tr>
               </tbody>
@@ -93,7 +108,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onBeforeMount, onMounted } from 'vue'
+import { ref, computed, watch, onBeforeMount, onMounted } from 'vue'
 
 definePageMeta({ auth: true })
 import { useRouter } from 'vue-router'
@@ -111,6 +126,21 @@ const sidebar = ref<{ open: boolean } | null>(null)
 
 const employees = ref<any[]>([])
 const openMenuId = ref<number | null>(null)
+const selectedTeam = ref('Todos')
+
+const teamTabs = computed(() => {
+  const teams = new Set<string>()
+  for (const employee of employees.value) {
+    teams.add(employee.team_name || 'Sin equipo')
+  }
+  const ordered = Array.from(teams).sort((a, b) => a.localeCompare(b, 'es'))
+  return ['Todos', ...ordered]
+})
+
+const filteredEmployees = computed(() => {
+  if (selectedTeam.value === 'Todos') return employees.value
+  return employees.value.filter((employee) => (employee.team_name || 'Sin equipo') === selectedTeam.value)
+})
 
 function openSidebar() {
   if (sidebar.value) sidebar.value.open = true
@@ -143,6 +173,12 @@ async function loadEmployees() {
   })
   employees.value = res?.employees || []
 }
+
+watch(teamTabs, (tabs) => {
+  if (!tabs.includes(selectedTeam.value)) {
+    selectedTeam.value = 'Todos'
+  }
+})
 
 const onLogout = async () => {
   await logout()

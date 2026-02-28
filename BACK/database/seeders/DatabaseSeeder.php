@@ -26,6 +26,7 @@ class DatabaseSeeder extends Seeder
             FollowsSeeder::class,
             AttendancesSeeder::class,
             SchedulesSeeder::class,
+            ScheduleDaysSeeder::class,
         ]);
     }
 }
