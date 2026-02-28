@@ -13,14 +13,19 @@ return [
     |
     */
 
+    // ApplicationManager reads config('reverb.apps.apps') — the apps must be
+    // nested under the 'apps' key, not at the top-level of this section.
     'apps' => [
-        [
-            'app_id' => env('REVERB_APP_ID', 'rrhh'),
-            'key' => env('REVERB_APP_KEY'),
-            'secret' => env('REVERB_APP_SECRET'),
-            'allowed_origins' => [
-                env('APP_URL', 'http://localhost'),
-                // add additional origins (e.g. front host) if needed
+        'provider' => 'config',
+        'apps' => [
+            [
+                'app_id'          => env('REVERB_APP_ID', 'rrhh'),
+                'key'             => env('REVERB_APP_KEY'),
+                'secret'          => env('REVERB_APP_SECRET'),
+                'allowed_origins' => ['*'],
+                'ping_interval'   => env('REVERB_APP_PING_INTERVAL', 60),
+                'activity_timeout' => env('REVERB_APP_ACTIVITY_TIMEOUT', 30),
+                'max_message_size' => env('REVERB_APP_MAX_MESSAGE_SIZE', 10000),
             ],
         ],
     ],

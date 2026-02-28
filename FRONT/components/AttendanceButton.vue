@@ -41,6 +41,9 @@ import { useAuth } from '../composables/useAuth'
 declare const $fetch: any
 
 const { token, apiBase, user } = useAuth()
+const emit = defineEmits<{
+  changed: []
+}>()
 const loading = ref(false)
 const started = ref(false)
 const paused = ref(false)
@@ -132,6 +135,7 @@ const handleStart = async () => {
       headers: { Authorization: `Bearer ${token.value}` },
     })
     await checkStatus()
+    emit('changed')
   } catch (e) {
     console.error('start attendance failed', e)
   } finally {
@@ -154,6 +158,7 @@ const handleStop = async () => {
     if (timer) clearInterval(timer)
     // refresh in case schedule or working status changed
     await checkStatus()
+    emit('changed')
   } catch (e) {
     console.error('stop attendance failed', e)
   } finally {

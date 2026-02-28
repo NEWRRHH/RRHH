@@ -28,12 +28,13 @@
     <DashboardSidebarCollapse :collapsed="collapsed" @toggle="collapsed = !collapsed" />
 
     <!-- Body / Nav -->
-    <nav class="flex flex-col flex-1 overflow-y-auto overflow-x-hidden py-4 px-2 gap-1">
+    <nav class="flex flex-col flex-1 overflow-y-auto overflow-x-visible py-4 px-2 gap-1">
       <template v-for="item in navItems" :key="item.label">
         <NuxtLink
           :to="item.to"
           :class="[
-            'flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium transition group',
+            'relative flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium transition group overflow-visible',
+            collapsed ? 'justify-center' : '',
             item.active
               ? 'bg-blue-600/15 text-blue-400'
               : 'text-gray-400 hover:text-white hover:bg-gray-800'
@@ -43,7 +44,12 @@
           <span v-if="!collapsed" class="truncate">{{ item.label }}</span>
           <span
             v-if="item.badge && item.badge.value > 0"
-            class="ml-auto inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-600 text-white"
+            :class="[
+              'inline-flex items-center justify-center rounded-full text-xs font-semibold bg-red-600 text-white',
+              collapsed
+                ? 'absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1'
+                : 'ml-auto px-2 py-0.5'
+            ]"
           >
             {{ item.badge.value }}
           </span>
@@ -84,16 +90,15 @@ onMounted(async () => {
   try {
     await fetchUser()
     await fetchUnread()
-    unreadCount.value = unreadNotifications.value
-  } catch (e) {
+      } catch (e) {
     console.error('failed to load unread count', e)
   }
 })
 
 const route = useRoute()
-const { apiBase, token, fetchUser, unreadNotifications, fetchUnread } = useAuth()
+const { fetchUser, unreadNotifications, fetchUnread } = useAuth()
 
-const unreadCount = ref(0)
+const unreadCount = computed(() => unreadNotifications.value || 0)
 
 const navItems = computed(() => [
   {
@@ -140,3 +145,4 @@ const navItems = computed(() => [
   }
 ])
 </script>
+
