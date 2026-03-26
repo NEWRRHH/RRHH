@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\TimeOffController;
+use App\Http\Controllers\Api\DocumentController;
+use App\Http\Controllers\Api\AnnouncementController;
 
 // apply a proper middleware class that always attaches the CORS headers
 // (including on redirects such as the unauthorised login redirect). this
@@ -26,6 +28,9 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::put('/user/schedule', [AuthController::class, 'updateSchedule']);
     Route::get('/employees', [AuthController::class, 'employees']);
     Route::get('/employees/{id}', [AuthController::class, 'getEmployee']);
+    Route::get('/employees/{id}/attendance-month', [AuthController::class, 'employeeAttendanceMonth']);
+    Route::get('/employees/{id}/documents', [AuthController::class, 'employeeDocuments']);
+    Route::get('/employees/{employeeId}/documents/{docId}/download', [AuthController::class, 'employeeDocumentDownload']);
     Route::put('/employees/{id}', [AuthController::class, 'updateEmployee']);
     Route::delete('/employees/{id}', [AuthController::class, 'deleteEmployee']);
 
@@ -39,12 +44,21 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::get('/attendance/info', [AuthController::class, 'attendanceInfo']);
     Route::get('/attendance/day', [AuthController::class, 'attendanceDay']);
     Route::get('/attendance/month', [AuthController::class, 'attendanceMonth']);
+    Route::get('/attendance/who-is-in', [AuthController::class, 'attendanceWhoIsIn']);
 
     Route::get('/dashboard', [DashboardController::class, 'index']);
+    Route::get('/dashboard/layout', [DashboardController::class, 'dashboardLayout']);
+    Route::put('/dashboard/layout', [DashboardController::class, 'saveDashboardLayout']);
     // upcoming birthdays for dashboard UI
     Route::get('/birthdays', [DashboardController::class, 'birthdays']);
     // workers currently "en_trabajo"
     Route::get('/working', [DashboardController::class, 'working']);
+    Route::get('/team/me', [DashboardController::class, 'team']);
+    Route::get('/holidays/upcoming', [DashboardController::class, 'upcomingHolidays']);
+    Route::get('/announcements', [AnnouncementController::class, 'index']);
+    Route::get('/announcements/teams', [AnnouncementController::class, 'teams']);
+    Route::post('/announcements', [AnnouncementController::class, 'store']);
+    Route::get('/documents/summary', [DashboardController::class, 'documentsSummary']);
     // vacation info for the logged-in user
     Route::get('/vacations/me', [DashboardController::class, 'vacationsMe']);
     // mark notification read
@@ -61,6 +75,11 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::get('/timeoff/calendar', [TimeOffController::class, 'calendar']);
     Route::post('/timeoff/events', [TimeOffController::class, 'create']);
     Route::put('/timeoff/events/{id}', [TimeOffController::class, 'update']);
+
+    // documents center
+    Route::get('/documents', [DocumentController::class, 'index']);
+    Route::post('/documents/upload', [DocumentController::class, 'upload']);
+    Route::get('/documents/{id}/download', [DocumentController::class, 'download']);
     });
 });
 

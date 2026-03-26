@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\Password;
 use Carbon\Carbon;
 use Illuminate\Support\Str;
@@ -112,6 +113,14 @@ class AuthController extends Controller
         $h = intdiv($m, 60);
         $mm = $m % 60;
         return sprintf('%02d:%02d', $h, $mm);
+    }
+
+    private function formatSecondsAsHHMM(int $seconds): string
+    {
+        $s = max(0, $seconds);
+        $h = intdiv($s, 3600);
+        $m = intdiv(($s % 3600), 60);
+        return sprintf('%02d:%02d', $h, $m);
     }
 
     public function register(Request $request)
@@ -221,9 +230,19 @@ class AuthController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email,' . $user->id,
             'photo' => 'nullable|image|max:2048',
+            'birth_date' => 'nullable|date',
+            'dni' => 'nullable|string|max:30',
+            'social_security_number' => 'nullable|string|max:50',
+            'contract_type' => 'nullable|string|max:50',
+            'contract_start_date' => 'nullable|date',
         ]);
         $user->name = $data['name'];
         $user->email = $data['email'];
+        $user->birth_date = $data['birth_date'] ?? $user->birth_date;
+        $user->dni = $data['dni'] ?? $user->dni;
+        $user->social_security_number = $data['social_security_number'] ?? $user->social_security_number;
+        $user->contract_type = $data['contract_type'] ?? $user->contract_type;
+        $user->contract_start_date = $data['contract_start_date'] ?? $user->contract_start_date;
         if ($request->hasFile('photo')) {
             $path = $request->file('photo')->store('avatars', 'public');
             $user->photo = '/storage/' . $path;
@@ -803,6 +822,87 @@ class AuthController extends Controller
     }
 
     /**
+     * "Who's in" view data for attendance page.
+     * Returns users currently working with check-in time and live worked hours.
+     */
+    public function attendanceWhoIsIn(Request $request)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        $isPrivileged = in_array((int) $user->team_id, [1, 2], true);
+
+        $today = Carbon::today()->toDateString();
+        $teamFilter = $request->query('team_id');
+
+        $query = DB::table('attendances')
+            ->join('users', 'attendances.user_id', '=', 'users.id')
+            ->leftJoin('teams', 'users.team_id', '=', 'teams.id')
+            ->whereDate('attendances.date', $today)
+            ->where('attendances.status', 'en_trabajo')
+            ->whereNull('attendances.end_date')
+            ->whereNull('users.deleted_at')
+            ->select(
+                'attendances.id',
+                'attendances.user_id',
+                'attendances.date',
+                'attendances.start_time',
+                'attendances.pause_time',
+                'attendances.resume_time',
+                'attendances.created_at',
+                'users.team_id',
+                'users.first_name',
+                'users.last_name',
+                'users.name',
+                'users.photo',
+                'users.profile_photo_path',
+                'teams.name as team_name'
+            )
+            ->orderBy('attendances.start_time', 'asc');
+
+        if ($isPrivileged) {
+            if ($teamFilter !== null && $teamFilter !== '') {
+                $query->where('users.team_id', (int) $teamFilter);
+            }
+        } else {
+            $query->where('attendances.user_id', $user->id);
+        }
+
+        $now = Carbon::now();
+        $rows = $query->get()->map(function ($r) use ($now) {
+            $fullName = trim(($r->first_name ?? $r->name ?? '') . ' ' . ($r->last_name ?? ''));
+            $workedSeconds = $this->workedSecondsWithPause($r, $now);
+            return [
+                'attendance_id' => $r->id,
+                'user_id' => $r->user_id,
+                'full_name' => $fullName !== '' ? $fullName : ('Usuario #' . $r->user_id),
+                'team_id' => $r->team_id,
+                'team_name' => $r->team_name ?? 'Sin equipo',
+                'photo' => $r->photo ?? $r->profile_photo_path ?? null,
+                'start_time' => $r->start_time ? substr((string) $r->start_time, 0, 5) : null,
+                'worked_seconds' => $workedSeconds,
+                'worked_hhmm' => $this->formatSecondsAsHHMM($workedSeconds),
+            ];
+        })->values();
+
+        $teams = DB::table('teams')
+            ->select('id', 'name')
+            ->orderBy('name', 'asc')
+            ->get();
+
+        return response()->json([
+            'date' => $today,
+            'can_view_all' => $isPrivileged,
+            'team_filter' => $teamFilter !== null && $teamFilter !== '' ? (int) $teamFilter : null,
+            'working_count' => $rows->count(),
+            'rows' => $rows,
+            'teams' => $teams,
+        ])->header('Access-Control-Allow-Origin', '*');
+    }
+
+    /**
      * Change password for authenticated user.
      */
     public function updatePassword(Request $request)
@@ -936,6 +1036,211 @@ class AuthController extends Controller
     }
 
     /**
+     * Monthly attendance data for one employee (admin only).
+     */
+    public function employeeAttendanceMonth(Request $request, int $id)
+    {
+        $user = $request->user();
+        if (! $user || $user->user_type_id !== 1) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $employee = User::whereNull('deleted_at')->find($id);
+        if (! $employee) {
+            return response()->json(['message' => 'Employee not found'], 404);
+        }
+
+        $monthInput = (string) ($request->query('month') ?: Carbon::today()->format('Y-m'));
+        try {
+            $monthDate = Carbon::createFromFormat('Y-m', $monthInput)->startOfMonth();
+        } catch (\Exception $e) {
+            $monthDate = Carbon::today()->startOfMonth();
+        }
+
+        $includeNonWorking = (bool) ((int) $request->query('include_non_working', 0));
+        $monthStart = $monthDate->copy()->startOfMonth();
+        $monthEnd = $monthDate->copy()->endOfMonth();
+
+        $schedule = DB::table('schedules')
+            ->where('user_id', $employee->id)
+            ->orderBy('id', 'desc')
+            ->first();
+        if (! $schedule) {
+            $schedule = DB::table('schedules')
+                ->join('user_schedules', 'schedules.id', '=', 'user_schedules.schedule_id')
+                ->where('user_schedules.user_id', $employee->id)
+                ->select('schedules.*')
+                ->orderBy('schedules.id', 'desc')
+                ->first();
+        }
+        $scheduleDays = $this->normalizeScheduleDays($schedule->days ?? null);
+        $dailyTargetMinutes = $this->scheduleDailyMinutes($schedule);
+
+        $rawRows = DB::table('attendances')
+            ->where('user_id', $employee->id)
+            ->whereDate('date', '>=', $monthStart->toDateString())
+            ->whereDate('date', '<=', $monthEnd->toDateString())
+            ->orderBy('date', 'asc')
+            ->orderBy('created_at', 'desc')
+            ->get([
+                'id',
+                'date',
+                'start_time',
+                'pause_time',
+                'resume_time',
+                'end_time',
+                'hours_worked',
+                'status',
+            ]);
+
+        $rowsByDate = [];
+        foreach ($rawRows as $r) {
+            if (!isset($rowsByDate[$r->date])) {
+                $rowsByDate[$r->date] = $r;
+            }
+        }
+
+        $rows = [];
+        $targetMinutes = 0;
+        $workedMinutes = 0;
+        $weekMap = [1 => 'L', 2 => 'M', 3 => 'X', 4 => 'J', 5 => 'V', 6 => 'S', 7 => 'D'];
+
+        $workedDaysCount = 0;
+        $workingDaysInMonth = 0;
+
+        $cursor = $monthStart->copy();
+        while ($cursor->lte($monthEnd)) {
+            $key = $cursor->toDateString();
+            $att = $rowsByDate[$key] ?? null;
+            $dayLetter = $weekMap[$cursor->dayOfWeekIso] ?? 'L';
+            $isWorkingDay = in_array($dayLetter, $scheduleDays, true);
+
+            if ($isWorkingDay) {
+                $targetMinutes += $dailyTargetMinutes;
+                $workingDaysInMonth++;
+            }
+
+            $rowWorked = 0;
+            if ($att && !empty($att->hours_worked)) {
+                $rowWorked = $this->timeStringToMinutes((string) $att->hours_worked);
+            }
+            if ($rowWorked > 0) {
+                $workedDaysCount++;
+            }
+            $workedMinutes += $rowWorked;
+
+            if ($isWorkingDay || $includeNonWorking) {
+                $rows[] = [
+                    'date' => $key,
+                    'weekday' => $dayLetter,
+                    'start_time' => $att->start_time ?? null,
+                    'pause_time' => $att->pause_time ?? null,
+                    'resume_time' => $att->resume_time ?? null,
+                    'end_time' => $att->end_time ?? null,
+                    'hours_worked' => $att->hours_worked ?? null,
+                    'status' => $att->status ?? null,
+                    'is_working_day' => $isWorkingDay,
+                ];
+            }
+
+            $cursor->addDay();
+        }
+
+        return response()->json([
+            'month' => $monthDate->format('Y-m'),
+            'employee_id' => $employee->id,
+            'summary' => [
+                'worked_minutes' => $workedMinutes,
+                'worked_hhmm' => $this->formatMinutesAsHHMM($workedMinutes),
+                'target_minutes' => $targetMinutes,
+                'target_hhmm' => $this->formatMinutesAsHHMM($targetMinutes),
+                'worked_days' => $workedDaysCount,
+                'working_days' => $workingDaysInMonth,
+                'missing_days' => max(0, $workingDaysInMonth - $workedDaysCount),
+                'compliance_percent' => $targetMinutes > 0 ? (int) round(($workedMinutes / $targetMinutes) * 100) : 0,
+            ],
+            'schedule' => [
+                'start_time' => $schedule->start_time ?? null,
+                'end_time' => $schedule->end_time ?? null,
+                'days' => $scheduleDays,
+                'daily_target_minutes' => $dailyTargetMinutes,
+            ],
+            'rows' => $rows,
+        ])->header('Access-Control-Allow-Origin', '*');
+    }
+
+    /**
+     * Documents for one employee (admin only).
+     */
+    public function employeeDocuments(Request $request, int $id)
+    {
+        $user = $request->user();
+        if (! $user || $user->user_type_id !== 1) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $employee = User::whereNull('deleted_at')->find($id);
+        if (! $employee) {
+            return response()->json(['message' => 'Employee not found'], 404);
+        }
+
+        $category = (string) $request->query('category', '');
+        $q = DB::table('documents')
+            ->where('user_id', $employee->id)
+            ->whereNull('deleted_at')
+            ->orderBy('created_at', 'desc');
+
+        if (in_array($category, ['medical', 'receipt', 'payroll'], true)) {
+            $q->where('category', $category);
+        }
+
+        $docs = $q->get([
+            'id',
+            'description',
+            'filename',
+            'original_name',
+            'mime_type',
+            'size',
+            'category',
+            'created_at',
+        ]);
+
+        return response()->json(['documents' => $docs])->header('Access-Control-Allow-Origin', '*');
+    }
+
+    /**
+     * Download one employee document (admin only).
+     */
+    public function employeeDocumentDownload(Request $request, int $employeeId, int $docId)
+    {
+        $user = $request->user();
+        if (! $user || $user->user_type_id !== 1) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $employee = User::whereNull('deleted_at')->find($employeeId);
+        if (! $employee) {
+            return response()->json(['message' => 'Employee not found'], 404);
+        }
+
+        $doc = DB::table('documents')
+            ->where('id', $docId)
+            ->where('user_id', $employee->id)
+            ->whereNull('deleted_at')
+            ->first(['id', 'filename', 'original_name']);
+
+        if (!$doc || empty($doc->filename)) {
+            return response()->json(['message' => 'Documento no encontrado'], 404);
+        }
+        if (!Storage::disk('local')->exists($doc->filename)) {
+            return response()->json(['message' => 'Archivo no disponible'], 404);
+        }
+
+        $downloadName = $doc->original_name ?: basename((string) $doc->filename);
+        return Storage::disk('local')->download($doc->filename, $downloadName);
+    }
+
+    /**
      * Update one employee (admin only).
      */
     public function updateEmployee(Request $request, int $id)
@@ -955,6 +1260,14 @@ class AuthController extends Controller
             'email' => 'required|email|unique:users,email,' . $employee->id,
             'team_id' => 'nullable|integer|exists:teams,id',
             'photo' => 'nullable|image|max:2048',
+            'phone' => 'nullable|string|max:20',
+            'hire_date' => 'nullable|date',
+            'birth_date' => 'nullable|date',
+            'dni' => 'nullable|string|max:30',
+            'social_security_number' => 'nullable|string|max:50',
+            'contract_type' => 'nullable|string|max:50',
+            'contract_start_date' => 'nullable|date',
+            'vacation_days_total' => 'nullable|integer|min:0|max:365',
             'password' => ['nullable','confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
             'start_time' => 'nullable|date_format:H:i',
             'end_time' => 'nullable|date_format:H:i',
@@ -965,6 +1278,14 @@ class AuthController extends Controller
         $employee->name = $data['name'];
         $employee->email = $data['email'];
         $employee->team_id = $data['team_id'] ?? null;
+        $employee->phone = $data['phone'] ?? null;
+        $employee->hire_date = $data['hire_date'] ?? null;
+        $employee->birth_date = $data['birth_date'] ?? null;
+        $employee->dni = $data['dni'] ?? null;
+        $employee->social_security_number = $data['social_security_number'] ?? null;
+        $employee->contract_type = $data['contract_type'] ?? null;
+        $employee->contract_start_date = $data['contract_start_date'] ?? null;
+        $employee->vacation_days_total = isset($data['vacation_days_total']) ? (int) $data['vacation_days_total'] : (int) ($employee->vacation_days_total ?? 0);
         if ($request->hasFile('photo')) {
             $path = $request->file('photo')->store('avatars', 'public');
             $employee->photo = '/storage/' . $path;

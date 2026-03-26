@@ -53,15 +53,15 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="employee in filteredEmployees" :key="employee.id" class="border-t border-gray-800 text-gray-200">
+                <tr v-for="employee in filteredEmployees" :key="employee.id" class="border-t border-gray-800 text-gray-200 hover:bg-gray-800/40">
                   <td class="px-4 py-3">
-                    <div class="flex items-center gap-3">
+                    <button class="flex items-center gap-3 w-full text-left" @click="goToEdit(employee)">
                       <div class="w-9 h-9 rounded-full overflow-hidden bg-blue-600 flex items-center justify-center font-semibold">
                         <img v-if="employee.photo || employee.profile_photo_path" :src="employee.photo || employee.profile_photo_path" class="w-full h-full object-cover" />
                         <span v-else>{{ (employee.name || '?').charAt(0).toUpperCase() }}</span>
                       </div>
                       <span>{{ employee.name }}</span>
-                    </div>
+                    </button>
                   </td>
                   <td class="px-4 py-3 text-gray-300">{{ employee.email }}</td>
                   <td class="px-4 py-3 text-gray-300">{{ employee.team_name || 'Sin equipo' }}</td>
@@ -81,7 +81,7 @@
                           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M11 5h2m-1-1v2m-7 8l9-9 3 3-9 9H5v-3z"/>
                           </svg>
-                          Editar
+                          Ver detalle
                         </button>
                         <button @click="removeEmployee(employee)" class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600">
                           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">

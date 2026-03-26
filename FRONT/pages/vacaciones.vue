@@ -210,6 +210,8 @@
         </div>
       </div>
     </div>
+
+    <AppToast :show="toast.show" :message="toast.message" :type="toast.type" @close="toast.show = false" />
   </div>
 </template>
 
@@ -220,6 +222,7 @@ import { useAuth } from '../composables/useAuth'
 import AttendanceButton from '../components/AttendanceButton.vue'
 import UserMenu from '../components/UserMenu.vue'
 import AppSidebar from '../components/AppSidebar.vue'
+import AppToast from '../components/AppToast.vue'
 
 definePageMeta({ auth: true })
 declare const $fetch: any
@@ -245,6 +248,12 @@ const sidebar = ref<{ open: boolean } | null>(null)
 const loading = ref(true)
 const saving = ref(false)
 const errorMessage = ref('')
+const toast = ref<{ show: boolean; type: 'success' | 'error'; message: string }>({
+  show: false,
+  type: 'success',
+  message: '',
+})
+let toastTimer: any = null
 const todayIso = toIsoDate(new Date())
 const selectedYear = ref(new Date().getFullYear())
 const selectedMonth = ref(new Date().getMonth())
@@ -424,6 +433,14 @@ const canChooseHours = computed(() => selectedTotalDays.value === 1 && !!schedul
 const scheduleDaysText = computed(() => (scheduleDays.value.length ? scheduleDays.value.join(', ') : 'Sin definir'))
 const isEditMode = computed(() => editingEventId.value !== null)
 
+function showToast(type: 'success' | 'error', message: string) {
+  toast.value = { show: true, type, message }
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => {
+    toast.value.show = false
+  }, 2800)
+}
+
 function isInSelectedRange(iso: string): boolean {
   if (!selectedRange.value.start || !selectedRange.value.end) return false
   return iso >= selectedRange.value.start && iso <= selectedRange.value.end
@@ -585,9 +602,10 @@ async function saveEvent() {
   if (!canSave.value || !token.value) return
   saving.value = true
   errorMessage.value = ''
+  const wasEdit = isEditMode.value
   try {
-    const method = isEditMode.value ? 'PUT' : 'POST'
-    const url = isEditMode.value
+    const method = wasEdit ? 'PUT' : 'POST'
+    const url = wasEdit
       ? `${apiBase}/api/timeoff/events/${editingEventId.value}`
       : `${apiBase}/api/timeoff/events`
 
@@ -608,8 +626,10 @@ async function saveEvent() {
     })
     closeModal()
     await loadCalendar()
+    showToast('success', wasEdit ? 'Evento actualizado correctamente' : 'Evento guardado correctamente')
   } catch (e: any) {
     errorMessage.value = e?.data?.message || 'No se pudo guardar el evento'
+    showToast('error', errorMessage.value)
   } finally {
     saving.value = false
   }
@@ -640,5 +660,6 @@ watch(canChooseHours, (singleDay) => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('pointerup', onGlobalPointerUp)
+  if (toastTimer) clearTimeout(toastTimer)
 })
 </script>

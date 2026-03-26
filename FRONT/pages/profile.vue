@@ -114,6 +114,34 @@
                     <span>{{ d }}</span>
                   </label>
                 </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-sm text-gray-300 mb-1" for="birth_date">Fecha de cumpleaños</label>
+                    <input id="birth_date" v-model="form.birth_date" type="date" class="w-full px-3 py-2 bg-gray-700/60 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+                  </div>
+                  <div>
+                    <label class="block text-sm text-gray-300 mb-1" for="dni">DNI</label>
+                    <input id="dni" v-model="form.dni" type="text" class="w-full px-3 py-2 bg-gray-700/60 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+                  </div>
+                  <div>
+                    <label class="block text-sm text-gray-300 mb-1" for="ssn">Nro seguridad social</label>
+                    <input id="ssn" v-model="form.social_security_number" type="text" class="w-full px-3 py-2 bg-gray-700/60 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+                  </div>
+                  <div>
+                    <label class="block text-sm text-gray-300 mb-1" for="contract_type">Tipo de contrato</label>
+                    <select id="contract_type" v-model="form.contract_type" class="w-full px-3 py-2 bg-gray-700/60 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                      <option value="">Sin definir</option>
+                      <option value="indefinido">Indefinido</option>
+                      <option value="temporal">Temporal</option>
+                      <option value="practicas">Practicas</option>
+                      <option value="autonomo">Autonomo</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-sm text-gray-300 mb-1" for="contract_start_date">Inicio de contrato</label>
+                    <input id="contract_start_date" v-model="form.contract_start_date" type="date" class="w-full px-3 py-2 bg-gray-700/60 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -154,6 +182,11 @@ const form = ref<any>({
   start_time: '',
   end_time: '',
   days: ['L', 'M', 'X', 'J', 'V'],
+  birth_date: '',
+  dni: '',
+  social_security_number: '',
+  contract_type: '',
+  contract_start_date: '',
 })
 const loading = ref(false)
 const preview = ref<string | null>(null)
@@ -174,6 +207,11 @@ onBeforeMount(async () => {
 function fillForm() {
   form.value.name = user.value.name || ''
   form.value.email = user.value.email || ''
+  form.value.birth_date = user.value.birth_date || ''
+  form.value.dni = user.value.dni || ''
+  form.value.social_security_number = user.value.social_security_number || ''
+  form.value.contract_type = user.value.contract_type || ''
+  form.value.contract_start_date = user.value.contract_start_date || ''
   if (user.value.photo) preview.value = user.value.photo
   // fetch schedule info for every user
   if (user.value.id) {
@@ -217,6 +255,11 @@ const save = async () => {
     const data = new FormData()
     data.append('name', form.value.name)
     data.append('email', form.value.email)
+    data.append('birth_date', form.value.birth_date || '')
+    data.append('dni', form.value.dni || '')
+    data.append('social_security_number', form.value.social_security_number || '')
+    data.append('contract_type', form.value.contract_type || '')
+    data.append('contract_start_date', form.value.contract_start_date || '')
     if (form.value.photo) data.append('photo', form.value.photo)
     // update profile
     const res: any = await $fetch(`${apiBase}/api/user`, {

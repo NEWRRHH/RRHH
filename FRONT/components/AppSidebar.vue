@@ -119,11 +119,27 @@ const navItems = computed(() => [
     badge: unreadCount
   },
   {
+    label: 'Comunicados',
+    to: '/comunicados',
+    active: route.path.startsWith('/comunicados'),
+    icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M7 8h10M7 12h7m-7 4h5M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H9l-6 0V5a2 2 0 012-2z"/>
+    </svg>`
+  },
+  {
     label: 'Vacaciones',
     to: '/vacaciones',
     active: route.path.startsWith('/vacaciones'),
     icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3M4 11h16M6 5h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2z"/>
+    </svg>`
+  },
+  {
+    label: 'Documentos',
+    to: '/documentos',
+    active: route.path.startsWith('/documentos'),
+    icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M7 7V3h10v4m-9 4h8m-8 4h8m-9 6h10a2 2 0 002-2V7H5v12a2 2 0 002 2z"/>
     </svg>`
   },
   {
