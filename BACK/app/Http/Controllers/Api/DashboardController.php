@@ -186,7 +186,7 @@ class DashboardController extends Controller
             ->join('event_types', 'events.event_type_id', '=', 'event_types.id')
             ->where('events.user_id', $user->id)
             ->whereNull('events.deleted_at')
-            ->whereRaw('LOWER(event_types.name) LIKE ?', ['%vacaci%'])
+            ->whereRaw('LOWER(TRIM(event_types.name)) = ?', ['vacaciones'])
             ->where('events.start_at', '>=', $today->toDateTimeString())
             ->orderBy('events.start_at', 'asc')
             ->select('events.start_at', 'events.end_at')

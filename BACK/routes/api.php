@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\TimeOffController;
 
 // apply a proper middleware class that always attaches the CORS headers
 // (including on redirects such as the unauthorised login redirect). this
@@ -55,6 +56,11 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::get('/notifications/conversation/{userId}', [\App\Http\Controllers\Api\NotificationController::class, 'conversation']);
     Route::post('/notifications/send', [\App\Http\Controllers\Api\NotificationController::class, 'send']);
     Route::get('/notifications/users', [\App\Http\Controllers\Api\NotificationController::class, 'users']);
+
+    // time-off / vacations calendar
+    Route::get('/timeoff/calendar', [TimeOffController::class, 'calendar']);
+    Route::post('/timeoff/events', [TimeOffController::class, 'create']);
+    Route::put('/timeoff/events/{id}', [TimeOffController::class, 'update']);
     });
 });
 

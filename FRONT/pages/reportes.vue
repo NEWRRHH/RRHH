@@ -176,7 +176,8 @@
                       :key="idx"
                       class="absolute top-0 h-5"
                       :class="seg.className"
-                      :style="{ left: `${seg.left}%`, width: `${seg.width}%` }"
+                      :style="{ left: `${seg.left}%`, width: `${seg.width}%`, ...(seg.style || {}) }"
+                      :title="seg.title || ''"
                     />
                   </div>
                 </div>
@@ -300,25 +301,54 @@ function timelineSegments(row: any) {
   const pause = toMinutes(row.pause_time)
   const resume = toMinutes(row.resume_time)
   const end = toMinutes(row.end_time)
-  if (start === null || end === null || end <= start) return []
+  const segs: Array<{ left: number; width: number; className: string; style?: Record<string, string>; title?: string }> = []
 
-  const segs: Array<{ left: number; width: number; className: string }> = []
-  const work1End = pause && pause > start && pause < end ? pause : end
-  const l1 = pct(start)
-  const w1 = Math.max(0, pct(work1End) - l1)
-  if (w1 > 0) segs.push({ left: l1, width: w1, className: 'bg-green-500/90' })
+  if (start !== null && end !== null && end > start) {
+    const work1End = pause && pause > start && pause < end ? pause : end
+    const l1 = pct(start)
+    const w1 = Math.max(0, pct(work1End) - l1)
+    if (w1 > 0) segs.push({ left: l1, width: w1, className: 'bg-green-500/90', title: 'Trabajo' })
 
-  if (pause && pause < end) {
-    const pauseEnd = resume && resume > pause && resume < end ? resume : end
-    const lp = pct(pause)
-    const wp = Math.max(0, pct(pauseEnd) - lp)
-    if (wp > 0) segs.push({ left: lp, width: wp, className: 'bg-yellow-400/90' })
+    if (pause && pause < end) {
+      const pauseEnd = resume && resume > pause && resume < end ? resume : end
+      const lp = pct(pause)
+      const wp = Math.max(0, pct(pauseEnd) - lp)
+      if (wp > 0) segs.push({ left: lp, width: wp, className: 'bg-yellow-400/90', title: 'Pausa' })
+    }
+
+    if (resume && resume < end) {
+      const l2 = pct(resume)
+      const w2 = Math.max(0, pct(end) - l2)
+      if (w2 > 0) segs.push({ left: l2, width: w2, className: 'bg-green-500/90', title: 'Trabajo' })
+    }
   }
 
-  if (resume && resume < end) {
-    const l2 = pct(resume)
-    const w2 = Math.max(0, pct(end) - l2)
-    if (w2 > 0) segs.push({ left: l2, width: w2, className: 'bg-green-500/90' })
+  for (const ev of row.events || []) {
+    const color = ev?.color || '#60A5FA'
+    const title = ev?.title ? `${ev.title} (${ev.event_type_name || 'Evento'})` : (ev?.event_type_name || 'Evento')
+    if (ev?.all_day) {
+      segs.push({
+        left: 0,
+        width: 100,
+        className: 'border',
+        style: { backgroundColor: `${color}55`, borderColor: color, zIndex: '3' },
+        title,
+      })
+      continue
+    }
+    const evStart = toMinutes(ev?.start_time)
+    const evEnd = toMinutes(ev?.end_time)
+    if (evStart === null || evEnd === null || evEnd <= evStart) continue
+    const left = pct(evStart)
+    const width = Math.max(0, pct(evEnd) - left)
+    if (width <= 0) continue
+    segs.push({
+      left,
+      width,
+      className: '',
+      style: { backgroundColor: color, opacity: '0.85', zIndex: '3' },
+      title,
+    })
   }
 
   return segs

@@ -662,6 +662,61 @@ class AuthController extends Controller
                 'created_at',
             ]);
 
+        $rawEvents = DB::table('events')
+            ->join('event_types', 'events.event_type_id', '=', 'event_types.id')
+            ->where('events.user_id', $selectedUserId)
+            ->whereNull('events.deleted_at')
+            ->where(function ($q) use ($monthStart, $monthEnd) {
+                $q->whereBetween('events.start_at', [$monthStart->toDateTimeString(), $monthEnd->toDateTimeString()])
+                    ->orWhereBetween('events.end_at', [$monthStart->toDateTimeString(), $monthEnd->toDateTimeString()])
+                    ->orWhere(function ($q2) use ($monthStart, $monthEnd) {
+                        $q2->where('events.start_at', '<=', $monthStart->toDateTimeString())
+                            ->where(function ($q3) use ($monthEnd) {
+                                $q3->where('events.end_at', '>=', $monthEnd->toDateTimeString())
+                                    ->orWhereNull('events.end_at');
+                            });
+                    });
+            })
+            ->orderBy('events.start_at', 'asc')
+            ->get([
+                'events.id',
+                'events.title',
+                'events.start_at',
+                'events.end_at',
+                'events.all_day',
+                'events.color',
+                'event_types.name as event_type_name',
+            ]);
+
+        $eventsByDate = [];
+        foreach ($rawEvents as $event) {
+            $eventStart = Carbon::parse($event->start_at);
+            $eventEnd = $event->end_at ? Carbon::parse($event->end_at) : $eventStart->copy();
+            $cursorDate = $eventStart->copy()->startOfDay();
+            $lastDate = $eventEnd->copy()->startOfDay();
+
+            while ($cursorDate->lte($lastDate)) {
+                $dateKey = $cursorDate->toDateString();
+                $isFirstDay = $dateKey === $eventStart->toDateString();
+                $isLastDay = $dateKey === $eventEnd->toDateString();
+                $dayStartTime = $isFirstDay ? $eventStart->format('H:i:s') : '00:00:00';
+                $dayEndTime = $isLastDay ? $eventEnd->format('H:i:s') : '23:59:59';
+                if (!isset($eventsByDate[$dateKey])) {
+                    $eventsByDate[$dateKey] = [];
+                }
+                $eventsByDate[$dateKey][] = [
+                    'id' => $event->id,
+                    'title' => $event->title,
+                    'event_type_name' => $event->event_type_name,
+                    'color' => $event->color,
+                    'all_day' => (bool) $event->all_day,
+                    'start_time' => substr($dayStartTime, 0, 5),
+                    'end_time' => substr($dayEndTime, 0, 5),
+                ];
+                $cursorDate->addDay();
+            }
+        }
+
         // One record per date: keep the latest row for that day.
         $rowsByDate = [];
         foreach ($rawRows as $r) {
@@ -712,6 +767,7 @@ class AuthController extends Controller
                     'hours_worked' => $att->hours_worked ?? null,
                     'status' => $att->status ?? null,
                     'is_working_day' => $isWorkingDay,
+                    'events' => $eventsByDate[$key] ?? [],
                 ];
             }
             $cursor->addDay();
