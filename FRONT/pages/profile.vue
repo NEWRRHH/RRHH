@@ -91,21 +91,61 @@
               </p>
             </div>
 
-            <!-- schedule (visible to all users) -->
+            <!-- schedule read-only list -->
             <div class="mb-6 pt-4 border-t border-gray-700">
-              <h3 class="text-sm text-gray-300 mb-2">Horario de trabajo</h3>
-              <div class="flex gap-2">
-                <input
-                  v-model="form.start_time"
-                  type="time"
-                  class="w-1/2 px-3 py-2 bg-gray-700/60 placeholder-gray-400 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-                />
-                <input
-                  v-model="form.end_time"
-                  type="time"
-                  class="w-1/2 px-3 py-2 bg-gray-700/60 placeholder-gray-400 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-                />
+              <h3 class="text-sm text-gray-200 mb-3">Jornadas del usuario</h3>
+              <div v-if="assignedScheduleTemplates.length" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <article
+                  v-for="tpl in assignedScheduleTemplates"
+                  :key="`profile-assigned-${tpl.id}`"
+                  class="rounded-xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 to-sky-500/5 p-3"
+                >
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="text-sm font-semibold text-cyan-100">{{ tpl.start_time }} - {{ tpl.end_time }}</p>
+                    <span class="text-[11px] px-2 py-0.5 rounded-full bg-cyan-400/20 text-cyan-200">Asignada</span>
+                  </div>
+                  <div class="mt-2 flex flex-wrap gap-1.5">
+                    <span v-for="day in tpl.days" :key="`profile-assigned-day-${tpl.id}-${day}`" class="text-[11px] px-2 py-0.5 rounded-full border border-gray-700 bg-gray-900/60 text-gray-200">
+                      {{ day }}
+                    </span>
+                  </div>
+                </article>
               </div>
+              <div v-else class="rounded-xl border border-gray-800 bg-gray-900/60 px-3 py-3 text-xs text-gray-400">
+                No hay jornadas asignadas.
+              </div>
+
+              <div class="mt-3">
+                <p class="text-xs text-gray-500">La asignación de jornadas se gestiona desde RRHH.</p>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-sm text-gray-300 mb-1" for="birth_date">Fecha de cumpleaños</label>
+                    <input id="birth_date" v-model="form.birth_date" type="date" class="w-full px-3 py-2 bg-gray-700/60 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+                  </div>
+                  <div>
+                    <label class="block text-sm text-gray-300 mb-1" for="dni">DNI</label>
+                    <input id="dni" v-model="form.dni" type="text" class="w-full px-3 py-2 bg-gray-700/60 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+                  </div>
+                  <div>
+                    <label class="block text-sm text-gray-300 mb-1" for="ssn">Nro seguridad social</label>
+                    <input id="ssn" v-model="form.social_security_number" type="text" class="w-full px-3 py-2 bg-gray-700/60 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+                  </div>
+                  <div>
+                    <label class="block text-sm text-gray-300 mb-1" for="contract_type">Tipo de contrato</label>
+                    <select id="contract_type" v-model="form.contract_type" class="w-full px-3 py-2 bg-gray-700/60 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                      <option value="">Sin definir</option>
+                      <option value="indefinido">Indefinido</option>
+                      <option value="temporal">Temporal</option>
+                      <option value="practicas">Practicas</option>
+                      <option value="autonomo">Autonomo</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-sm text-gray-300 mb-1" for="contract_start_date">Inicio de contrato</label>
+                    <input id="contract_start_date" v-model="form.contract_start_date" type="date" class="w-full px-3 py-2 bg-gray-700/60 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+                  </div>
+                </div>
             </div>
 
             <div class="flex justify-end">
@@ -144,12 +184,16 @@ const form = ref<any>({
   password_confirmation: '',
   start_time: '',
   end_time: '',
+  days: ['L', 'M', 'X', 'J', 'V'],
+  birth_date: '',
+  dni: '',
+  social_security_number: '',
+  contract_type: '',
+  contract_start_date: '',
 })
 const loading = ref(false)
 const preview = ref<string | null>(null)
-
-// if other logic is needed keep the computed; for now it's unused
-  const isAdmin = computed(() => user.value?.user_type_id === 1)
+const assignedScheduleTemplates = ref<any[]>([])
 
 onBeforeMount(async () => {
   if (user.value) {
@@ -163,11 +207,24 @@ onBeforeMount(async () => {
 function fillForm() {
   form.value.name = user.value.name || ''
   form.value.email = user.value.email || ''
+  form.value.birth_date = user.value.birth_date || ''
+  form.value.dni = user.value.dni || ''
+  form.value.social_security_number = user.value.social_security_number || ''
+  form.value.contract_type = user.value.contract_type || ''
+  form.value.contract_start_date = user.value.contract_start_date || ''
   if (user.value.photo) preview.value = user.value.photo
   // fetch schedule info for every user
   if (user.value.id) {
     fetchSchedule()
   }
+}
+
+function normalizeTimeToHm(value?: string | null) {
+  if (!value) return ''
+  const raw = String(value).trim()
+  if (/^\d{2}:\d{2}:\d{2}$/.test(raw)) return raw.slice(0, 5)
+  if (/^\d{2}:\d{2}$/.test(raw)) return raw
+  return raw
 }
 
 const fetchSchedule = async () => {
@@ -176,9 +233,15 @@ const fetchSchedule = async () => {
       headers: { Authorization: `Bearer ${token.value}` },
     })
     if (res?.schedule) {
-      form.value.start_time = res.schedule.start_time || ''
-      form.value.end_time = res.schedule.end_time || ''
+      form.value.start_time = normalizeTimeToHm(res.schedule.start_time || '')
+      form.value.end_time = normalizeTimeToHm(res.schedule.end_time || '')
+      form.value.days = Array.isArray(res.schedule.days) && res.schedule.days.length
+        ? res.schedule.days
+        : ['L', 'M', 'X', 'J', 'V']
     }
+    assignedScheduleTemplates.value = Array.isArray(res?.assigned_schedule_templates)
+      ? res.assigned_schedule_templates
+      : []
   } catch (e) {
     console.error('schedule fetch failed', e)
   }
@@ -203,6 +266,11 @@ const save = async () => {
     const data = new FormData()
     data.append('name', form.value.name)
     data.append('email', form.value.email)
+    data.append('birth_date', form.value.birth_date || '')
+    data.append('dni', form.value.dni || '')
+    data.append('social_security_number', form.value.social_security_number || '')
+    data.append('contract_type', form.value.contract_type || '')
+    data.append('contract_start_date', form.value.contract_start_date || '')
     if (form.value.photo) data.append('photo', form.value.photo)
     // update profile
     const res: any = await $fetch(`${apiBase}/api/user`, {
@@ -229,20 +297,6 @@ const save = async () => {
         console.error('password update failed', err)
         alert('No se pudo cambiar la contraseña')
       }
-    }
-
-    // schedule update for all users
-    try {
-      await $fetch(`${apiBase}/api/user/schedule`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${token.value}` },
-        body: {
-          start_time: form.value.start_time,
-          end_time: form.value.end_time,
-        },
-      })
-    } catch (err) {
-      console.error('schedule update failed', err)
     }
 
     alert('Perfil actualizado')

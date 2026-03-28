@@ -4,7 +4,6 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
 
 class Cors
 {
@@ -17,9 +16,17 @@ class Cors
      */
     public function handle(Request $request, Closure $next)
     {
+        // Ensure API auth middleware returns JSON errors (401/403) instead of web redirects.
+        if ($request->is('api/*')) {
+            $request->headers->set('Accept', 'application/json');
+            if (!$request->headers->has('X-Requested-With')) {
+                $request->headers->set('X-Requested-With', 'XMLHttpRequest');
+            }
+        }
+
         $response = $next($request);
 
-        if ($response instanceof Response || $response instanceof \Illuminate\Http\JsonResponse) {
+        if (method_exists($response, 'header')) {
             $response->header('Access-Control-Allow-Origin', '*')
                 ->header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
                 ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization');

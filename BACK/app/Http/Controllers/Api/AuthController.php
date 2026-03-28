@@ -3,17 +3,199 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Events\TimeOffRequestUpdated;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\Password;
 use Carbon\Carbon;
 use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
+    private function attendanceRequestEventTypeId(): int
+    {
+        $existing = DB::table('event_types')
+            ->whereRaw('LOWER(name) = ?', ['fichaje'])
+            ->whereNull('deleted_at')
+            ->first(['id']);
+
+        if ($existing && isset($existing->id)) {
+            return (int) $existing->id;
+        }
+
+        return (int) DB::table('event_types')->insertGetId([
+            'name' => 'Fichaje',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    private function isAdminUser(?object $user): bool
+    {
+        return (int) ($user->user_type_id ?? 0) === 1;
+    }
+
+    private function isHrTeam(?object $user): bool
+    {
+        if (!$user || empty($user->team_id)) return false;
+        $team = DB::table('teams')->where('id', (int) $user->team_id)->first(['name']);
+        if (!$team || empty($team->name)) return false;
+        $name = strtolower(trim((string) $team->name));
+        return str_contains($name, 'rrhh')
+            || str_contains($name, 'rr.hh')
+            || str_contains($name, 'recursos humanos')
+            || $name === 'rh';
+    }
+
+    private function canManageEmployees(?object $user): bool
+    {
+        return $this->isHrTeam($user) || $this->isAdminUser($user);
+    }
+
+    private function teamHasPermission(?int $teamId, string $permissionCode): bool
+    {
+        if (!$teamId) return false;
+        return DB::table('team_permision')
+            ->join('permisions', 'team_permision.permision_id', '=', 'permisions.id')
+            ->where('team_permision.team_id', $teamId)
+            ->where('permisions.code', $permissionCode)
+            ->exists();
+    }
+
+    private function hasPermission(?object $user, string $permissionCode): bool
+    {
+        if (!$user) return false;
+        if ($this->isAdminUser($user)) return true;
+        return $this->teamHasPermission((int) ($user->team_id ?? 0), $permissionCode);
+    }
+
+    private function canViewEmployeeDetails(?object $user): bool
+    {
+        return $this->hasPermission($user, 'employees.view_details');
+    }
+
+    private function canDeleteEmployeeUsers(?object $user): bool
+    {
+        return $this->hasPermission($user, 'employees.delete');
+    }
+
+    private function canCreateEmployeeUsers(?object $user): bool
+    {
+        return $this->hasPermission($user, 'employees.create');
+    }
+
+    /**
+     * Compute worked seconds for an attendance row, discounting pause span.
+     * With the current schema we store one pause/resume pair (latest values).
+     */
+    private function workedSecondsWithPause(object $att, Carbon $end): int
+    {
+        try {
+            $start = Carbon::parse($att->date . ' ' . $att->start_time);
+        } catch (\Exception $e) {
+            $start = Carbon::parse($att->start_time);
+        }
+
+        $total = max(0, $start->diffInSeconds($end, false));
+        $paused = 0;
+
+        if (!empty($att->pause_time)) {
+            try {
+                $pauseStart = Carbon::parse($att->date . ' ' . $att->pause_time);
+            } catch (\Exception $e) {
+                $pauseStart = Carbon::parse($att->pause_time);
+            }
+
+            // If resume is missing or older than pause, treat as still paused until end.
+            $pauseEnd = $end->copy();
+            if (!empty($att->resume_time)) {
+                try {
+                    $resume = Carbon::parse($att->date . ' ' . $att->resume_time);
+                } catch (\Exception $e) {
+                    $resume = Carbon::parse($att->resume_time);
+                }
+                if ($resume->greaterThan($pauseStart)) {
+                    $pauseEnd = $resume->lessThan($end) ? $resume : $end->copy();
+                }
+            }
+
+            if ($pauseEnd->greaterThan($pauseStart)) {
+                $paused = $pauseStart->diffInSeconds($pauseEnd);
+            }
+        }
+
+        return max(0, $total - $paused);
+    }
+
+    private function normalizeScheduleDays($days): array
+    {
+        // Default: Monday to Friday if schedule has no configured days.
+        $default = ['L', 'M', 'X', 'J', 'V'];
+        if (empty($days)) return $default;
+
+        $decoded = $days;
+        if (is_string($days)) {
+            $decoded = json_decode($days, true);
+        }
+        if (!is_array($decoded)) return $default;
+
+        $allowed = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+        $normalized = array_values(array_intersect($allowed, array_map('strtoupper', $decoded)));
+        return count($normalized) ? $normalized : $default;
+    }
+
+    private function scheduleDailyMinutes(?object $schedule): int
+    {
+        if (!$schedule || empty($schedule->start_time) || empty($schedule->end_time)) return 0;
+        try {
+            $start = Carbon::parse($schedule->start_time);
+            $end = Carbon::parse($schedule->end_time);
+        } catch (\Exception $e) {
+            return 0;
+        }
+
+        $mins = $start->diffInMinutes($end, false);
+        if ($mins < 0) {
+            $mins += 24 * 60;
+        }
+        // Standard office shift usually includes 1h break (e.g. 09:00-18:00 => 8h target).
+        // Apply this only on long shifts to avoid affecting short/part-time schedules.
+        if ($mins >= 6 * 60) {
+            $mins -= 60;
+        }
+        return max(0, (int) $mins);
+    }
+
+    private function timeStringToMinutes(?string $time): int
+    {
+        if (!$time) return 0;
+        $parts = explode(':', $time);
+        if (count($parts) < 2) return 0;
+        $h = (int) ($parts[0] ?? 0);
+        $m = (int) ($parts[1] ?? 0);
+        return max(0, $h * 60 + $m);
+    }
+
+    private function formatMinutesAsHHMM(int $minutes): string
+    {
+        $m = max(0, $minutes);
+        $h = intdiv($m, 60);
+        $mm = $m % 60;
+        return sprintf('%02d:%02d', $h, $mm);
+    }
+
+    private function formatSecondsAsHHMM(int $seconds): string
+    {
+        $s = max(0, $seconds);
+        $h = intdiv($s, 3600);
+        $m = intdiv(($s % 3600), 60);
+        return sprintf('%02d:%02d', $h, $m);
+    }
+
     public function register(Request $request)
     {
         $data = $request->validate([
@@ -82,13 +264,7 @@ class AuthController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->first();
             if ($att) {
-                // parse combined date/time rather than assuming slashes; wrap in try
-                try {
-                    $start = Carbon::parse($att->date . ' ' . $att->start_time);
-                } catch (\Exception $e) {
-                    $start = Carbon::parse($att->start_time);
-                }
-                $diffSeconds = $start->diffInSeconds($now);
+                $diffSeconds = $this->workedSecondsWithPause($att, $now);
                 $hours = gmdate('H:i:s', $diffSeconds);
                 DB::table('attendances')
                     ->where('id', $att->id)
@@ -113,8 +289,393 @@ class AuthController extends Controller
 
     public function user(Request $request)
     {
-        return response()->json($request->user())
-            ->header('Access-Control-Allow-Origin', '*');
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        $permissions = DB::table('team_permision')
+            ->join('permisions', 'team_permision.permision_id', '=', 'permisions.id')
+            ->where('team_permision.team_id', (int) ($user->team_id ?? 0))
+            ->orderBy('permisions.code', 'asc')
+            ->pluck('permisions.code')
+            ->values()
+            ->all();
+
+        $payload = $user->toArray();
+        $payload['permissions'] = $permissions;
+        $payload['is_hr_team'] = $this->isHrTeam($user);
+        $payload['is_admin'] = $this->isAdminUser($user);
+        $payload['can_view_employee_details'] = $this->canViewEmployeeDetails($user);
+        $payload['can_delete_employee'] = $this->canDeleteEmployeeUsers($user);
+        $payload['can_create_employee'] = $this->canCreateEmployeeUsers($user);
+        $payload['can_access_announcements'] = $this->isHrTeam($user) || $this->isAdminUser($user);
+        $payload['can_access_settings'] = $this->isAdminUser($user) || $this->isHrTeam($user);
+
+        return response()->json($payload)->header('Access-Control-Allow-Origin', '*');
+    }
+
+    private function canManagePermissions(?object $user): bool
+    {
+        return $this->isAdminUser($user);
+    }
+
+    private function canManageScheduleTemplates(?object $user): bool
+    {
+        return $this->isAdminUser($user) || $this->isHrTeam($user);
+    }
+
+    private function formatScheduleTemplate(object $schedule): array
+    {
+        $days = $this->normalizeScheduleDays($schedule->days ?? null);
+        $start = isset($schedule->start_time) ? substr((string) $schedule->start_time, 0, 5) : null;
+        $end = isset($schedule->end_time) ? substr((string) $schedule->end_time, 0, 5) : null;
+
+        return [
+            'id' => (int) $schedule->id,
+            'start_time' => $start,
+            'end_time' => $end,
+            'days' => $days,
+            'label' => trim(implode('-', [$start ?: '--:--', $end ?: '--:--']) . ' | ' . implode(', ', $days)),
+        ];
+    }
+
+    private function loadScheduleTemplatesCollection()
+    {
+        return DB::table('schedules')
+            ->whereNull('user_id')
+            ->whereNull('deleted_at')
+            ->orderBy('id', 'desc')
+            ->get(['id', 'start_time', 'end_time', 'days']);
+    }
+
+    private function scheduleTemplateExists(string $startTime, string $endTime, array $days, ?int $excludeId = null): bool
+    {
+        $targetStart = substr($startTime, 0, 5);
+        $targetEnd = substr($endTime, 0, 5);
+        $targetDays = $this->normalizeScheduleDays($days);
+
+        $query = DB::table('schedules')
+            ->whereNull('user_id')
+            ->whereNull('deleted_at');
+
+        if ($excludeId) {
+            $query->where('id', '!=', $excludeId);
+        }
+
+        $rows = $query->get(['id', 'start_time', 'end_time', 'days']);
+
+        foreach ($rows as $row) {
+            $rowStart = isset($row->start_time) ? substr((string) $row->start_time, 0, 5) : '';
+            $rowEnd = isset($row->end_time) ? substr((string) $row->end_time, 0, 5) : '';
+            $rowDays = $this->normalizeScheduleDays($row->days ?? null);
+
+            if ($rowStart === $targetStart && $rowEnd === $targetEnd && $rowDays === $targetDays) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function getScheduleTemplatesByIds(array $templateIds)
+    {
+        $ids = array_values(array_unique(array_map('intval', $templateIds)));
+        if (!count($ids)) {
+            return collect();
+        }
+
+        return DB::table('schedules')
+            ->whereNull('user_id')
+            ->whereNull('deleted_at')
+            ->whereIn('id', $ids)
+            ->orderBy('id', 'asc')
+            ->get(['id', 'start_time', 'end_time', 'days']);
+    }
+
+    private function hasOverlappingDaysInTemplates($templates): bool
+    {
+        $seen = [];
+        foreach ($templates as $tpl) {
+            $days = $this->normalizeScheduleDays($tpl->days ?? null);
+            foreach ($days as $day) {
+                if (isset($seen[$day])) {
+                    return true;
+                }
+                $seen[$day] = true;
+            }
+        }
+
+        return false;
+    }
+
+    private function getAssignedScheduleTemplateIds(int $userId): array
+    {
+        return DB::table('user_schedules')
+            ->where('user_id', $userId)
+            ->orderBy('id', 'asc')
+            ->pluck('schedule_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function syncUserScheduleTemplates(int $userId, $templates): void
+    {
+        DB::table('user_schedules')->where('user_id', $userId)->delete();
+
+        if (!count($templates)) {
+            return;
+        }
+
+        $now = now();
+        $rows = [];
+        foreach ($templates as $tpl) {
+            $rows[] = [
+                'user_id' => $userId,
+                'schedule_id' => (int) $tpl->id,
+                'days' => json_encode($this->normalizeScheduleDays($tpl->days ?? null)),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+
+        if (count($rows)) {
+            DB::table('user_schedules')->insert($rows);
+        }
+    }
+
+    private function loadAssignedScheduleTemplatesForUser(int $userId)
+    {
+        return DB::table('user_schedules')
+            ->join('schedules', 'user_schedules.schedule_id', '=', 'schedules.id')
+            ->where('user_schedules.user_id', $userId)
+            ->whereNull('schedules.deleted_at')
+            ->orderBy('user_schedules.id', 'asc')
+            ->get(['schedules.id', 'schedules.start_time', 'schedules.end_time', 'schedules.days'])
+            ->map(fn ($s) => $this->formatScheduleTemplate($s))
+            ->values();
+    }
+
+    public function scheduleTemplates(Request $request)
+    {
+        $user = $request->user();
+        if (!$this->canManageScheduleTemplates($user)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $templates = $this->loadScheduleTemplatesCollection()
+            ->map(fn ($s) => $this->formatScheduleTemplate($s))
+            ->values();
+
+        return response()->json(['schedules' => $templates])->header('Access-Control-Allow-Origin', '*');
+    }
+
+    public function createScheduleTemplate(Request $request)
+    {
+        $user = $request->user();
+        if (!$this->canManageScheduleTemplates($user)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $data = $request->validate([
+            'start_time' => 'required|date_format:H:i',
+            'end_time' => 'required|date_format:H:i',
+            'days' => 'required|array|min:1',
+            'days.*' => 'in:L,M,X,J,V,S,D',
+        ]);
+
+        $days = array_values(array_unique($this->normalizeScheduleDays($data['days'] ?? null)));
+
+        $exists = $this->scheduleTemplateExists((string) $data['start_time'], (string) $data['end_time'], $days);
+
+        if ($exists) {
+            return response()->json(['message' => 'Ese horario ya existe'], 422);
+        }
+
+        $id = DB::table('schedules')->insertGetId([
+            'user_id' => null,
+            'start_time' => $data['start_time'],
+            'end_time' => $data['end_time'],
+            'days' => json_encode($days),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $schedule = DB::table('schedules')->where('id', $id)->first(['id', 'start_time', 'end_time', 'days']);
+
+        return response()->json([
+            'status' => 'ok',
+            'schedule' => $schedule ? $this->formatScheduleTemplate($schedule) : null,
+        ], 201)->header('Access-Control-Allow-Origin', '*');
+    }
+
+    public function updateScheduleTemplate(Request $request, int $id)
+    {
+        $user = $request->user();
+        if (!$this->canManageScheduleTemplates($user)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $schedule = DB::table('schedules')
+            ->where('id', $id)
+            ->whereNull('user_id')
+            ->whereNull('deleted_at')
+            ->first(['id']);
+
+        if (!$schedule) {
+            return response()->json(['message' => 'Jornada no encontrada'], 404);
+        }
+
+        $data = $request->validate([
+            'start_time' => 'required|date_format:H:i',
+            'end_time' => 'required|date_format:H:i',
+            'days' => 'required|array|min:1',
+            'days.*' => 'in:L,M,X,J,V,S,D',
+        ]);
+
+        $days = array_values(array_unique($this->normalizeScheduleDays($data['days'] ?? null)));
+
+        $exists = $this->scheduleTemplateExists((string) $data['start_time'], (string) $data['end_time'], $days, $id);
+
+        if ($exists) {
+            return response()->json(['message' => 'Ya existe una jornada con esos datos'], 422);
+        }
+
+        DB::table('schedules')
+            ->where('id', $id)
+            ->update([
+                'start_time' => $data['start_time'],
+                'end_time' => $data['end_time'],
+                'days' => json_encode($days),
+                'updated_at' => now(),
+            ]);
+
+        $updated = DB::table('schedules')->where('id', $id)->first(['id', 'start_time', 'end_time', 'days']);
+
+        return response()->json([
+            'status' => 'ok',
+            'schedule' => $updated ? $this->formatScheduleTemplate($updated) : null,
+        ])->header('Access-Control-Allow-Origin', '*');
+    }
+
+    public function deleteScheduleTemplate(Request $request, int $id)
+    {
+        $user = $request->user();
+        if (!$this->canManageScheduleTemplates($user)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $schedule = DB::table('schedules')
+            ->where('id', $id)
+            ->whereNull('user_id')
+            ->whereNull('deleted_at')
+            ->first(['id']);
+
+        if (!$schedule) {
+            return response()->json(['message' => 'Jornada no encontrada'], 404);
+        }
+
+        DB::table('schedules')
+            ->where('id', $id)
+            ->update([
+                'deleted_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+        return response()->json(['status' => 'ok'])->header('Access-Control-Allow-Origin', '*');
+    }
+
+    public function permissionsCatalog(Request $request)
+    {
+        $user = $request->user();
+        if (!$this->canManagePermissions($user)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $permissions = DB::table('permisions')
+            ->orderBy('code', 'asc')
+            ->get(['id', 'code', 'name', 'description']);
+
+        $assignments = DB::table('team_permision')
+            ->join('permisions', 'team_permision.permision_id', '=', 'permisions.id')
+            ->select('team_permision.team_id', 'permisions.code')
+            ->get();
+
+        $codesByTeam = [];
+        foreach ($assignments as $a) {
+            if (!isset($codesByTeam[$a->team_id])) {
+                $codesByTeam[$a->team_id] = [];
+            }
+            $codesByTeam[$a->team_id][] = $a->code;
+        }
+
+        $teams = DB::table('teams')
+            ->orderBy('name', 'asc')
+            ->get(['id', 'name'])
+            ->map(function ($t) use ($codesByTeam) {
+                return [
+                    'id' => $t->id,
+                    'name' => $t->name,
+                    'permission_codes' => array_values(array_unique($codesByTeam[$t->id] ?? [])),
+                ];
+            })
+            ->values();
+
+        return response()->json([
+            'permissions' => $permissions,
+            'teams' => $teams,
+        ])->header('Access-Control-Allow-Origin', '*');
+    }
+
+    public function updateTeamPermissions(Request $request, int $id)
+    {
+        $auth = $request->user();
+        if (!$this->canManagePermissions($auth)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $team = DB::table('teams')->where('id', $id)->first(['id']);
+        if (!$team) {
+            return response()->json(['message' => 'Team not found'], 404);
+        }
+
+        $data = $request->validate([
+            'permission_codes' => 'nullable|array',
+            'permission_codes.*' => 'string|max:100',
+        ]);
+
+        $codes = array_values(array_unique($data['permission_codes'] ?? []));
+        if (!count($codes)) {
+            DB::table('team_permision')->where('team_id', $team->id)->delete();
+            return response()->json(['status' => 'ok', 'permission_codes' => []])->header('Access-Control-Allow-Origin', '*');
+        }
+
+        $permissions = DB::table('permisions')
+            ->whereIn('code', $codes)
+            ->get(['id', 'code']);
+
+        $permissionIds = $permissions->pluck('id')->values()->all();
+        $validCodes = $permissions->pluck('code')->values()->all();
+
+        DB::transaction(function () use ($team, $permissionIds) {
+            DB::table('team_permision')->where('team_id', $team->id)->delete();
+            $now = now();
+            foreach ($permissionIds as $pid) {
+                DB::table('team_permision')->insert([
+                    'team_id' => $team->id,
+                    'permision_id' => $pid,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
+            }
+        });
+
+        return response()->json([
+            'status' => 'ok',
+            'permission_codes' => $validCodes,
+        ])->header('Access-Control-Allow-Origin', '*');
     }
 
     /**
@@ -127,9 +688,19 @@ class AuthController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email,' . $user->id,
             'photo' => 'nullable|image|max:2048',
+              'birth_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
+            'dni' => 'nullable|string|max:30',
+            'social_security_number' => 'nullable|string|max:50',
+            'contract_type' => 'nullable|string|max:50',
+              'contract_start_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
         ]);
         $user->name = $data['name'];
         $user->email = $data['email'];
+        $user->birth_date = $data['birth_date'] ?? $user->birth_date;
+        $user->dni = $data['dni'] ?? $user->dni;
+        $user->social_security_number = $data['social_security_number'] ?? $user->social_security_number;
+        $user->contract_type = $data['contract_type'] ?? $user->contract_type;
+        $user->contract_start_date = $data['contract_start_date'] ?? $user->contract_start_date;
         if ($request->hasFile('photo')) {
             $path = $request->file('photo')->store('avatars', 'public');
             $user->photo = '/storage/' . $path;
@@ -178,6 +749,8 @@ class AuthController extends Controller
                 'session_token' => $token,
                 'date' => $now->format('Y/m/d'),
                 'start_time' => $now->toTimeString(),
+                'pause_time' => null,
+                'resume_time' => null,
                 'status' => 'en_trabajo',
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -247,14 +820,8 @@ class AuthController extends Controller
                 'app_tz' => config('app.timezone'),
                 'server_tz' => date_default_timezone_get(),
             ]);
-            // parse start date/time
-            try {
-                $start = Carbon::parse($att->date . ' ' . $att->start_time);
-            } catch (\Exception $e) {
-                $start = Carbon::parse($att->start_time);
-            }
-            // use absolute diff and format as H:i:s
-            $diffSeconds = $start->diffInSeconds($now);
+            // discount pause span from worked time
+            $diffSeconds = $this->workedSecondsWithPause($att, $now);
             $hours = gmdate('H:i:s', $diffSeconds);
             DB::table('attendances')
                 ->where('id', $att->id)
@@ -272,12 +839,82 @@ class AuthController extends Controller
     }
 
     /**
+     * Save pause time (HH:MM:SS) for the current open attendance.
+     */
+    public function pauseAttendance(Request $request)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        $att = DB::table('attendances')
+            ->where('user_id', $user->id)
+            ->where('status', 'en_trabajo')
+            ->whereNull('end_date')
+            ->orderBy('created_at', 'desc')
+            ->first();
+
+        if (! $att) {
+            return response()->json(['message' => 'No hay jornada activa'], 422);
+        }
+
+        $now = Carbon::now()->toTimeString();
+        DB::table('attendances')
+            ->where('id', $att->id)
+            ->update([
+                'pause_time' => $now,
+                'updated_at' => now(),
+            ]);
+
+        return response()->json(['status' => 'paused', 'pause_time' => $now]);
+    }
+
+    /**
+     * Save resume time (HH:MM:SS) for the current open attendance.
+     */
+    public function resumeAttendance(Request $request)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        $att = DB::table('attendances')
+            ->where('user_id', $user->id)
+            ->where('status', 'en_trabajo')
+            ->whereNull('end_date')
+            ->orderBy('created_at', 'desc')
+            ->first();
+
+        if (! $att) {
+            return response()->json(['message' => 'No hay jornada activa'], 422);
+        }
+
+        $now = Carbon::now()->toTimeString();
+        DB::table('attendances')
+            ->where('id', $att->id)
+            ->update([
+                'resume_time' => $now,
+                'updated_at' => now(),
+            ]);
+
+        return response()->json(['status' => 'resumed', 'resume_time' => $now]);
+    }
+
+    /**
      * Provide attendance + schedule info for the current user.
      */
     public function attendanceInfo(Request $request)
     {
         $user = $request->user();
-        $info = ['working' => false, 'attendance' => null, 'schedule' => null];
+        $info = [
+            'working' => false,
+            'attendance' => null,
+            'schedule' => null,
+            'schedule_template_ids' => [],
+            'assigned_schedule_templates' => [],
+        ];
         if ($user) {
             $info['working'] = DB::table('attendances')
                 ->where('user_id', $user->id)
@@ -304,9 +941,637 @@ class AuthController extends Controller
                     ->orderBy('schedules.id', 'desc')
                     ->first();
             }
+            if ($sched) {
+                $sched->days = $this->normalizeScheduleDays($sched->days ?? null);
+            }
             $info['schedule'] = $sched;
+            $info['schedule_template_ids'] = $this->getAssignedScheduleTemplateIds((int) $user->id);
+            $info['assigned_schedule_templates'] = $this->loadAssignedScheduleTemplatesForUser((int) $user->id);
         }
         return response()->json($info);
+    }
+
+    /**
+     * Daily attendance control view data.
+     * team_id 1 or 2 can inspect all users; others only their own records.
+     */
+    public function attendanceDay(Request $request)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        $isPrivileged = $this->isHrTeam($user);
+
+        $requestedDate = $request->query('date');
+        try {
+            $date = $requestedDate ? Carbon::parse($requestedDate)->toDateString() : Carbon::today()->toDateString();
+        } catch (\Exception $e) {
+            $date = Carbon::today()->toDateString();
+        }
+
+        $teamFilter = $request->query('team_id');
+        $selectedUserId = (int) ($request->query('user_id') ?: $user->id);
+        if (! $isPrivileged) {
+            $selectedUserId = (int) $user->id;
+        }
+
+        $usersQuery = DB::table('users')
+            ->leftJoin('teams', 'users.team_id', '=', 'teams.id')
+            ->whereNull('users.deleted_at')
+            ->select(
+                'users.id',
+                'users.team_id',
+                'users.first_name',
+                'users.last_name',
+                'users.name',
+                'users.photo',
+                'users.profile_photo_path',
+                'teams.name as team_name'
+            )
+            ->orderByRaw("COALESCE(users.first_name, users.name, '') asc");
+
+        if ($isPrivileged) {
+            if ($teamFilter !== null && $teamFilter !== '') {
+                $usersQuery->where('users.team_id', (int) $teamFilter);
+            }
+        } else {
+            $usersQuery->where('users.id', $user->id);
+        }
+
+        $users = $usersQuery->get()->map(function ($u) {
+            $fullName = trim(($u->first_name ?? $u->name ?? '') . ' ' . ($u->last_name ?? ''));
+            return [
+                'id' => $u->id,
+                'team_id' => $u->team_id,
+                'team_name' => $u->team_name ?? 'Sin equipo',
+                'full_name' => $fullName !== '' ? $fullName : ('Usuario #' . $u->id),
+                'photo' => $u->photo ?? $u->profile_photo_path ?? null,
+            ];
+        })->values();
+
+        if ($users->where('id', $selectedUserId)->isEmpty()) {
+            $selectedUserId = (int) ($users->first()['id'] ?? $user->id);
+        }
+
+        $attendances = DB::table('attendances')
+            ->where('user_id', $selectedUserId)
+            ->whereDate('date', $date)
+            ->orderBy('start_time', 'asc')
+            ->get([
+                'id',
+                'date',
+                'start_time',
+                'pause_time',
+                'resume_time',
+                'end_time',
+                'hours_worked',
+                'status',
+            ]);
+
+        $teams = DB::table('teams')
+            ->select('id', 'name')
+            ->orderBy('name', 'asc')
+            ->get();
+
+        return response()->json([
+            'can_view_all' => $isPrivileged,
+            'date' => $date,
+            'team_filter' => $teamFilter !== null && $teamFilter !== '' ? (int) $teamFilter : null,
+            'selected_user_id' => $selectedUserId,
+            'users' => $users,
+            'teams' => $teams,
+            'attendances' => $attendances,
+        ]);
+    }
+
+    /**
+     * Monthly attendance control data (one row per day in month).
+     * team_id 1 or 2 can inspect all users; others only their own records.
+     */
+    public function attendanceMonth(Request $request)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        $isPrivileged = $this->isHrTeam($user);
+
+        $monthInput = (string) ($request->query('month') ?: Carbon::today()->format('Y-m'));
+        try {
+            $monthDate = Carbon::createFromFormat('Y-m', $monthInput)->startOfMonth();
+        } catch (\Exception $e) {
+            $monthDate = Carbon::today()->startOfMonth();
+        }
+
+        $monthStart = $monthDate->copy()->startOfMonth();
+        $monthEnd = $monthDate->copy()->endOfMonth();
+        $includeNonWorking = (bool) ((int) $request->query('include_non_working', 0));
+
+        $teamFilter = $request->query('team_id');
+        $selectedUserId = (int) ($request->query('user_id') ?: $user->id);
+        if (! $isPrivileged) {
+            $selectedUserId = (int) $user->id;
+        }
+
+        $usersQuery = DB::table('users')
+            ->leftJoin('teams', 'users.team_id', '=', 'teams.id')
+            ->whereNull('users.deleted_at')
+            ->select(
+                'users.id',
+                'users.team_id',
+                'users.first_name',
+                'users.last_name',
+                'users.name',
+                'users.photo',
+                'users.profile_photo_path',
+                'teams.name as team_name'
+            )
+            ->orderByRaw("COALESCE(users.first_name, users.name, '') asc");
+
+        if ($isPrivileged) {
+            if ($teamFilter !== null && $teamFilter !== '') {
+                $usersQuery->where('users.team_id', (int) $teamFilter);
+            }
+        } else {
+            $usersQuery->where('users.id', $user->id);
+        }
+
+        $users = $usersQuery->get()->map(function ($u) {
+            $fullName = trim(($u->first_name ?? $u->name ?? '') . ' ' . ($u->last_name ?? ''));
+            return [
+                'id' => $u->id,
+                'team_id' => $u->team_id,
+                'team_name' => $u->team_name ?? 'Sin equipo',
+                'full_name' => $fullName !== '' ? $fullName : ('Usuario #' . $u->id),
+                'photo' => $u->photo ?? $u->profile_photo_path ?? null,
+            ];
+        })->values();
+
+        if ($users->where('id', $selectedUserId)->isEmpty()) {
+            $selectedUserId = (int) ($users->first()['id'] ?? $user->id);
+        }
+
+        $schedule = DB::table('schedules')
+            ->where('user_id', $selectedUserId)
+            ->orderBy('id', 'desc')
+            ->first();
+        if (! $schedule) {
+            $schedule = DB::table('schedules')
+                ->join('user_schedules', 'schedules.id', '=', 'user_schedules.schedule_id')
+                ->where('user_schedules.user_id', $selectedUserId)
+                ->select('schedules.*')
+                ->orderBy('schedules.id', 'desc')
+                ->first();
+        }
+        $scheduleDays = $this->normalizeScheduleDays($schedule->days ?? null);
+        $dailyTargetMinutes = $this->scheduleDailyMinutes($schedule);
+
+        $rawRows = DB::table('attendances')
+            ->where('user_id', $selectedUserId)
+            ->whereDate('date', '>=', $monthStart->toDateString())
+            ->whereDate('date', '<=', $monthEnd->toDateString())
+            ->orderBy('date', 'asc')
+            ->orderBy('created_at', 'desc')
+            ->get([
+                'id',
+                'date',
+                'start_time',
+                'pause_time',
+                'resume_time',
+                'end_time',
+                'hours_worked',
+                'status',
+                'created_at',
+            ]);
+
+        $rawEvents = DB::table('events')
+            ->join('event_types', 'events.event_type_id', '=', 'event_types.id')
+            ->where('events.user_id', $selectedUserId)
+            ->whereNull('events.deleted_at')
+            ->where(function ($q) {
+                $q->whereNull('events.approval_status')
+                    ->orWhere('events.approval_status', 'approved');
+            })
+            ->where(function ($q) use ($monthStart, $monthEnd) {
+                $q->whereBetween('events.start_at', [$monthStart->toDateTimeString(), $monthEnd->toDateTimeString()])
+                    ->orWhereBetween('events.end_at', [$monthStart->toDateTimeString(), $monthEnd->toDateTimeString()])
+                    ->orWhere(function ($q2) use ($monthStart, $monthEnd) {
+                        $q2->where('events.start_at', '<=', $monthStart->toDateTimeString())
+                            ->where(function ($q3) use ($monthEnd) {
+                                $q3->where('events.end_at', '>=', $monthEnd->toDateTimeString())
+                                    ->orWhereNull('events.end_at');
+                            });
+                    });
+            })
+            ->orderBy('events.start_at', 'asc')
+            ->get([
+                'events.id',
+                'events.title',
+                'events.start_at',
+                'events.end_at',
+                'events.all_day',
+                'events.color',
+                'event_types.name as event_type_name',
+            ]);
+
+        $attendanceRequestTypeId = $this->attendanceRequestEventTypeId();
+        $pendingAttendanceRequests = DB::table('events')
+            ->where('user_id', $selectedUserId)
+            ->where('event_type_id', $attendanceRequestTypeId)
+            ->whereNull('deleted_at')
+            ->where('approval_status', 'pending')
+            ->where(function ($q) use ($monthStart, $monthEnd) {
+                $q->whereBetween('start_at', [$monthStart->toDateTimeString(), $monthEnd->toDateTimeString()])
+                    ->orWhereBetween('end_at', [$monthStart->toDateTimeString(), $monthEnd->toDateTimeString()])
+                    ->orWhere(function ($q2) use ($monthStart, $monthEnd) {
+                        $q2->where('start_at', '<=', $monthStart->toDateTimeString())
+                            ->where(function ($q3) use ($monthEnd) {
+                                $q3->where('end_at', '>=', $monthEnd->toDateTimeString())
+                                    ->orWhereNull('end_at');
+                            });
+                    });
+            })
+            ->orderBy('created_at', 'desc')
+            ->get(['id', 'start_at', 'end_at']);
+
+        $pendingAttendanceRequestsByDate = [];
+        foreach ($pendingAttendanceRequests as $req) {
+            $reqStart = Carbon::parse($req->start_at)->startOfDay();
+            $reqEnd = $req->end_at ? Carbon::parse($req->end_at)->startOfDay() : $reqStart->copy();
+            $cursorReq = $reqStart->copy();
+            while ($cursorReq->lte($reqEnd)) {
+                $dateKey = $cursorReq->toDateString();
+                if (!isset($pendingAttendanceRequestsByDate[$dateKey])) {
+                    $pendingAttendanceRequestsByDate[$dateKey] = (int) $req->id;
+                }
+                $cursorReq->addDay();
+            }
+        }
+
+        $eventsByDate = [];
+        foreach ($rawEvents as $event) {
+            $eventStart = Carbon::parse($event->start_at);
+            $eventEnd = $event->end_at ? Carbon::parse($event->end_at) : $eventStart->copy();
+            $cursorDate = $eventStart->copy()->startOfDay();
+            $lastDate = $eventEnd->copy()->startOfDay();
+
+            while ($cursorDate->lte($lastDate)) {
+                $dateKey = $cursorDate->toDateString();
+                $isFirstDay = $dateKey === $eventStart->toDateString();
+                $isLastDay = $dateKey === $eventEnd->toDateString();
+                $dayStartTime = $isFirstDay ? $eventStart->format('H:i:s') : '00:00:00';
+                $dayEndTime = $isLastDay ? $eventEnd->format('H:i:s') : '23:59:59';
+                if (!isset($eventsByDate[$dateKey])) {
+                    $eventsByDate[$dateKey] = [];
+                }
+                $eventsByDate[$dateKey][] = [
+                    'id' => $event->id,
+                    'title' => $event->title,
+                    'event_type_name' => $event->event_type_name,
+                    'color' => $event->color,
+                    'all_day' => (bool) $event->all_day,
+                    'start_time' => substr($dayStartTime, 0, 5),
+                    'end_time' => substr($dayEndTime, 0, 5),
+                ];
+                $cursorDate->addDay();
+            }
+        }
+
+        // One record per date: keep the latest row for that day.
+        $rowsByDate = [];
+        foreach ($rawRows as $r) {
+            if (!isset($rowsByDate[$r->date])) {
+                $rowsByDate[$r->date] = $r;
+            }
+        }
+
+        $rows = [];
+        $targetMinutes = 0;
+        $workedMinutes = 0;
+        $weekMap = [
+            1 => 'L',
+            2 => 'M',
+            3 => 'X',
+            4 => 'J',
+            5 => 'V',
+            6 => 'S',
+            7 => 'D',
+        ];
+        $cursor = $monthStart->copy();
+        while ($cursor->lte($monthEnd)) {
+            $key = $cursor->toDateString();
+            $att = $rowsByDate[$key] ?? null;
+            $dayLetter = $weekMap[$cursor->dayOfWeekIso] ?? 'L';
+            $isWorkingDay = in_array($dayLetter, $scheduleDays, true);
+
+            if ($isWorkingDay) {
+                $targetMinutes += $dailyTargetMinutes;
+            }
+
+            $rowWorked = 0;
+            if ($att && !empty($att->hours_worked)) {
+                $rowWorked = $this->timeStringToMinutes((string) $att->hours_worked);
+            }
+            $workedMinutes += $rowWorked;
+
+            // Default table shows only configured working days (e.g. L-V).
+            // Optionally include non-working days when requested by UI switch.
+            if ($isWorkingDay || $includeNonWorking) {
+                $rows[] = [
+                    'date' => $key,
+                    'weekday' => $dayLetter,
+                    'start_time' => $att->start_time ?? null,
+                    'pause_time' => $att->pause_time ?? null,
+                    'resume_time' => $att->resume_time ?? null,
+                    'end_time' => $att->end_time ?? null,
+                    'hours_worked' => $att->hours_worked ?? null,
+                    'status' => $att->status ?? null,
+                    'is_working_day' => $isWorkingDay,
+                    'events' => $eventsByDate[$key] ?? [],
+                    'attendance_request_pending' => isset($pendingAttendanceRequestsByDate[$key]),
+                    'attendance_request_id' => $pendingAttendanceRequestsByDate[$key] ?? null,
+                ];
+            }
+            $cursor->addDay();
+        }
+
+        $requestRows = DB::table('events')
+            ->where('user_id', $selectedUserId)
+            ->whereNull('deleted_at')
+            ->where(function ($q) use ($monthStart, $monthEnd) {
+                $q->whereBetween('start_at', [$monthStart->toDateTimeString(), $monthEnd->toDateTimeString()])
+                    ->orWhereBetween('end_at', [$monthStart->toDateTimeString(), $monthEnd->toDateTimeString()])
+                    ->orWhere(function ($q2) use ($monthStart, $monthEnd) {
+                        $q2->where('start_at', '<=', $monthStart->toDateTimeString())
+                            ->where(function ($q3) use ($monthEnd) {
+                                $q3->where('end_at', '>=', $monthEnd->toDateTimeString())
+                                    ->orWhereNull('end_at');
+                            });
+                    });
+            })
+            ->get(['approval_status']);
+
+        $requestsTotal = 0;
+        $requestsPending = 0;
+        $requestsApproved = 0;
+        $requestsRejected = 0;
+        foreach ($requestRows as $rq) {
+            $requestsTotal++;
+            $st = strtolower(trim((string) ($rq->approval_status ?? 'approved')));
+            if ($st === 'pending') $requestsPending++;
+            elseif ($st === 'rejected') $requestsRejected++;
+            else $requestsApproved++;
+        }
+
+        $teams = DB::table('teams')
+            ->select('id', 'name')
+            ->orderBy('name', 'asc')
+            ->get();
+
+        return response()->json([
+            'can_view_all' => $isPrivileged,
+            'month' => $monthDate->format('Y-m'),
+            'team_filter' => $teamFilter !== null && $teamFilter !== '' ? (int) $teamFilter : null,
+            'selected_user_id' => $selectedUserId,
+            'users' => $users,
+            'teams' => $teams,
+            'schedule' => [
+                'start_time' => $schedule->start_time ?? null,
+                'end_time' => $schedule->end_time ?? null,
+                'days' => $scheduleDays,
+                'daily_target_minutes' => $dailyTargetMinutes,
+            ],
+            'summary' => [
+                'worked_minutes' => $workedMinutes,
+                'worked_hhmm' => $this->formatMinutesAsHHMM($workedMinutes),
+                'target_minutes' => $targetMinutes,
+                'target_hhmm' => $this->formatMinutesAsHHMM($targetMinutes),
+                'requests_total' => $requestsTotal,
+                'requests_pending' => $requestsPending,
+                'requests_approved' => $requestsApproved,
+                'requests_rejected' => $requestsRejected,
+            ],
+            'include_non_working' => $includeNonWorking,
+            'rows' => $rows,
+        ]);
+    }
+
+    /**
+     * "Who's in" view data for attendance page.
+     * Returns users currently working with check-in time and live worked hours.
+     */
+    public function attendanceWhoIsIn(Request $request)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        $isPrivileged = $this->isHrTeam($user);
+
+        $today = Carbon::today()->toDateString();
+        $teamFilter = $request->query('team_id');
+
+        $query = DB::table('attendances')
+            ->join('users', 'attendances.user_id', '=', 'users.id')
+            ->leftJoin('teams', 'users.team_id', '=', 'teams.id')
+            ->whereDate('attendances.date', $today)
+            ->where('attendances.status', 'en_trabajo')
+            ->whereNull('attendances.end_date')
+            ->whereNull('users.deleted_at')
+            ->select(
+                'attendances.id',
+                'attendances.user_id',
+                'attendances.date',
+                'attendances.start_time',
+                'attendances.pause_time',
+                'attendances.resume_time',
+                'attendances.created_at',
+                'users.team_id',
+                'users.first_name',
+                'users.last_name',
+                'users.name',
+                'users.photo',
+                'users.profile_photo_path',
+                'teams.name as team_name'
+            )
+            ->orderBy('attendances.start_time', 'asc');
+
+        if ($isPrivileged) {
+            if ($teamFilter !== null && $teamFilter !== '') {
+                $query->where('users.team_id', (int) $teamFilter);
+            }
+        } else {
+            $query->where('attendances.user_id', $user->id);
+        }
+
+        $now = Carbon::now();
+        $rows = $query->get()->map(function ($r) use ($now) {
+            $fullName = trim(($r->first_name ?? $r->name ?? '') . ' ' . ($r->last_name ?? ''));
+            $workedSeconds = $this->workedSecondsWithPause($r, $now);
+            return [
+                'attendance_id' => $r->id,
+                'user_id' => $r->user_id,
+                'full_name' => $fullName !== '' ? $fullName : ('Usuario #' . $r->user_id),
+                'team_id' => $r->team_id,
+                'team_name' => $r->team_name ?? 'Sin equipo',
+                'photo' => $r->photo ?? $r->profile_photo_path ?? null,
+                'start_time' => $r->start_time ? substr((string) $r->start_time, 0, 5) : null,
+                'worked_seconds' => $workedSeconds,
+                'worked_hhmm' => $this->formatSecondsAsHHMM($workedSeconds),
+            ];
+        })->values();
+
+        $teams = DB::table('teams')
+            ->select('id', 'name')
+            ->orderBy('name', 'asc')
+            ->get();
+
+        return response()->json([
+            'date' => $today,
+            'can_view_all' => $isPrivileged,
+            'team_filter' => $teamFilter !== null && $teamFilter !== '' ? (int) $teamFilter : null,
+            'working_count' => $rows->count(),
+            'rows' => $rows,
+            'teams' => $teams,
+        ])->header('Access-Control-Allow-Origin', '*');
+    }
+
+    public function requestAttendanceAdjustment(Request $request)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        $data = $request->validate([
+            'date' => 'required|date_format:Y-m-d',
+        ]);
+
+        $targetDate = Carbon::createFromFormat('Y-m-d', $data['date'])->startOfDay();
+        $today = Carbon::today();
+        if ($targetDate->gt($today)) {
+            return response()->json(['message' => 'Solo puedes solicitar fichajes de hoy o dias pasados'], 422);
+        }
+
+        $attendance = DB::table('attendances')
+            ->where('user_id', $user->id)
+            ->whereDate('date', $targetDate->toDateString())
+            ->orderBy('created_at', 'desc')
+            ->first(['id', 'start_time', 'end_time']);
+
+        $missingEntry = false;
+        $missingExit = false;
+        if (! $attendance) {
+            $missingEntry = true;
+            $missingExit = true;
+        } else {
+            $missingEntry = empty($attendance->start_time);
+            $missingExit = empty($attendance->end_time);
+        }
+
+        if (! $missingEntry && ! $missingExit) {
+            return response()->json(['message' => 'Ese dia ya tiene entrada y salida registradas'], 422);
+        }
+
+        $requestKind = $missingEntry && $missingExit
+            ? 'entry_exit'
+            : ($missingEntry ? 'entry' : 'exit');
+
+        $eventTypeId = $this->attendanceRequestEventTypeId();
+        $pendingExists = DB::table('events')
+            ->where('user_id', $user->id)
+            ->where('event_type_id', $eventTypeId)
+            ->whereNull('deleted_at')
+            ->where('approval_status', 'pending')
+            ->whereDate('start_at', $targetDate->toDateString())
+            ->exists();
+
+        if ($pendingExists) {
+            return response()->json(['message' => 'Ya existe una solicitud pendiente para ese dia'], 422);
+        }
+
+        $schedule = DB::table('schedules')
+            ->where('user_id', $user->id)
+            ->orderBy('id', 'desc')
+            ->first();
+        if (! $schedule) {
+            $schedule = DB::table('schedules')
+                ->join('user_schedules', 'schedules.id', '=', 'user_schedules.schedule_id')
+                ->where('user_schedules.user_id', $user->id)
+                ->select('schedules.*')
+                ->orderBy('schedules.id', 'desc')
+                ->first();
+        }
+
+        $scheduleStart = isset($schedule->start_time) ? substr((string) $schedule->start_time, 0, 5) : '09:00';
+        $scheduleEnd = isset($schedule->end_time) ? substr((string) $schedule->end_time, 0, 5) : '18:00';
+
+        $startAt = $targetDate->copy();
+        $endAt = $targetDate->copy();
+        if ($requestKind === 'entry_exit') {
+            [$sh, $sm] = array_map('intval', explode(':', $scheduleStart));
+            [$eh, $em] = array_map('intval', explode(':', $scheduleEnd));
+            $startAt->setTime($sh, $sm, 0);
+            $endAt->setTime($eh, $em, 0);
+        } elseif ($requestKind === 'exit') {
+            $existingStart = !empty($attendance->start_time) ? substr((string) $attendance->start_time, 0, 5) : $scheduleStart;
+            [$sh, $sm] = array_map('intval', explode(':', $existingStart));
+            [$eh, $em] = array_map('intval', explode(':', $scheduleEnd));
+            $startAt->setTime($sh, $sm, 0);
+            $endAt->setTime($eh, $em, 0);
+        } else {
+            $existingEnd = !empty($attendance->end_time) ? substr((string) $attendance->end_time, 0, 5) : $scheduleEnd;
+            [$sh, $sm] = array_map('intval', explode(':', $scheduleStart));
+            [$eh, $em] = array_map('intval', explode(':', $existingEnd));
+            $startAt->setTime($sh, $sm, 0);
+            $endAt->setTime($eh, $em, 0);
+        }
+
+        if ($endAt->lte($startAt)) {
+            $endAt = $startAt->copy()->addHours(8);
+        }
+
+        $titleByKind = [
+            'entry_exit' => 'Solicitud de fichaje: entrada y salida faltantes',
+            'entry' => 'Solicitud de fichaje: entrada faltante',
+            'exit' => 'Solicitud de fichaje: salida faltante',
+        ];
+
+        $description = sprintf(
+            'Regularizacion de fichaje del %s. Tipo: %s.',
+            $targetDate->format('Y-m-d'),
+            $requestKind
+        );
+
+        $eventId = DB::table('events')->insertGetId([
+            'title' => $titleByKind[$requestKind] ?? 'Solicitud de fichaje',
+            'description' => $description,
+            'start_at' => $startAt->toDateTimeString(),
+            'end_at' => $endAt->toDateTimeString(),
+            'user_id' => $user->id,
+            'event_type_id' => $eventTypeId,
+            'all_day' => false,
+            'color' => '#F59E0B',
+            'approval_status' => 'pending',
+            'approval_comment' => null,
+            'reviewed_by_user_id' => null,
+            'reviewed_at' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        event(new TimeOffRequestUpdated((int) $eventId, (int) $user->id, 'created'));
+
+        return response()->json([
+            'status' => 'ok',
+            'request_id' => (int) $eventId,
+            'request_kind' => $requestKind,
+            'date' => $targetDate->toDateString(),
+        ])->header('Access-Control-Allow-Origin', '*');
     }
 
     /**
@@ -336,26 +1601,61 @@ class AuthController extends Controller
     public function updateSchedule(Request $request)
     {
         $user = $request->user();
-        if ($user->user_type_id !== 1) {
+        if (!$this->isHrTeam($user)) {
             return response()->json(['message'=>'Forbidden'], 403);
         }
         $data = $request->validate([
-            'start_time' => 'required|date_format:H:i',
-            'end_time' => 'required|date_format:H:i',
+            'start_time' => 'nullable|date_format:H:i',
+            'end_time' => 'nullable|date_format:H:i',
+            'days' => 'nullable|array',
+            'days.*' => 'in:L,M,X,J,V,S,D',
+            'schedule_template_ids' => 'nullable|array',
+            'schedule_template_ids.*' => 'integer|exists:schedules,id',
         ]);
+        $days = array_values(array_unique($this->normalizeScheduleDays($data['days'] ?? null)));
+        $startTime = $data['start_time'] ?? null;
+        $endTime = $data['end_time'] ?? null;
+        $templates = collect();
+
+        $templateIds = $data['schedule_template_ids'] ?? [];
+        if (count($templateIds)) {
+            $templates = $this->getScheduleTemplatesByIds($templateIds);
+            if ($this->hasOverlappingDaysInTemplates($templates)) {
+                return response()->json(['message' => 'No puedes seleccionar jornadas con dias repetidos'], 422);
+            }
+
+            if ($templates->count()) {
+                $templateDays = [];
+                foreach ($templates as $tpl) {
+                    $templateDays = array_merge($templateDays, $this->normalizeScheduleDays($tpl->days ?? null));
+                }
+                $days = array_values(array_unique($templateDays));
+                $firstTemplate = $templates->first();
+                $startTime = isset($firstTemplate->start_time) ? substr((string) $firstTemplate->start_time, 0, 5) : $startTime;
+                $endTime = isset($firstTemplate->end_time) ? substr((string) $firstTemplate->end_time, 0, 5) : $endTime;
+            }
+        }
+
+        $this->syncUserScheduleTemplates((int) $user->id, $templates);
+
+        if (empty($startTime) || empty($endTime)) {
+            return response()->json(['message' => 'Debes indicar horario o seleccionar una jornada valida'], 422);
+        }
         // find existing schedule
         $sched = DB::table('schedules')->where('user_id', $user->id)->first();
         if ($sched) {
             DB::table('schedules')->where('id', $sched->id)->update([
-                'start_time' => $data['start_time'],
-                'end_time' => $data['end_time'],
+                'start_time' => $startTime,
+                'end_time' => $endTime,
+                'days' => json_encode($days),
                 'updated_at' => now(),
             ]);
         } else {
             DB::table('schedules')->insert([
                 'user_id' => $user->id,
-                'start_time' => $data['start_time'],
-                'end_time' => $data['end_time'],
+                'start_time' => $startTime,
+                'end_time' => $endTime,
+                'days' => json_encode($days),
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -369,7 +1669,7 @@ class AuthController extends Controller
     public function employees(Request $request)
     {
         $user = $request->user();
-        if (! $user || $user->user_type_id !== 1) {
+        if (!$this->canManageEmployees($user)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
@@ -389,11 +1689,134 @@ class AuthController extends Controller
             ->get();
 
         $teams = DB::table('teams')->select('id', 'name')->orderBy('name')->get();
+        $userTypes = DB::table('user_types')->select('id', 'name')->orderBy('name')->get();
+        $scheduleTemplates = $this->loadScheduleTemplatesCollection()
+            ->map(fn ($s) => $this->formatScheduleTemplate($s))
+            ->values();
 
         return response()->json([
             'employees' => $employees,
             'teams' => $teams,
+            'user_types' => $userTypes,
+            'schedule_templates' => $scheduleTemplates,
         ]);
+    }
+
+    /**
+     * Create one employee user.
+     */
+    public function createEmployee(Request $request)
+    {
+        $user = $request->user();
+        if (!$this->canCreateEmployeeUsers($user)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $data = $request->validate([
+            'name' => 'required|string|max:255',
+            'username' => 'nullable|string|max:255|unique:users,username',
+            'email' => 'required|email|unique:users,email',
+            'password' => ['required','confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
+            'team_id' => 'nullable|integer|exists:teams,id',
+            'user_type_id' => 'nullable|integer|exists:user_types,id',
+            'role' => 'nullable|string|max:255',
+            'photo' => 'nullable|image|max:2048',
+            'first_name' => 'nullable|string|max:50',
+            'last_name' => 'nullable|string|max:50',
+            'phone' => 'nullable|string|max:20',
+            'hire_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
+            'birth_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
+            'dni' => 'nullable|string|max:30',
+            'social_security_number' => 'nullable|string|max:50',
+            'contract_type' => 'nullable|string|max:50',
+            'contract_start_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
+            'vacation_days_total' => 'nullable|integer|min:0|max:365',
+            'start_time' => 'nullable|date_format:H:i',
+            'end_time' => 'nullable|date_format:H:i',
+            'days' => 'nullable|array',
+            'days.*' => 'in:L,M,X,J,V,S,D',
+            'schedule_template_ids' => 'nullable|array',
+            'schedule_template_ids.*' => 'integer|exists:schedules,id',
+        ]);
+
+        $employee = new User();
+        $employee->name = $data['name'];
+        $employee->username = $data['username'] ?? null;
+        $employee->email = $data['email'];
+        $employee->password = Hash::make($data['password']);
+        $employee->team_id = $data['team_id'] ?? null;
+        $employee->user_type_id = $data['user_type_id'] ?? null;
+        $employee->role = $data['role'] ?? null;
+        $employee->first_name = $data['first_name'] ?? null;
+        $employee->last_name = $data['last_name'] ?? null;
+        $employee->phone = $data['phone'] ?? null;
+        $employee->hire_date = $data['hire_date'] ?? null;
+        $employee->birth_date = $data['birth_date'] ?? null;
+        $employee->dni = $data['dni'] ?? null;
+        $employee->social_security_number = $data['social_security_number'] ?? null;
+        $employee->contract_type = $data['contract_type'] ?? null;
+        $employee->contract_start_date = $data['contract_start_date'] ?? null;
+        $employee->vacation_days_total = isset($data['vacation_days_total']) ? (int) $data['vacation_days_total'] : 0;
+
+        if ($request->hasFile('photo')) {
+            $path = $request->file('photo')->store('avatars', 'public');
+            $employee->photo = '/storage/' . $path;
+        }
+
+        $employee->save();
+
+        if ($this->isHrTeam($user)) {
+            $days = array_values(array_unique($this->normalizeScheduleDays($data['days'] ?? null)));
+            $startTime = $data['start_time'] ?? null;
+            $endTime = $data['end_time'] ?? null;
+            $templates = collect();
+
+            $templateIds = $data['schedule_template_ids'] ?? [];
+            if (count($templateIds)) {
+                $templates = $this->getScheduleTemplatesByIds($templateIds);
+
+                if ($this->hasOverlappingDaysInTemplates($templates)) {
+                    return response()->json(['message' => 'No puedes seleccionar jornadas con dias repetidos'], 422);
+                }
+
+                if ($templates->count()) {
+                    $templateDays = [];
+                    foreach ($templates as $tpl) {
+                        $templateDays = array_merge($templateDays, $this->normalizeScheduleDays($tpl->days ?? null));
+                    }
+                    if (!count($days)) {
+                        $days = array_values(array_unique($templateDays));
+                    }
+                    if (!$startTime || !$endTime) {
+                        $firstTemplate = $templates->first();
+                        $startTime = $startTime ?: (isset($firstTemplate->start_time) ? substr((string) $firstTemplate->start_time, 0, 5) : null);
+                        $endTime = $endTime ?: (isset($firstTemplate->end_time) ? substr((string) $firstTemplate->end_time, 0, 5) : null);
+                    }
+                }
+            }
+
+            $this->syncUserScheduleTemplates((int) $employee->id, $templates);
+
+            if (! empty($startTime) && ! empty($endTime)) {
+            DB::table('schedules')->insert([
+                'user_id' => $employee->id,
+                'start_time' => $startTime,
+                'end_time' => $endTime,
+                'days' => json_encode($days),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            }
+        }
+
+        return response()->json([
+            'status' => 'ok',
+            'employee' => [
+                'id' => $employee->id,
+                'name' => $employee->name,
+                'email' => $employee->email,
+            ],
+        ], 201);
     }
 
     /**
@@ -402,7 +1825,7 @@ class AuthController extends Controller
     public function getEmployee(Request $request, int $id)
     {
         $user = $request->user();
-        if (! $user || $user->user_type_id !== 1) {
+        if (!$this->canViewEmployeeDetails($user)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
@@ -424,14 +1847,260 @@ class AuthController extends Controller
                 ->orderBy('schedules.id', 'desc')
                 ->first();
         }
+        if ($schedule) {
+            $schedule->days = $this->normalizeScheduleDays($schedule->days ?? null);
+        }
 
         $teams = DB::table('teams')->select('id', 'name')->orderBy('name')->get();
+        $scheduleTemplates = $this->loadScheduleTemplatesCollection()
+            ->map(fn ($s) => $this->formatScheduleTemplate($s))
+            ->values();
 
         return response()->json([
             'employee' => $employee,
             'schedule' => $schedule,
             'teams' => $teams,
+            'schedule_templates' => $scheduleTemplates,
+            'schedule_template_ids' => $this->getAssignedScheduleTemplateIds((int) $employee->id),
+            'assigned_schedule_templates' => $this->loadAssignedScheduleTemplatesForUser((int) $employee->id),
         ]);
+    }
+
+    /**
+     * Monthly attendance data for one employee (admin only).
+     */
+    public function employeeAttendanceMonth(Request $request, int $id)
+    {
+        $user = $request->user();
+        if (!$this->canViewEmployeeDetails($user)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $employee = User::whereNull('deleted_at')->find($id);
+        if (! $employee) {
+            return response()->json(['message' => 'Employee not found'], 404);
+        }
+
+        $monthInput = (string) ($request->query('month') ?: Carbon::today()->format('Y-m'));
+        try {
+            $monthDate = Carbon::createFromFormat('Y-m', $monthInput)->startOfMonth();
+        } catch (\Exception $e) {
+            $monthDate = Carbon::today()->startOfMonth();
+        }
+
+        $includeNonWorking = (bool) ((int) $request->query('include_non_working', 0));
+        $monthStart = $monthDate->copy()->startOfMonth();
+        $monthEnd = $monthDate->copy()->endOfMonth();
+
+        $schedule = DB::table('schedules')
+            ->where('user_id', $employee->id)
+            ->orderBy('id', 'desc')
+            ->first();
+        if (! $schedule) {
+            $schedule = DB::table('schedules')
+                ->join('user_schedules', 'schedules.id', '=', 'user_schedules.schedule_id')
+                ->where('user_schedules.user_id', $employee->id)
+                ->select('schedules.*')
+                ->orderBy('schedules.id', 'desc')
+                ->first();
+        }
+        $scheduleDays = $this->normalizeScheduleDays($schedule->days ?? null);
+        $dailyTargetMinutes = $this->scheduleDailyMinutes($schedule);
+
+        $rawRows = DB::table('attendances')
+            ->where('user_id', $employee->id)
+            ->whereDate('date', '>=', $monthStart->toDateString())
+            ->whereDate('date', '<=', $monthEnd->toDateString())
+            ->orderBy('date', 'asc')
+            ->orderBy('created_at', 'desc')
+            ->get([
+                'id',
+                'date',
+                'start_time',
+                'pause_time',
+                'resume_time',
+                'end_time',
+                'hours_worked',
+                'status',
+            ]);
+
+        $rowsByDate = [];
+        foreach ($rawRows as $r) {
+            if (!isset($rowsByDate[$r->date])) {
+                $rowsByDate[$r->date] = $r;
+            }
+        }
+
+        $rows = [];
+        $targetMinutes = 0;
+        $workedMinutes = 0;
+        $weekMap = [1 => 'L', 2 => 'M', 3 => 'X', 4 => 'J', 5 => 'V', 6 => 'S', 7 => 'D'];
+
+        $workedDaysCount = 0;
+        $workingDaysInMonth = 0;
+
+        $cursor = $monthStart->copy();
+        while ($cursor->lte($monthEnd)) {
+            $key = $cursor->toDateString();
+            $att = $rowsByDate[$key] ?? null;
+            $dayLetter = $weekMap[$cursor->dayOfWeekIso] ?? 'L';
+            $isWorkingDay = in_array($dayLetter, $scheduleDays, true);
+
+            if ($isWorkingDay) {
+                $targetMinutes += $dailyTargetMinutes;
+                $workingDaysInMonth++;
+            }
+
+            $rowWorked = 0;
+            if ($att && !empty($att->hours_worked)) {
+                $rowWorked = $this->timeStringToMinutes((string) $att->hours_worked);
+            }
+            if ($rowWorked > 0) {
+                $workedDaysCount++;
+            }
+            $workedMinutes += $rowWorked;
+
+            if ($isWorkingDay || $includeNonWorking) {
+                $rows[] = [
+                    'date' => $key,
+                    'weekday' => $dayLetter,
+                    'start_time' => $att->start_time ?? null,
+                    'pause_time' => $att->pause_time ?? null,
+                    'resume_time' => $att->resume_time ?? null,
+                    'end_time' => $att->end_time ?? null,
+                    'hours_worked' => $att->hours_worked ?? null,
+                    'status' => $att->status ?? null,
+                    'is_working_day' => $isWorkingDay,
+                ];
+            }
+
+            $cursor->addDay();
+        }
+
+        $requestRows = DB::table('events')
+            ->where('user_id', $employee->id)
+            ->whereNull('deleted_at')
+            ->where(function ($q) use ($monthStart, $monthEnd) {
+                $q->whereBetween('start_at', [$monthStart->toDateTimeString(), $monthEnd->toDateTimeString()])
+                    ->orWhereBetween('end_at', [$monthStart->toDateTimeString(), $monthEnd->toDateTimeString()])
+                    ->orWhere(function ($q2) use ($monthStart, $monthEnd) {
+                        $q2->where('start_at', '<=', $monthStart->toDateTimeString())
+                            ->where(function ($q3) use ($monthEnd) {
+                                $q3->where('end_at', '>=', $monthEnd->toDateTimeString())
+                                    ->orWhereNull('end_at');
+                            });
+                    });
+            })
+            ->get(['approval_status']);
+
+        $requestsTotal = 0;
+        $requestsPending = 0;
+        $requestsApproved = 0;
+        $requestsRejected = 0;
+        foreach ($requestRows as $rq) {
+            $requestsTotal++;
+            $st = strtolower(trim((string) ($rq->approval_status ?? 'approved')));
+            if ($st === 'pending') $requestsPending++;
+            elseif ($st === 'rejected') $requestsRejected++;
+            else $requestsApproved++;
+        }
+
+        return response()->json([
+            'month' => $monthDate->format('Y-m'),
+            'employee_id' => $employee->id,
+            'summary' => [
+                'worked_minutes' => $workedMinutes,
+                'worked_hhmm' => $this->formatMinutesAsHHMM($workedMinutes),
+                'target_minutes' => $targetMinutes,
+                'target_hhmm' => $this->formatMinutesAsHHMM($targetMinutes),
+                'worked_days' => $workedDaysCount,
+                'working_days' => $workingDaysInMonth,
+                'missing_days' => max(0, $workingDaysInMonth - $workedDaysCount),
+                'compliance_percent' => $targetMinutes > 0 ? (int) round(($workedMinutes / $targetMinutes) * 100) : 0,
+                'requests_total' => $requestsTotal,
+                'requests_pending' => $requestsPending,
+                'requests_approved' => $requestsApproved,
+                'requests_rejected' => $requestsRejected,
+            ],
+            'schedule' => [
+                'start_time' => $schedule->start_time ?? null,
+                'end_time' => $schedule->end_time ?? null,
+                'days' => $scheduleDays,
+                'daily_target_minutes' => $dailyTargetMinutes,
+            ],
+            'rows' => $rows,
+        ])->header('Access-Control-Allow-Origin', '*');
+    }
+
+    /**
+     * Documents for one employee (admin only).
+     */
+    public function employeeDocuments(Request $request, int $id)
+    {
+        $user = $request->user();
+        if (!$this->canViewEmployeeDetails($user)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $employee = User::whereNull('deleted_at')->find($id);
+        if (! $employee) {
+            return response()->json(['message' => 'Employee not found'], 404);
+        }
+
+        $category = (string) $request->query('category', '');
+        $q = DB::table('documents')
+            ->where('user_id', $employee->id)
+            ->whereNull('deleted_at')
+            ->orderBy('created_at', 'desc');
+
+        if (in_array($category, ['medical', 'receipt', 'payroll'], true)) {
+            $q->where('category', $category);
+        }
+
+        $docs = $q->get([
+            'id',
+            'description',
+            'filename',
+            'original_name',
+            'mime_type',
+            'size',
+            'category',
+            'created_at',
+        ]);
+
+        return response()->json(['documents' => $docs])->header('Access-Control-Allow-Origin', '*');
+    }
+
+    /**
+     * Download one employee document (admin only).
+     */
+    public function employeeDocumentDownload(Request $request, int $employeeId, int $docId)
+    {
+        $user = $request->user();
+        if (!$this->canViewEmployeeDetails($user)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $employee = User::whereNull('deleted_at')->find($employeeId);
+        if (! $employee) {
+            return response()->json(['message' => 'Employee not found'], 404);
+        }
+
+        $doc = DB::table('documents')
+            ->where('id', $docId)
+            ->where('user_id', $employee->id)
+            ->whereNull('deleted_at')
+            ->first(['id', 'filename', 'original_name']);
+
+        if (!$doc || empty($doc->filename)) {
+            return response()->json(['message' => 'Documento no encontrado'], 404);
+        }
+        if (!Storage::disk('local')->exists($doc->filename)) {
+            return response()->json(['message' => 'Archivo no disponible'], 404);
+        }
+
+        $downloadName = $doc->original_name ?: basename((string) $doc->filename);
+        return Storage::disk('local')->download($doc->filename, $downloadName);
     }
 
     /**
@@ -440,7 +2109,7 @@ class AuthController extends Controller
     public function updateEmployee(Request $request, int $id)
     {
         $user = $request->user();
-        if (! $user || $user->user_type_id !== 1) {
+        if (!$this->canViewEmployeeDetails($user)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
@@ -454,14 +2123,34 @@ class AuthController extends Controller
             'email' => 'required|email|unique:users,email,' . $employee->id,
             'team_id' => 'nullable|integer|exists:teams,id',
             'photo' => 'nullable|image|max:2048',
+            'phone' => 'nullable|string|max:20',
+            'hire_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
+            'birth_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
+            'dni' => 'nullable|string|max:30',
+            'social_security_number' => 'nullable|string|max:50',
+            'contract_type' => 'nullable|string|max:50',
+            'contract_start_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
+            'vacation_days_total' => 'nullable|integer|min:0|max:365',
             'password' => ['nullable','confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
             'start_time' => 'nullable|date_format:H:i',
             'end_time' => 'nullable|date_format:H:i',
+            'days' => 'nullable|array',
+            'days.*' => 'in:L,M,X,J,V,S,D',
+            'schedule_template_ids' => 'nullable|array',
+            'schedule_template_ids.*' => 'integer|exists:schedules,id',
         ]);
 
         $employee->name = $data['name'];
         $employee->email = $data['email'];
         $employee->team_id = $data['team_id'] ?? null;
+        $employee->phone = $data['phone'] ?? null;
+        $employee->hire_date = $data['hire_date'] ?? null;
+        $employee->birth_date = $data['birth_date'] ?? null;
+        $employee->dni = $data['dni'] ?? null;
+        $employee->social_security_number = $data['social_security_number'] ?? null;
+        $employee->contract_type = $data['contract_type'] ?? null;
+        $employee->contract_start_date = $data['contract_start_date'] ?? null;
+        $employee->vacation_days_total = isset($data['vacation_days_total']) ? (int) $data['vacation_days_total'] : (int) ($employee->vacation_days_total ?? 0);
         if ($request->hasFile('photo')) {
             $path = $request->file('photo')->store('avatars', 'public');
             $employee->photo = '/storage/' . $path;
@@ -471,22 +2160,56 @@ class AuthController extends Controller
         }
         $employee->save();
 
-        if (! empty($data['start_time']) && ! empty($data['end_time'])) {
+        if ($this->isHrTeam($user)) {
+            $days = array_values(array_unique($this->normalizeScheduleDays($data['days'] ?? null)));
+            $startTime = $data['start_time'] ?? null;
+            $endTime = $data['end_time'] ?? null;
+            $templates = collect();
+
+            $templateIds = $data['schedule_template_ids'] ?? [];
+            if (count($templateIds)) {
+                $templates = $this->getScheduleTemplatesByIds($templateIds);
+                if ($this->hasOverlappingDaysInTemplates($templates)) {
+                    return response()->json(['message' => 'No puedes seleccionar jornadas con dias repetidos'], 422);
+                }
+
+                if ($templates->count()) {
+                    $templateDays = [];
+                    foreach ($templates as $tpl) {
+                        $templateDays = array_merge($templateDays, $this->normalizeScheduleDays($tpl->days ?? null));
+                    }
+                    if (!count($days)) {
+                        $days = array_values(array_unique($templateDays));
+                    }
+                    if (!$startTime || !$endTime) {
+                        $firstTemplate = $templates->first();
+                        $startTime = $startTime ?: (isset($firstTemplate->start_time) ? substr((string) $firstTemplate->start_time, 0, 5) : null);
+                        $endTime = $endTime ?: (isset($firstTemplate->end_time) ? substr((string) $firstTemplate->end_time, 0, 5) : null);
+                    }
+                }
+            }
+
+            $this->syncUserScheduleTemplates((int) $employee->id, $templates);
+
+            if (! empty($startTime) && ! empty($endTime)) {
             $sched = DB::table('schedules')->where('user_id', $employee->id)->first();
             if ($sched) {
                 DB::table('schedules')->where('id', $sched->id)->update([
-                    'start_time' => $data['start_time'],
-                    'end_time' => $data['end_time'],
+                    'start_time' => $startTime,
+                    'end_time' => $endTime,
+                    'days' => json_encode($days),
                     'updated_at' => now(),
                 ]);
             } else {
                 DB::table('schedules')->insert([
                     'user_id' => $employee->id,
-                    'start_time' => $data['start_time'],
-                    'end_time' => $data['end_time'],
+                    'start_time' => $startTime,
+                    'end_time' => $endTime,
+                    'days' => json_encode($days),
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
+            }
             }
         }
 
@@ -499,7 +2222,7 @@ class AuthController extends Controller
     public function deleteEmployee(Request $request, int $id)
     {
         $user = $request->user();
-        if (! $user || $user->user_type_id !== 1) {
+        if (!$this->canDeleteEmployeeUsers($user)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
@@ -516,4 +2239,3 @@ class AuthController extends Controller
         return response()->json(['status' => 'ok']);
     }
 }
-

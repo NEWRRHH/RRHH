@@ -22,6 +22,8 @@ if (process.client && typeof window !== 'undefined') {
 // previously the comment mentioned `reverb-js` which doesn't exist on npm.
 
 let echo: Echo | null = null;
+// Track which user channels already have listeners to prevent duplicates.
+const subscribedChannels = new Set<string>();
 
 export function useRealtime() {
   const connected = ref(false);
@@ -32,14 +34,16 @@ export function useRealtime() {
     appId: string;
     key: string;
     token?: string;
+    authEndpoint?: string;
   }) {
+    // WebSockets only exist in the browser — skip silently during SSR.
+    if (typeof process !== 'undefined' && process.server) return echo as any;
     if (echo) {
       return echo;
     }
 
     const opts = {
       broadcaster: 'reverb',
-      host: `${config.host}:${config.port}`,
       key: config.key,
       appId: config.appId,
       wsHost: config.host,
@@ -47,9 +51,16 @@ export function useRealtime() {
       wssPort: Number(config.port),
       forceTLS: false,
       disableStats: true,
+      // Force WebSocket transport only — avoids falling back to HTTP long-polling
+      // which would never reach Reverb and appear as no connection in logs.
+      enabledTransports: ['ws', 'wss'],
+      // The auth endpoint must be reachable from the browser.
+      // Default: http://localhost:8000/broadcasting/auth
+      authEndpoint: config.authEndpoint || 'http://localhost:8000/broadcasting/auth',
       auth: {
         headers: {
           Authorization: config.token ? `Bearer ${config.token}` : '',
+          Accept: 'application/json',
         },
       },
     };
@@ -66,6 +77,7 @@ export function useRealtime() {
     if (echo) {
       echo.disconnect();
       echo = null;
+      subscribedChannels.clear();
       connected.value = false;
     }
   }
@@ -75,5 +87,5 @@ export function useRealtime() {
     return echo;
   }
 
-  return { connect, disconnect, connected, instance };
+  return { connect, disconnect, connected, instance, subscribedChannels };
 }

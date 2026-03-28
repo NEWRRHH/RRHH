@@ -39,6 +39,7 @@ class User extends Authenticatable
         'hire_date',
         'photo',
         'phone',
+        'vacation_days_total',
         'user_type_id',
         'team_id',
         'role',
@@ -102,4 +103,3 @@ class User extends Authenticatable
         return $this->notificationsReceived()->where('read', 0);
     }
 }
-
