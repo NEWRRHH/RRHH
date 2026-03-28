@@ -413,6 +413,13 @@ const workedDaysPercent = computed(() => {
   if (totalDays <= 0) return 0
   return Math.max(0, Math.min(100, Math.round((workedDays / totalDays) * 100)))
 })
+const canViewEmployeeDetails = computed(() => {
+  const currentUser: any = user.value || {}
+  if (currentUser?.is_admin || Number(currentUser?.user_type_id || 0) === 1) return true
+  if (currentUser?.can_view_employee_details) return true
+  const permissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : []
+  return permissions.includes('employees.view_details')
+})
 const dailyBars = computed(() => {
   const rows = Array.isArray(attendanceRows.value) ? attendanceRows.value : []
   const withHours = rows
@@ -665,8 +672,7 @@ onBeforeMount(async () => {
   } else {
     await fetchUser()
   }
-  const canViewEmployees = Boolean((user.value as any)?.is_hr_team) || Boolean((user.value as any)?.is_admin) || Number((user.value as any)?.user_type_id || 0) === 1
-  if (!canViewEmployees) {
+  if (!canViewEmployeeDetails.value) {
     return router.push('/dashboard')
   }
 

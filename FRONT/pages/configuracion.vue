@@ -193,7 +193,7 @@ declare const $fetch: any
 
 const router = useRouter()
 const sidebar = ref<{ open: boolean } | null>(null)
-const { token, fetchUser, logout, apiBase, setToken } = useAuth()
+const { token, fetchUser, logout, apiBase, setToken, user } = useAuth()
 
 const tabs = [
   { id: 'dashboard', label: 'Dashboard' },
@@ -421,6 +421,11 @@ onBeforeMount(async () => {
     }
   } else {
     await fetchUser()
+  }
+
+  const canAccessSettings = Boolean((user.value as any)?.can_access_settings) || Boolean((user.value as any)?.is_admin) || Number((user.value as any)?.user_type_id || 0) === 1
+  if (!canAccessSettings) {
+    return router.push('/dashboard')
   }
 
   await loadLayout()

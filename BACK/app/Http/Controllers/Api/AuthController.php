@@ -52,6 +52,33 @@ class AuthController extends Controller
         return $this->isHrTeam($user) || $this->isAdminUser($user);
     }
 
+    private function teamHasPermission(?int $teamId, string $permissionCode): bool
+    {
+        if (!$teamId) return false;
+        return DB::table('team_permision')
+            ->join('permisions', 'team_permision.permision_id', '=', 'permisions.id')
+            ->where('team_permision.team_id', $teamId)
+            ->where('permisions.code', $permissionCode)
+            ->exists();
+    }
+
+    private function hasPermission(?object $user, string $permissionCode): bool
+    {
+        if (!$user) return false;
+        if ($this->isAdminUser($user)) return true;
+        return $this->teamHasPermission((int) ($user->team_id ?? 0), $permissionCode);
+    }
+
+    private function canViewEmployeeDetails(?object $user): bool
+    {
+        return $this->hasPermission($user, 'employees.view_details');
+    }
+
+    private function canDeleteEmployeeUsers(?object $user): bool
+    {
+        return $this->hasPermission($user, 'employees.delete');
+    }
+
     /**
      * Compute worked seconds for an attendance row, discounting pause span.
      * With the current schema we store one pause/resume pair (latest values).
@@ -270,13 +297,17 @@ class AuthController extends Controller
         $payload['permissions'] = $permissions;
         $payload['is_hr_team'] = $this->isHrTeam($user);
         $payload['is_admin'] = $this->isAdminUser($user);
+        $payload['can_view_employee_details'] = $this->canViewEmployeeDetails($user);
+        $payload['can_delete_employee'] = $this->canDeleteEmployeeUsers($user);
+        $payload['can_access_announcements'] = $this->isHrTeam($user) || $this->isAdminUser($user);
+        $payload['can_access_settings'] = $this->isAdminUser($user);
 
         return response()->json($payload)->header('Access-Control-Allow-Origin', '*');
     }
 
     private function canManagePermissions(?object $user): bool
     {
-        return $this->isHrTeam($user) || $this->isAdminUser($user);
+        return $this->isAdminUser($user);
     }
 
     public function permissionsCatalog(Request $request)
@@ -1356,7 +1387,7 @@ class AuthController extends Controller
     public function getEmployee(Request $request, int $id)
     {
         $user = $request->user();
-        if (!$this->canManageEmployees($user)) {
+        if (!$this->canViewEmployeeDetails($user)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
@@ -1397,7 +1428,7 @@ class AuthController extends Controller
     public function employeeAttendanceMonth(Request $request, int $id)
     {
         $user = $request->user();
-        if (!$this->canManageEmployees($user)) {
+        if (!$this->canViewEmployeeDetails($user)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
@@ -1563,7 +1594,7 @@ class AuthController extends Controller
     public function employeeDocuments(Request $request, int $id)
     {
         $user = $request->user();
-        if (!$this->canManageEmployees($user)) {
+        if (!$this->canViewEmployeeDetails($user)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
@@ -1602,7 +1633,7 @@ class AuthController extends Controller
     public function employeeDocumentDownload(Request $request, int $employeeId, int $docId)
     {
         $user = $request->user();
-        if (!$this->canManageEmployees($user)) {
+        if (!$this->canViewEmployeeDetails($user)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
@@ -1634,7 +1665,7 @@ class AuthController extends Controller
     public function updateEmployee(Request $request, int $id)
     {
         $user = $request->user();
-        if (!$this->canManageEmployees($user)) {
+        if (!$this->canViewEmployeeDetails($user)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
@@ -1714,7 +1745,7 @@ class AuthController extends Controller
     public function deleteEmployee(Request $request, int $id)
     {
         $user = $request->user();
-        if (!$this->canManageEmployees($user)) {
+        if (!$this->canDeleteEmployeeUsers($user)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 

@@ -8,10 +8,29 @@ use Illuminate\Support\Facades\DB;
 
 class AnnouncementController extends Controller
 {
+    private function isAdminUser(?object $user): bool
+    {
+        return (int) ($user->user_type_id ?? 0) === 1;
+    }
+
+    private function isHrTeam(?object $user): bool
+    {
+        if (!$user || empty($user->team_id)) return false;
+        $team = DB::table('teams')->where('id', (int) $user->team_id)->first(['name']);
+        if (!$team || empty($team->name)) return false;
+        return str_contains(strtolower((string) $team->name), 'rrhh');
+    }
+
+    private function canAccessAnnouncements(?object $user): bool
+    {
+        return $this->isAdminUser($user) || $this->isHrTeam($user);
+    }
+
     public function index(Request $request)
     {
         $user = $request->user();
         if (!$user) return response()->json(['message' => 'Unauthenticated'], 401);
+        if (!$this->canAccessAnnouncements($user)) return response()->json(['message' => 'Forbidden'], 403);
 
         $limit = max(1, min(100, (int) $request->query('limit', 20)));
 
@@ -61,6 +80,7 @@ class AnnouncementController extends Controller
     {
         $user = $request->user();
         if (!$user) return response()->json(['message' => 'Unauthenticated'], 401);
+        if (!$this->canAccessAnnouncements($user)) return response()->json(['message' => 'Forbidden'], 403);
 
         $rows = DB::table('teams')
             ->select('id', 'name')
@@ -74,6 +94,7 @@ class AnnouncementController extends Controller
     {
         $user = $request->user();
         if (!$user) return response()->json(['message' => 'Unauthenticated'], 401);
+        if (!$this->canAccessAnnouncements($user)) return response()->json(['message' => 'Forbidden'], 403);
 
         $data = $request->validate([
             'title' => 'required|string|max:255',
@@ -101,4 +122,3 @@ class AnnouncementController extends Controller
         return response()->json(['status' => 'ok', 'id' => $id])->header('Access-Control-Allow-Origin', '*');
     }
 }
-

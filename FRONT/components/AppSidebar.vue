@@ -131,6 +131,7 @@ const requestsCount = ref(0)
 const isHrTeam = computed(() => Boolean((user.value as any)?.is_hr_team))
 const isAdmin = computed(() => Boolean((user.value as any)?.is_admin) || Number((user.value as any)?.user_type_id || 0) === 1)
 const canSeeEmployees = computed(() => isHrTeam.value || isAdmin.value)
+const canSeeAnnouncements = computed(() => isHrTeam.value || isAdmin.value)
 let requestsTimer: ReturnType<typeof setInterval> | null = null
 let reviewerRealtimeChannel: any = null
 let userRealtimeChannel: any = null
@@ -209,14 +210,14 @@ const navItems = computed(() => [
     </svg>`,
     badge: unreadCount
   },
-  {
+  ...(canSeeAnnouncements.value ? [{
     label: 'Comunicados',
     to: '/comunicados',
     active: route.path.startsWith('/comunicados'),
     icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" d="M7 8h10M7 12h7m-7 4h5M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H9l-6 0V5a2 2 0 012-2z"/>
     </svg>`
-  },
+  }] : []),
   {
     label: 'Vacaciones',
     to: '/vacaciones',
@@ -258,15 +259,15 @@ const navItems = computed(() => [
       <path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
     </svg>`
   },
-  {
-    label: 'ConfiguraciÃ³n',
+  ...(isAdmin.value ? [{
+    label: 'Configuración',
     to: '/configuracion',
     active: route.path.startsWith('/configuracion'),
     icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
       <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
     </svg>`
-  }
+  }] : [])
 ])
 </script>
 

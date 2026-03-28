@@ -55,18 +55,18 @@
               <tbody>
                 <tr v-for="employee in filteredEmployees" :key="employee.id" class="border-t border-gray-800 text-gray-200 hover:bg-gray-800/40">
                   <td class="px-4 py-3">
-                    <button class="flex items-center gap-3 w-full text-left" @click="goToEdit(employee)">
+                    <button class="flex items-center gap-3 w-full text-left" :disabled="!canViewEmployeeDetails" @click="goToEdit(employee)">
                       <div class="w-9 h-9 rounded-full overflow-hidden bg-blue-600 flex items-center justify-center font-semibold">
                         <img v-if="employee.photo || employee.profile_photo_path" :src="employee.photo || employee.profile_photo_path" class="w-full h-full object-cover" />
                         <span v-else>{{ (employee.name || '?').charAt(0).toUpperCase() }}</span>
                       </div>
-                      <span>{{ employee.name }}</span>
+                      <span :class="canViewEmployeeDetails ? 'text-white' : 'text-gray-300'">{{ employee.name }}</span>
                     </button>
                   </td>
                   <td class="px-4 py-3 text-gray-300">{{ employee.email }}</td>
                   <td class="px-4 py-3 text-gray-300">{{ employee.team_name || 'Sin equipo' }}</td>
                   <td class="px-4 py-3 text-right">
-                    <div class="relative inline-block action-menu">
+                    <div v-if="canViewEmployeeDetails || canDeleteEmployee" class="relative inline-block action-menu">
                       <button @click.stop="toggleMenu(employee.id)" class="p-2 rounded hover:bg-gray-800">
                         <svg class="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" d="M12 6h.01M12 12h.01M12 18h.01"/>
@@ -77,13 +77,13 @@
                         v-if="openMenuId === employee.id"
                         class="absolute right-0 mt-1 w-40 bg-white text-gray-800 rounded-lg shadow-xl overflow-hidden divide-y divide-gray-200 z-[70]"
                       >
-                        <button @click="goToEdit(employee)" class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2">
+                        <button v-if="canViewEmployeeDetails" @click="goToEdit(employee)" class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2">
                           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M11 5h2m-1-1v2m-7 8l9-9 3 3-9 9H5v-3z"/>
                           </svg>
                           Ver detalle
                         </button>
-                        <button @click="removeEmployee(employee)" class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600">
+                        <button v-if="canDeleteEmployee" @click="removeEmployee(employee)" class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600">
                           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16"/>
                           </svg>
@@ -141,6 +141,20 @@ const filteredEmployees = computed(() => {
   if (selectedTeam.value === 'Todos') return employees.value
   return employees.value.filter((employee) => (employee.team_name || 'Sin equipo') === selectedTeam.value)
 })
+const canViewEmployeeDetails = computed(() => {
+  const currentUser: any = user.value || {}
+  if (currentUser?.is_admin || Number(currentUser?.user_type_id || 0) === 1) return true
+  if (currentUser?.can_view_employee_details) return true
+  const permissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : []
+  return permissions.includes('employees.view_details')
+})
+const canDeleteEmployee = computed(() => {
+  const currentUser: any = user.value || {}
+  if (currentUser?.is_admin || Number(currentUser?.user_type_id || 0) === 1) return true
+  if (currentUser?.can_delete_employee) return true
+  const permissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : []
+  return permissions.includes('employees.delete')
+})
 
 function openSidebar() {
   if (sidebar.value) sidebar.value.open = true
@@ -151,12 +165,14 @@ function toggleMenu(id: number) {
 }
 
 function goToEdit(employee: any) {
+  if (!canViewEmployeeDetails.value) return
   openMenuId.value = null
   console.log('navigating to edit', employee.id)
   router.push(`/empleados/${employee.id}`)
 }
 
 async function removeEmployee(employee: any) {
+  if (!canDeleteEmployee.value) return
   openMenuId.value = null
   const ok = confirm(`¿Eliminar a ${employee.name}?`)
   if (!ok) return

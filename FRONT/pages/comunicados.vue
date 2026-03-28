@@ -133,7 +133,7 @@ definePageMeta({ auth: true })
 declare const process: any
 declare const $fetch: any
 
-const { token, fetchUser, logout, apiBase, setToken } = useAuth()
+const { token, fetchUser, logout, apiBase, setToken, user } = useAuth()
 const router = useRouter()
 const sidebar = ref<{ open: boolean } | null>(null)
 
@@ -253,6 +253,11 @@ onBeforeMount(async () => {
     await fetchUser()
   }
 
+  const canAccess = Boolean((user.value as any)?.can_access_announcements) || Boolean((user.value as any)?.is_hr_team) || Boolean((user.value as any)?.is_admin) || Number((user.value as any)?.user_type_id || 0) === 1
+  if (!canAccess) {
+    return router.push('/dashboard')
+  }
+
   await loadTeams()
   await loadAnnouncements()
 })
@@ -261,4 +266,3 @@ onBeforeUnmount(() => {
   if (toastTimer) clearTimeout(toastTimer)
 })
 </script>
-

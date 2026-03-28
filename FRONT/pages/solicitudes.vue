@@ -31,30 +31,6 @@
             {{ f.label }}
           </button>
         </div>
-        <div class="text-xs">
-          <span
-            class="inline-flex items-center gap-1 rounded-full px-2 py-1 border"
-            :class="reverbStatus === 'conectado'
-              ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
-              : reverbStatus === 'reintentando'
-                ? 'border-amber-500/40 text-amber-300 bg-amber-500/10'
-                : 'border-gray-600 text-gray-300 bg-gray-800/60'"
-          >
-            Reverb: {{ reverbStatus }}
-          </span>
-        </div>
-        <div class="rounded-xl border border-gray-800 bg-gray-900/60 px-3 py-2 text-xs text-gray-300">
-          <p class="text-[11px] uppercase tracking-wide text-gray-400 mb-1">Debug Reverb</p>
-          <p v-if="lastRealtimeEvent">
-            Evento: <span class="text-white">{{ lastRealtimeEvent.action || 'unknown' }}</span>
-            | Solicitud #<span class="text-white">{{ lastRealtimeEvent.request_id ?? '-' }}</span>
-            | Usuario #<span class="text-white">{{ lastRealtimeEvent.requester_id ?? '-' }}</span>
-            | Canal: <span class="text-white">{{ lastRealtimeEvent.source || '-' }}</span>
-            | Hora: <span class="text-white">{{ lastRealtimeEvent.received_at || '-' }}</span>
-          </p>
-          <p v-else class="text-gray-500">Aun sin eventos recibidos.</p>
-        </div>
-
         <div v-if="loading" class="text-gray-400">Cargando solicitudes...</div>
         <div v-if="actionError" class="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
           {{ actionError }}
@@ -181,8 +157,6 @@ const statusFilter = ref<'pending' | 'approved' | 'rejected' | 'all'>('pending')
 const requests = ref<any[]>([])
 const selectedRequesterId = ref<number | null>(null)
 const realtimeRefreshing = ref(false)
-const reverbStatus = ref<'conectado' | 'reintentando' | 'desconectado'>('desconectado')
-const lastRealtimeEvent = ref<{ action?: string; request_id?: number; requester_id?: number; source?: string; received_at?: string } | null>(null)
 let realtimeRetryTimer: ReturnType<typeof setTimeout> | null = null
 let pollingTimer: ReturnType<typeof setInterval> | null = null
 const filters = [
@@ -266,14 +240,6 @@ async function loadRequests() {
 }
 
 async function handleRealtimeUpdate(payload?: any, source = 'unknown') {
-  const now = new Date()
-  lastRealtimeEvent.value = {
-    action: payload?.action || 'updated',
-    request_id: payload?.request_id != null ? Number(payload.request_id) : undefined,
-    requester_id: payload?.requester_id != null ? Number(payload.requester_id) : undefined,
-    source,
-    received_at: now.toLocaleTimeString('es-AR', { hour12: false }),
-  }
   if (realtimeRefreshing.value) return
   realtimeRefreshing.value = true
   try {
@@ -297,7 +263,6 @@ function teardownRealtimeListeners() {
     reviewerRealtimeChannel = null
     userRealtimeChannel = null
   }
-  reverbStatus.value = 'desconectado'
 }
 
 function setupRealtimeListeners() {
@@ -305,7 +270,6 @@ function setupRealtimeListeners() {
   const echo: any = realtimeInstance?.()
   const uid = Number((user.value as any)?.id || 0)
   if (!echo || !uid) {
-    reverbStatus.value = 'reintentando'
     realtimeRetryTimer = setTimeout(() => setupRealtimeListeners(), 1500)
     return
   }
@@ -321,7 +285,6 @@ function setupRealtimeListeners() {
       void handleRealtimeUpdate(e, 'timeoff.reviewers')
     })
   }
-  reverbStatus.value = 'conectado'
 }
 
 function changeFilter(next: 'pending' | 'approved' | 'rejected' | 'all') {
