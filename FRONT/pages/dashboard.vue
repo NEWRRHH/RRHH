@@ -55,7 +55,7 @@
               :key="`slot-${slotIndex}`"
               class="rounded-2xl border transition"
               :class="[
-                slotHeights[slotIndex],
+                isEditMode ? 'min-h-40' : 'h-auto',
                 isEditMode
                   ? (dragOverSlot === slotIndex ? 'border-blue-500 bg-blue-500/5 border-dashed' : 'border-gray-700 bg-gray-900/20 border-dashed')
                   : 'border-gray-800 bg-transparent'
@@ -66,14 +66,14 @@
             >
               <div
                 v-if="boardLayout[slotIndex]"
-                class="h-full rounded-2xl"
+                class="rounded-2xl"
                 :class="isEditMode ? 'cursor-grab active:cursor-grabbing' : ''"
                 :draggable="isEditMode"
                 @dragstart="onCardDragStart(slotIndex)"
                 @dragend="onCardDragEnd"
               >
                 <template v-if="boardLayout[slotIndex] === 'welcome'">
-                  <div class="relative overflow-hidden bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-6 h-full shadow-xl shadow-blue-900/40">
+                  <div class="relative overflow-hidden bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-6 min-h-52 shadow-xl shadow-blue-900/40">
                     <div class="absolute -top-10 -right-10 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
                     <div class="absolute -bottom-8 -left-8 w-32 h-32 bg-white/5 rounded-full blur-xl pointer-events-none"></div>
                     <div class="relative">
@@ -95,7 +95,7 @@
                   :is="cardComponent(boardLayout[slotIndex])"
                   v-bind="cardProps(boardLayout[slotIndex])"
                   v-on="cardListeners(boardLayout[slotIndex])"
-                  class="w-full h-full max-w-none"
+                  class="w-full max-w-none"
                 />
               </div>
 
@@ -115,12 +115,13 @@
 <script setup lang="ts">
 import { ref, onBeforeMount, watch, onBeforeUnmount } from 'vue'
 
-// require authentication to view this page
 definePageMeta({ auth: true })
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 
 declare const process: any
+declare const $fetch: any
+
 import BirthdayCard from '../components/BirthdayCard.vue'
 import TeamCard from '../components/TeamCard.vue'
 import VacationCard from '../components/VacationCard.vue'
@@ -132,8 +133,6 @@ import DocumentsSummaryCard from '../components/DocumentsSummaryCard.vue'
 import AttendanceButton from '../components/AttendanceButton.vue'
 import UserMenu from '../components/UserMenu.vue'
 import AppToast from '../components/AppToast.vue'
-
-declare const $fetch: any
 
 const { token, user, fetchUser, logout, apiBase, setToken, fetchUnread, unreadNotifications, lastReceivedMessage } = useAuth()
 
@@ -169,15 +168,20 @@ const documentsSummary = ref<{ medical: number; receipt: number; payroll: number
 })
 
 const vacationLoading = ref(true)
-const vacationInfo = ref<{ daysUntilVacation: number | null; vacationDays: number | null; remainingVacationDays: number | null }>({
+const vacationInfo = ref<{
+  daysUntilVacation: number | null
+  vacationDaysTotal: number | null
+  pendingToRequest: number | null
+  remainingVacationDays: number | null
+}>({
   daysUntilVacation: null,
-  vacationDays: null,
+  vacationDaysTotal: null,
+  pendingToRequest: null,
   remainingVacationDays: null,
 })
 
 const boardLayout = ref<Array<CardKey | null>>(['welcome', 'birthdays', 'team', 'vacation', 'notifications', 'worked_hours', 'holidays', 'announcements', 'documents'])
 const boardColumns = [[0, 1, 2], [3, 4, 5], [6, 7, 8]]
-const slotHeights = ['h-52', 'h-80', 'h-64', 'h-72', 'h-[22rem]', 'h-72', 'h-72', 'h-72', 'h-72']
 const draggingSlot = ref<number | null>(null)
 const dragOverSlot = ref<number | null>(null)
 const isEditMode = ref(false)
@@ -219,7 +223,8 @@ const cardProps = (key: CardKey | null) => {
   if (key === 'vacation') {
     return {
       daysUntilVacation: vacationInfo.value.daysUntilVacation,
-      vacationDays: vacationInfo.value.vacationDays,
+      vacationDaysTotal: vacationInfo.value.vacationDaysTotal,
+      pendingToRequest: vacationInfo.value.pendingToRequest,
       remainingVacationDays: vacationInfo.value.remainingVacationDays,
       loading: vacationLoading.value,
     }
@@ -340,7 +345,6 @@ async function saveDashboardLayout() {
 }
 
 onBeforeMount(async () => {
-  console.log('dashboard onBeforeMount, token=', token.value)
   if (!token.value) {
     if (process.client) {
       const saved = localStorage.getItem('rrhh_token')
@@ -394,7 +398,8 @@ onBeforeMount(async () => {
     })
     vacationInfo.value = {
       daysUntilVacation: vac?.days_until_vacation != null ? Math.round(Number(vac.days_until_vacation)) : null,
-      vacationDays: vac?.vacation_days != null ? Math.round(Number(vac.vacation_days)) : null,
+      vacationDaysTotal: vac?.vacation_days_requested_year != null ? Math.round(Number(vac.vacation_days_requested_year)) : null,
+      pendingToRequest: vac?.remaining_vacation_days != null ? Math.round(Number(vac.remaining_vacation_days)) : null,
       remainingVacationDays: vac?.remaining_vacation_days != null ? Math.round(Number(vac.remaining_vacation_days)) : null,
     }
   } catch (e) {

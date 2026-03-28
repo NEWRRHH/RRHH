@@ -1,6 +1,6 @@
 <template>
-  <div class="w-full h-full">
-    <div class="relative overflow-hidden bg-gray-900 border border-gray-800 rounded-2xl p-4 flex flex-col h-full shadow-lg shadow-black/40 transition-transform hover:-translate-y-0.5">
+  <div class="w-full">
+    <div class="relative overflow-hidden bg-gray-900 border border-gray-800 rounded-2xl p-5 flex flex-col shadow-lg shadow-black/40 transition-transform hover:-translate-y-0.5">
       <div class="absolute -top-6 -right-6 w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none"></div>
       <div class="flex items-center gap-2 mb-3">
         <div class="w-7 h-7 rounded-lg bg-indigo-500/15 flex items-center justify-center shrink-0">
@@ -35,4 +35,3 @@
 <script setup lang="ts">
 defineProps<{ summary: { medical?: number; receipt?: number; payroll?: number; total?: number } }>()
 </script>
-

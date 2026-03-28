@@ -1,6 +1,6 @@
 <template>
-  <div class="w-full h-full">
-    <div class="relative overflow-hidden bg-gray-900 border border-gray-800 rounded-2xl p-4 flex flex-col h-full shadow-lg shadow-black/40 transition-transform hover:-translate-y-0.5">
+  <div class="w-full">
+    <div class="relative overflow-hidden bg-gray-900 border border-gray-800 rounded-2xl p-5 flex flex-col shadow-lg shadow-black/40 transition-transform hover:-translate-y-0.5">
       <div class="absolute -top-6 -right-6 w-24 h-24 bg-orange-500/10 rounded-full blur-2xl pointer-events-none"></div>
       <div class="flex items-center gap-2 mb-3">
         <div class="w-7 h-7 rounded-lg bg-orange-500/15 flex items-center justify-center shrink-0">
@@ -13,7 +13,7 @@
       <div v-if="loading" class="space-y-2">
         <div v-for="i in 4" :key="i" class="h-10 rounded-lg bg-gray-800 animate-pulse"></div>
       </div>
-      <div v-else class="flex-1 overflow-y-auto space-y-2">
+      <div v-else class="holiday-scroll space-y-2 pr-1 max-h-40 overflow-y-auto">
         <div v-for="h in holidays" :key="`${h.date}-${h.name}`" class="rounded-lg bg-gray-800/70 px-3 py-2">
           <div class="text-sm text-white">{{ h.name }}</div>
           <div class="text-xs text-gray-400">{{ formatDate(h.date) }}</div>
@@ -39,3 +39,28 @@ const formatDate = (iso: string) => {
 }
 </script>
 
+<style scoped>
+.holiday-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(251, 146, 60, 0.7) rgba(31, 41, 55, 0.45);
+}
+
+.holiday-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.holiday-scroll::-webkit-scrollbar-track {
+  background: rgba(31, 41, 55, 0.45);
+  border-radius: 9999px;
+}
+
+.holiday-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(253, 186, 116, 0.95) 0%, rgba(249, 115, 22, 0.95) 100%);
+  border-radius: 9999px;
+  border: 1px solid rgba(17, 24, 39, 0.5);
+}
+
+.holiday-scroll::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(254, 215, 170, 1) 0%, rgba(251, 146, 60, 1) 100%);
+}
+</style>

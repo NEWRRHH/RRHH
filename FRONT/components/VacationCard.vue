@@ -1,6 +1,6 @@
 <template>
-  <div class="w-full h-full">
-    <div class="relative overflow-hidden bg-gray-900 border border-gray-800 rounded-2xl p-4 flex flex-col h-full shadow-lg shadow-black/40 transition-transform hover:-translate-y-0.5">
+  <div class="w-full">
+    <div class="relative overflow-hidden bg-gray-900 border border-gray-800 rounded-2xl p-5 flex flex-col shadow-lg shadow-black/40 transition-transform hover:-translate-y-0.5">
       <div class="absolute -top-6 -right-6 w-24 h-24 bg-teal-500/10 rounded-full blur-2xl pointer-events-none"></div>
 
       <div class="flex items-center gap-2 mb-4">
@@ -29,12 +29,16 @@
         <div class="h-px bg-gray-800"></div>
 
         <div class="rounded-xl bg-teal-500/5 border border-teal-500/10 px-4 py-3">
-          <div class="text-3xl font-extrabold text-teal-300 leading-none tabular-nums">
-            {{ vacationDays ?? '--' }}
+          <div class="text-xs text-gray-400">Dias de vacaciones</div>
+          <div class="text-3xl font-extrabold text-teal-300 leading-none tabular-nums mt-1">
+            {{ vacationDaysTotal ?? '--' }} dias
           </div>
-          <div class="text-xs text-gray-400 mt-1">dias de vacaciones</div>
-          <div class="text-[11px] text-teal-200 mt-2">
-            Restantes: <span class="font-semibold tabular-nums">{{ remainingVacationDays ?? '--' }}</span> dias
+        </div>
+
+        <div class="rounded-xl bg-teal-500/5 border border-teal-500/10 px-4 py-3">
+          <div class="text-xs text-gray-400">Pendientes a solicitar</div>
+          <div class="text-3xl font-extrabold text-emerald-300 leading-none tabular-nums mt-1">
+            {{ pendingToRequest ?? '--' }} dias
           </div>
         </div>
       </div>
@@ -45,9 +49,9 @@
 <script setup lang="ts">
 defineProps<{
   daysUntilVacation?: number | null
-  vacationDays?: number | null
+  vacationDaysTotal?: number | null
+  pendingToRequest?: number | null
   remainingVacationDays?: number | null
   loading?: boolean
 }>()
 </script>
-

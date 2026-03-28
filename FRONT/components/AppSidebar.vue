@@ -57,20 +57,41 @@
       </template>
     </nav>
 
-    <!-- Footer removed: logout is now in avatar menu -->
-    <div class="shrink-0 px-2 py-3 border-t border-gray-800 overflow-hidden">
-      <!-- intentionally left empty -->
+    <div v-if="isMobile" class="shrink-0 px-2 py-3 border-t border-gray-800 overflow-hidden space-y-2">
+      <button
+        class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition"
+        :class="collapsed ? 'justify-center' : ''"
+        @click="goToProfile"
+      >
+        <div class="w-7 h-7 rounded-full overflow-hidden bg-gray-700 flex items-center justify-center text-[11px] font-semibold shrink-0">
+          <img v-if="(user as any)?.photo || (user as any)?.profile_photo_path" :src="(user as any)?.photo || (user as any)?.profile_photo_path" class="w-full h-full object-cover" />
+          <span v-else>{{ userInitial }}</span>
+        </div>
+        <span v-if="!collapsed" class="truncate">Mi perfil</span>
+      </button>
+
+      <button
+        class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-red-300 hover:bg-red-500/10 transition"
+        :class="collapsed ? 'justify-center' : ''"
+        @click="emit('logout')"
+      >
+        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2h5a2 2 0 012 2v1"/>
+        </svg>
+        <span v-if="!collapsed">Cerrar sesion</span>
+      </button>
     </div>
   </aside>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import DashboardSidebarCollapse from './DashboardSidebarCollapse.vue'
 import { useAuth } from '../composables/useAuth'
+declare const $fetch: any
 
-defineEmits<{ logout: [] }>()
+const emit = defineEmits<{ logout: [] }>()
 
 // empezar siempre colapsado al iniciar sesión
 const collapsed = ref(true)
@@ -90,16 +111,86 @@ onMounted(async () => {
   try {
     await fetchUser()
     await fetchUnread()
-      } catch (e) {
+    await fetchRequestsBadge()
+    setupRequestsRealtime()
+    requestsTimer = setInterval(() => {
+      void fetchRequestsBadge()
+    }, 15000)
+  } catch (e) {
     console.error('failed to load unread count', e)
   }
 })
 
 const route = useRoute()
-const { fetchUser, unreadNotifications, fetchUnread } = useAuth()
+const router = useRouter()
+const { fetchUser, unreadNotifications, fetchUnread, user, token, apiBase, realtimeInstance } = useAuth()
 
 const unreadCount = computed(() => unreadNotifications.value || 0)
+const userInitial = computed(() => String((user.value as any)?.name || '?').charAt(0).toUpperCase())
+const requestsCount = ref(0)
+const isHrTeam = computed(() => Boolean((user.value as any)?.is_hr_team))
+const isAdmin = computed(() => Boolean((user.value as any)?.is_admin) || Number((user.value as any)?.user_type_id || 0) === 1)
+const canSeeEmployees = computed(() => isHrTeam.value || isAdmin.value)
+let requestsTimer: ReturnType<typeof setInterval> | null = null
+let reviewerRealtimeChannel: any = null
+let userRealtimeChannel: any = null
 
+async function fetchRequestsBadge() {
+  if (!token.value) return
+  try {
+    const res: any = await $fetch(`${apiBase || 'http://localhost:8000'}/api/timeoff/requests?status=pending`, {
+      headers: { Authorization: `Bearer ${token.value}` },
+    })
+    requestsCount.value = Array.isArray(res?.requests) ? res.requests.length : 0
+  } catch (_e) {
+    requestsCount.value = 0
+  }
+}
+
+function teardownRequestsRealtime() {
+  try {
+    reviewerRealtimeChannel?.stopListening?.('.TimeOffRequestUpdated')
+    userRealtimeChannel?.stopListening?.('.TimeOffRequestUpdated')
+  } catch (_e) {
+    // ignore
+  } finally {
+    reviewerRealtimeChannel = null
+    userRealtimeChannel = null
+  }
+}
+
+function setupRequestsRealtime() {
+  teardownRequestsRealtime()
+  const echo: any = realtimeInstance?.()
+  const uid = Number((user.value as any)?.id || 0)
+  if (!echo || !uid) return
+
+  userRealtimeChannel = echo.private(`user.${uid}`)
+  userRealtimeChannel.listen('.TimeOffRequestUpdated', () => {
+    void fetchRequestsBadge()
+  })
+
+  const canReview = Array.isArray((user.value as any)?.permissions) && (user.value as any).permissions.includes('requests.review')
+  if (canReview) {
+    reviewerRealtimeChannel = echo.private('timeoff.reviewers')
+    reviewerRealtimeChannel.listen('.TimeOffRequestUpdated', () => {
+      void fetchRequestsBadge()
+    })
+  }
+}
+
+function goToProfile() {
+  router.push('/profile')
+  if (isMobile.value) open.value = false
+}
+
+onBeforeUnmount(() => {
+  teardownRequestsRealtime()
+  if (requestsTimer) {
+    clearInterval(requestsTimer)
+    requestsTimer = null
+  }
+})
 const navItems = computed(() => [
   {
     label: 'Dashboard',
@@ -135,6 +226,15 @@ const navItems = computed(() => [
     </svg>`
   },
   {
+    label: 'Solicitudes',
+    to: '/solicitudes',
+    active: route.path.startsWith('/solicitudes'),
+    icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6M9 8h6M7 4h10a2 2 0 012 2v12a2 2 0 01-2 2H7a2 2 0 01-2-2V6a2 2 0 012-2z"/>
+    </svg>`,
+    badge: requestsCount
+  },
+  {
     label: 'Documentos',
     to: '/documentos',
     active: route.path.startsWith('/documentos'),
@@ -142,14 +242,14 @@ const navItems = computed(() => [
       <path stroke-linecap="round" stroke-linejoin="round" d="M7 7V3h10v4m-9 4h8m-8 4h8m-9 6h10a2 2 0 002-2V7H5v12a2 2 0 002 2z"/>
     </svg>`
   },
-  {
+  ...(canSeeEmployees.value ? [{
     label: 'Empleados',
     to: '/empleados',
     active: route.path.startsWith('/empleados'),
     icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
     </svg>`
-  },
+  }] : []),
   {
     label: 'Reportes',
     to: '/reportes',

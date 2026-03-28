@@ -3,12 +3,229 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Events\TimeOffRequestUpdated;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class TimeOffController extends Controller
 {
+    private function parseAttendanceRequestKindFromEvent(object $event): string
+    {
+        $description = strtolower(trim((string) ($event->description ?? '')));
+        if (preg_match('/tipo:\s*(entry_exit|entry|exit)/i', $description, $m)) {
+            $kind = strtolower((string) ($m[1] ?? ''));
+            if (in_array($kind, ['entry_exit', 'entry', 'exit'], true)) {
+                return $kind;
+            }
+        }
+
+        $title = strtolower(trim((string) ($event->title ?? '')));
+        if (str_contains($title, 'entrada y salida')) return 'entry_exit';
+        if (str_contains($title, 'entrada')) return 'entry';
+        if (str_contains($title, 'salida')) return 'exit';
+
+        return 'entry_exit';
+    }
+
+    private function secondsToMysqlTime(int $seconds): string
+    {
+        $s = max(0, $seconds);
+        $h = intdiv($s, 3600);
+        $m = intdiv($s % 3600, 60);
+        $ss = $s % 60;
+        return sprintf('%02d:%02d:%02d', $h, $m, $ss);
+    }
+
+    private function applyApprovedAttendanceRequest(object $event): void
+    {
+        $requestDate = Carbon::parse((string) $event->start_at)->toDateString();
+        $startAt = Carbon::parse((string) $event->start_at);
+        $endAt = Carbon::parse((string) ($event->end_at ?: $event->start_at));
+        $kind = $this->parseAttendanceRequestKindFromEvent($event);
+
+        $attendance = DB::table('attendances')
+            ->where('user_id', (int) $event->user_id)
+            ->whereDate('date', $requestDate)
+            ->orderBy('created_at', 'desc')
+            ->first();
+
+        if (!$attendance) {
+            $startTime = $startAt->format('H:i:s');
+            $endTime = in_array($kind, ['entry_exit', 'exit'], true) ? $endAt->format('H:i:s') : null;
+            $worked = null;
+            $status = 'en_trabajo';
+            $endDate = null;
+
+            if ($endTime) {
+                $startDateTime = Carbon::parse($requestDate . ' ' . $startTime);
+                $endDateTime = Carbon::parse($requestDate . ' ' . $endTime);
+                if ($endDateTime->lte($startDateTime)) {
+                    $endDateTime->addDay();
+                }
+                $worked = $this->secondsToMysqlTime($startDateTime->diffInSeconds($endDateTime));
+                $status = 'fuera_trabajo';
+                $endDate = $requestDate;
+            }
+
+            DB::table('attendances')->insert([
+                'date' => $requestDate,
+                'user_id' => (int) $event->user_id,
+                'start_time' => $startTime,
+                'pause_time' => null,
+                'resume_time' => null,
+                'end_time' => $endTime,
+                'end_date' => $endDate,
+                'hours_worked' => $worked,
+                'status' => $status,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            return;
+        }
+
+        $updates = [];
+        if (in_array($kind, ['entry_exit', 'entry'], true) && empty($attendance->start_time)) {
+            $updates['start_time'] = $startAt->format('H:i:s');
+        }
+        if (in_array($kind, ['entry_exit', 'exit'], true) && empty($attendance->end_time)) {
+            $updates['end_time'] = $endAt->format('H:i:s');
+            $updates['end_date'] = $requestDate;
+        }
+
+        $finalStart = isset($updates['start_time']) ? $updates['start_time'] : ($attendance->start_time ?? null);
+        $finalEnd = isset($updates['end_time']) ? $updates['end_time'] : ($attendance->end_time ?? null);
+        if (!empty($finalStart) && !empty($finalEnd)) {
+            $startDateTime = Carbon::parse($requestDate . ' ' . $finalStart);
+            $endDateTime = Carbon::parse($requestDate . ' ' . $finalEnd);
+            if ($endDateTime->lte($startDateTime)) {
+                $endDateTime->addDay();
+            }
+
+            $seconds = $startDateTime->diffInSeconds($endDateTime);
+            if (!empty($attendance->pause_time)) {
+                $pauseStart = Carbon::parse($requestDate . ' ' . $attendance->pause_time);
+                $pauseEnd = !empty($attendance->resume_time)
+                    ? Carbon::parse($requestDate . ' ' . $attendance->resume_time)
+                    : $endDateTime->copy();
+                if ($pauseEnd->greaterThan($pauseStart)) {
+                    $paused = $pauseStart->diffInSeconds($pauseEnd);
+                    $seconds = max(0, $seconds - $paused);
+                }
+            }
+
+            $updates['hours_worked'] = $this->secondsToMysqlTime((int) $seconds);
+            $updates['status'] = 'fuera_trabajo';
+            $updates['end_date'] = $requestDate;
+        }
+
+        if (!empty($updates)) {
+            $updates['updated_at'] = now();
+            DB::table('attendances')->where('id', $attendance->id)->update($updates);
+        }
+    }
+
+    private function vacationWorkingDaysSetForYear(int $userId, int $year, array $scheduleDays, ?int $excludeEventId = null): array
+    {
+        $yearStart = Carbon::create($year, 1, 1)->startOfDay();
+        $yearEnd = Carbon::create($year, 12, 31)->endOfDay();
+
+        $rowsQuery = DB::table('events')
+            ->where('user_id', $userId)
+            ->where('event_type_id', 2)
+            ->whereNull('deleted_at')
+            ->where(function ($q) {
+                $q->whereNull('approval_status')
+                    ->orWhereIn('approval_status', ['approved', 'pending']);
+            })
+            ->where(function ($q) use ($yearStart, $yearEnd) {
+                $q->whereBetween('start_at', [$yearStart->toDateTimeString(), $yearEnd->toDateTimeString()])
+                    ->orWhereBetween('end_at', [$yearStart->toDateTimeString(), $yearEnd->toDateTimeString()])
+                    ->orWhere(function ($q2) use ($yearStart, $yearEnd) {
+                        $q2->where('start_at', '<=', $yearStart->toDateTimeString())
+                            ->where(function ($q3) use ($yearEnd) {
+                                $q3->where('end_at', '>=', $yearEnd->toDateTimeString())
+                                    ->orWhereNull('end_at');
+                            });
+                    });
+            });
+
+        if ($excludeEventId) {
+            $rowsQuery->where('id', '!=', $excludeEventId);
+        }
+
+        $rows = $rowsQuery->get(['start_at', 'end_at']);
+        $weekMap = [1 => 'L', 2 => 'M', 3 => 'X', 4 => 'J', 5 => 'V', 6 => 'S', 7 => 'D'];
+        $set = [];
+
+        foreach ($rows as $row) {
+            $start = Carbon::parse($row->start_at)->startOfDay();
+            $end = $row->end_at ? Carbon::parse($row->end_at)->startOfDay() : $start->copy();
+            if ($end->lt($yearStart) || $start->gt($yearEnd)) continue;
+            $clampedStart = $start->lt($yearStart) ? $yearStart->copy() : $start->copy();
+            $clampedEnd = $end->gt($yearEnd) ? $yearEnd->copy() : $end->copy();
+
+            $cursor = $clampedStart->copy();
+            while ($cursor->lte($clampedEnd)) {
+                $letter = $weekMap[$cursor->dayOfWeekIso] ?? 'L';
+                if (in_array($letter, $scheduleDays, true)) {
+                    $set[$cursor->toDateString()] = true;
+                }
+                $cursor->addDay();
+            }
+        }
+
+        return $set;
+    }
+
+    private function appendWorkingRangeToSet(array $set, Carbon $start, Carbon $end, array $scheduleDays): array
+    {
+        $weekMap = [1 => 'L', 2 => 'M', 3 => 'X', 4 => 'J', 5 => 'V', 6 => 'S', 7 => 'D'];
+        $cursor = $start->copy()->startOfDay();
+        $last = $end->copy()->startOfDay();
+        while ($cursor->lte($last)) {
+            $letter = $weekMap[$cursor->dayOfWeekIso] ?? 'L';
+            if (in_array($letter, $scheduleDays, true)) {
+                $set[$cursor->toDateString()] = true;
+            }
+            $cursor->addDay();
+        }
+        return $set;
+    }
+
+    private function teamHasPermission(?int $teamId, string $permissionCode): bool
+    {
+        if (!$teamId) return false;
+        return DB::table('team_permision')
+            ->join('permisions', 'team_permision.permision_id', '=', 'permisions.id')
+            ->where('team_permision.team_id', $teamId)
+            ->where('permisions.code', $permissionCode)
+            ->exists();
+    }
+
+    private function canReviewRequests(?object $user): bool
+    {
+        if (!$user) return false;
+        return $this->teamHasPermission((int) ($user->team_id ?? 0), 'requests.review');
+    }
+
+    private function eventDisplayColor(?string $approvalStatus, ?string $selectedColor): string
+    {
+        $status = strtolower(trim((string) $approvalStatus));
+        if ($status === 'pending') return '#9CA3AF';
+        if ($status === 'rejected') return '#EF4444';
+        return $selectedColor ?: '#3B82F6';
+    }
+
+    private function normalizeApprovalStatus(?string $status): string
+    {
+        $value = strtolower(trim((string) $status));
+        if (in_array($value, ['pending', 'approved', 'rejected'], true)) {
+            return $value;
+        }
+        return 'approved';
+    }
+
     private function loadScheduleForUser(int $userId): ?object
     {
         $schedule = DB::table('schedules')
@@ -128,8 +345,12 @@ class TimeOffController extends Controller
                 'events.end_at',
                 'events.all_day',
                 'events.color',
+                'events.approval_status',
+                'events.approval_comment',
+                'events.reviewed_at',
                 'events.event_type_id',
-                'event_types.name as event_type_name'
+                'event_types.name as event_type_name',
+                'events.created_at'
             )
             ->get()
             ->map(function ($row) {
@@ -137,6 +358,7 @@ class TimeOffController extends Controller
                 $endAt = $row->end_at ? Carbon::parse($row->end_at) : $startAt->copy();
                 $startDate = $startAt->toDateString();
                 $endDate = $endAt->toDateString();
+                $status = $this->normalizeApprovalStatus($row->approval_status ?? null);
                 return [
                     'id' => $row->id,
                     'title' => $row->title,
@@ -147,8 +369,13 @@ class TimeOffController extends Controller
                     'end_time' => $endAt->format('H:i'),
                     'all_day' => (bool) $row->all_day,
                     'color' => $row->color,
+                    'display_color' => $this->eventDisplayColor($status, $row->color),
+                    'approval_status' => $status,
+                    'approval_comment' => $row->approval_comment,
+                    'reviewed_at' => $row->reviewed_at,
                     'event_type_id' => $row->event_type_id,
                     'event_type_name' => $row->event_type_name,
+                    'created_at' => $row->created_at,
                 ];
             })
             ->values();
@@ -229,6 +456,21 @@ class TimeOffController extends Controller
         $scheduleDays = $this->loadScheduleDaysForUser((int) $user->id);
         $workingDays = $this->calculateWorkingDays($start->copy()->startOfDay(), $end->copy()->startOfDay(), $scheduleDays);
 
+        if ((int) $data['event_type_id'] === 2) {
+            $year = (int) $start->year;
+            $existingSet = $this->vacationWorkingDaysSetForYear((int) $user->id, $year, $scheduleDays, null);
+            $combinedSet = $this->appendWorkingRangeToSet($existingSet, $start, $end, $scheduleDays);
+            $requestedTotal = count($combinedSet);
+            $limit = (int) ($user->vacation_days_total ?? 0);
+            if ($requestedTotal > $limit) {
+                return response()->json([
+                    'message' => "No puedes solicitar mas de {$limit} dias de vacaciones al ano",
+                    'requested_days' => $requestedTotal,
+                    'available_days' => max(0, $limit - count($existingSet)),
+                ], 422);
+            }
+        }
+
         $id = DB::table('events')->insertGetId([
             'title' => $data['title'],
             'description' => $data['description'] ?? null,
@@ -238,9 +480,14 @@ class TimeOffController extends Controller
             'event_type_id' => (int) $data['event_type_id'],
             'all_day' => $allDay,
             'color' => $data['color'] ?? null,
+            'approval_status' => 'pending',
+            'approval_comment' => null,
+            'reviewed_by_user_id' => null,
+            'reviewed_at' => null,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+        event(new TimeOffRequestUpdated((int) $id, (int) $user->id, 'created'));
 
         return response()->json([
             'status' => 'ok',
@@ -328,6 +575,21 @@ class TimeOffController extends Controller
         $scheduleDays = $this->loadScheduleDaysForUser((int) $user->id);
         $workingDays = $this->calculateWorkingDays($start->copy()->startOfDay(), $end->copy()->startOfDay(), $scheduleDays);
 
+        if ((int) $data['event_type_id'] === 2) {
+            $year = (int) $start->year;
+            $existingSet = $this->vacationWorkingDaysSetForYear((int) $user->id, $year, $scheduleDays, (int) $event->id);
+            $combinedSet = $this->appendWorkingRangeToSet($existingSet, $start, $end, $scheduleDays);
+            $requestedTotal = count($combinedSet);
+            $limit = (int) ($user->vacation_days_total ?? 0);
+            if ($requestedTotal > $limit) {
+                return response()->json([
+                    'message' => "No puedes solicitar mas de {$limit} dias de vacaciones al ano",
+                    'requested_days' => $requestedTotal,
+                    'available_days' => max(0, $limit - count($existingSet)),
+                ], 422);
+            }
+        }
+
         DB::table('events')
             ->where('id', $event->id)
             ->update([
@@ -338,8 +600,13 @@ class TimeOffController extends Controller
                 'event_type_id' => (int) $data['event_type_id'],
                 'all_day' => $allDay,
                 'color' => $data['color'] ?? null,
+                'approval_status' => 'pending',
+                'approval_comment' => null,
+                'reviewed_by_user_id' => null,
+                'reviewed_at' => null,
                 'updated_at' => now(),
             ]);
+        event(new TimeOffRequestUpdated((int) $event->id, (int) $user->id, 'updated'));
 
         return response()->json([
             'status' => 'ok',
@@ -351,5 +618,159 @@ class TimeOffController extends Controller
             ],
             'schedule_days' => $scheduleDays,
         ]);
+    }
+
+    public function requests(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) return response()->json(['message' => 'Unauthenticated'], 401);
+        $canReview = $this->canReviewRequests($user);
+
+        $statusFilter = strtolower(trim((string) $request->query('status', 'pending')));
+        $allowedStatuses = ['pending', 'approved', 'rejected', 'all'];
+        if (!in_array($statusFilter, $allowedStatuses, true)) {
+            $statusFilter = 'pending';
+        }
+
+        $query = DB::table('events')
+            ->join('event_types', 'events.event_type_id', '=', 'event_types.id')
+            ->join('users', 'events.user_id', '=', 'users.id')
+            ->leftJoin('users as reviewer', 'events.reviewed_by_user_id', '=', 'reviewer.id')
+            ->whereNull('events.deleted_at')
+            ->orderByRaw("CASE events.approval_status WHEN 'pending' THEN 0 ELSE 1 END")
+            ->orderBy('events.created_at', 'desc')
+            ->select(
+                'events.id',
+                'events.title',
+                'events.description',
+                'events.start_at',
+                'events.end_at',
+                'events.all_day',
+                'events.color',
+                'events.approval_status',
+                'events.approval_comment',
+                'events.reviewed_at',
+                'events.created_at',
+                'event_types.id as event_type_id',
+                'event_types.name as event_type_name',
+                'users.id as requester_id',
+                'users.first_name as requester_first_name',
+                'users.last_name as requester_last_name',
+                'users.name as requester_name',
+                'users.team_id as requester_team_id',
+                'reviewer.first_name as reviewer_first_name',
+                'reviewer.last_name as reviewer_last_name',
+                'reviewer.name as reviewer_name'
+            );
+
+        if (!$canReview) {
+            $query->where('events.user_id', $user->id);
+        }
+
+        if ($statusFilter !== 'all') {
+            $query->where('events.approval_status', $statusFilter);
+        }
+
+        $rows = $query->get()->map(function ($row) {
+            $start = Carbon::parse($row->start_at);
+            $end = $row->end_at ? Carbon::parse($row->end_at) : $start->copy();
+            $status = $this->normalizeApprovalStatus($row->approval_status ?? null);
+            $requesterFullName = trim(($row->requester_first_name ?? $row->requester_name ?? '') . ' ' . ($row->requester_last_name ?? ''));
+            $reviewerFullName = trim(($row->reviewer_first_name ?? $row->reviewer_name ?? '') . ' ' . ($row->reviewer_last_name ?? ''));
+
+            return [
+                'id' => $row->id,
+                'title' => $row->title,
+                'description' => $row->description,
+                'event_type_id' => $row->event_type_id,
+                'event_type_name' => $row->event_type_name,
+                'start_date' => $start->toDateString(),
+                'end_date' => $end->toDateString(),
+                'start_time' => $start->format('H:i'),
+                'end_time' => $end->format('H:i'),
+                'all_day' => (bool) $row->all_day,
+                'color' => $row->color,
+                'display_color' => $this->eventDisplayColor($status, $row->color),
+                'approval_status' => $status,
+                'approval_comment' => $row->approval_comment,
+                'reviewed_at' => $row->reviewed_at,
+                'created_at' => $row->created_at,
+                'requester' => [
+                    'id' => $row->requester_id,
+                    'full_name' => $requesterFullName !== '' ? $requesterFullName : ('Usuario #' . $row->requester_id),
+                    'team_id' => $row->requester_team_id,
+                ],
+                'reviewer_name' => $reviewerFullName !== '' ? $reviewerFullName : null,
+            ];
+        })->values();
+
+        return response()->json([
+            'can_review' => $canReview,
+            'status_filter' => $statusFilter,
+            'requests' => $rows,
+        ])->header('Access-Control-Allow-Origin', '*');
+    }
+
+    public function review(Request $request, int $id)
+    {
+        $user = $request->user();
+        if (!$this->canReviewRequests($user)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $data = $request->validate([
+            'decision' => 'required|in:approved,rejected',
+            'comment' => 'nullable|string|max:2000',
+        ]);
+
+        $decision = strtolower(trim((string) $data['decision']));
+        $comment = trim((string) ($data['comment'] ?? ''));
+
+        if ($decision === 'rejected' && $comment === '') {
+            return response()->json(['message' => 'Debes agregar un comentario al desaprobar'], 422);
+        }
+
+        $event = DB::table('events')
+            ->join('event_types', 'events.event_type_id', '=', 'event_types.id')
+            ->where('events.id', $id)
+            ->whereNull('events.deleted_at')
+            ->first([
+                'events.id',
+                'events.user_id',
+                'events.title',
+                'events.description',
+                'events.start_at',
+                'events.end_at',
+                'events.event_type_id',
+                'event_types.name as event_type_name',
+            ]);
+
+        if (!$event) {
+            return response()->json(['message' => 'Solicitud no encontrada'], 404);
+        }
+
+        DB::transaction(function () use ($id, $decision, $comment, $user, $event) {
+            DB::table('events')
+                ->where('id', $id)
+                ->update([
+                    'approval_status' => $decision,
+                    'approval_comment' => $decision === 'rejected' ? $comment : null,
+                    'reviewed_by_user_id' => $user->id,
+                    'reviewed_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+            $eventTypeName = strtolower(trim((string) ($event->event_type_name ?? '')));
+            if ($decision === 'approved' && str_contains($eventTypeName, 'fichaj')) {
+                $this->applyApprovedAttendanceRequest($event);
+            }
+        });
+        event(new TimeOffRequestUpdated((int) $id, (int) $event->user_id, 'reviewed'));
+
+        return response()->json([
+            'status' => 'ok',
+            'event_id' => $id,
+            'decision' => $decision,
+        ])->header('Access-Control-Allow-Origin', '*');
     }
 }

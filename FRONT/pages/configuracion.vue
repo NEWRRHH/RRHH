@@ -21,11 +21,11 @@
 
       <main class="relative z-10 flex-1 min-h-0 p-6 overflow-auto">
         <div class="max-w-5xl mx-auto space-y-4">
-          <div class="inline-flex rounded-xl border border-gray-700 p-1 bg-gray-900">
+          <div class="inline-flex max-w-full overflow-x-auto rounded-xl border border-gray-700 p-1 bg-gray-900">
             <button
               v-for="tab in tabs"
               :key="tab.id"
-              class="px-4 py-2 rounded-lg text-sm transition"
+              class="px-4 py-2 rounded-lg text-sm transition whitespace-nowrap"
               :class="activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
               @click="activeTab = tab.id"
             >
@@ -76,14 +76,14 @@
               <div
                 v-for="w in widgets"
                 :key="w.key"
-                class="rounded-xl border border-gray-800 bg-gray-950 p-3 grid grid-cols-1 md:grid-cols-[1fr_160px] gap-3 items-center"
+                class="rounded-xl border border-gray-800 bg-gray-950 p-3 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_180px] gap-3 items-start lg:items-center"
               >
-                <div class="flex items-center gap-3">
+                <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 min-w-0">
                   <label class="inline-flex items-center gap-2 text-gray-200">
                     <input v-model="visibility[w.key]" type="checkbox" class="accent-blue-600" />
                     <span class="font-medium">{{ w.name }}</span>
                   </label>
-                  <span class="text-xs text-gray-500">{{ w.key }}</span>
+                  <span class="text-xs text-gray-500 break-all">{{ w.key }}</span>
                 </div>
 
                 <div>
@@ -107,6 +107,65 @@
             <p class="text-sm text-gray-400">Proximamente: preferencias de perfil y privacidad.</p>
           </section>
 
+          <section v-else-if="activeTab === 'permissions'" class="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-4">
+            <div class="flex items-center justify-between gap-3">
+              <h2 class="text-white font-semibold">Permisos</h2>
+              <button
+                class="px-3 py-2 rounded-lg bg-blue-600 text-white disabled:opacity-50"
+                :disabled="permissionSaving || !selectedPermissionTeamId || !canManagePermissions"
+                @click="savePermissions"
+              >
+                {{ permissionSaving ? 'Guardando...' : 'Guardar permisos' }}
+              </button>
+            </div>
+
+            <p class="text-sm text-gray-400">Gestiona permisos por equipo para habilitar funciones puntuales (por ejemplo, aprobar solicitudes).</p>
+
+            <div v-if="permissionsLoading" class="text-gray-400">Cargando permisos...</div>
+            <div v-else-if="!canManagePermissions" class="text-sm text-amber-200">No tienes permisos para administrar permisos.</div>
+            <div v-else class="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
+              <aside class="rounded-xl border border-gray-800 bg-gray-950 p-3 max-h-[420px] overflow-auto space-y-2">
+                <button
+                  v-for="t in permissionTeams"
+                  :key="t.id"
+                  class="w-full text-left rounded-lg border px-3 py-2 transition"
+                  :class="selectedPermissionTeamId === t.id ? 'border-blue-500 bg-blue-500/10 text-white' : 'border-gray-800 bg-gray-900 text-gray-200 hover:bg-gray-800'"
+                  @click="selectPermissionTeam(t.id)"
+                >
+                  <p class="text-sm truncate">{{ t.name }}</p>
+                  <p class="text-xs text-gray-400 truncate">{{ (t.permission_codes || []).length }} permisos</p>
+                </button>
+              </aside>
+
+              <div class="rounded-xl border border-gray-800 bg-gray-950 p-4 space-y-3">
+                <p class="text-sm text-gray-200">
+                  Equipo:
+                  <span class="font-semibold">{{ selectedPermissionTeamName || 'Sin seleccionar' }}</span>
+                </p>
+                <div v-if="!selectedPermissionTeamId" class="text-sm text-gray-500">Selecciona un equipo para editar permisos.</div>
+                <div v-else class="space-y-2">
+                  <label
+                    v-for="p in permissionsCatalog"
+                    :key="p.code"
+                    class="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-900 px-3 py-2"
+                  >
+                    <input
+                      type="checkbox"
+                      class="accent-blue-600 mt-1"
+                      :checked="selectedPermissionCodes.includes(p.code)"
+                      @change="togglePermissionCode(p.code, $event)"
+                    />
+                    <span>
+                      <span class="text-sm text-white font-medium">{{ p.name }}</span>
+                      <span class="block text-xs text-gray-400">{{ p.code }}</span>
+                      <span v-if="p.description" class="block text-xs text-gray-500">{{ p.description }}</span>
+                    </span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <section v-else class="rounded-2xl border border-gray-800 bg-gray-900 p-5">
             <h2 class="text-white font-semibold mb-2">Notificaciones</h2>
             <p class="text-sm text-gray-400">Proximamente: reglas y canales de notificacion.</p>
@@ -120,7 +179,7 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeMount, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeMount, onBeforeUnmount, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import AppSidebar from '../components/AppSidebar.vue'
@@ -139,6 +198,7 @@ const { token, fetchUser, logout, apiBase, setToken } = useAuth()
 const tabs = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'profile', label: 'Perfil' },
+  { id: 'permissions', label: 'Permisos' },
   { id: 'notifications', label: 'Notificaciones' },
 ]
 
@@ -160,6 +220,13 @@ const welcomeSettings = ref<{ title: string; subtitle: string; show_date: boolea
   subtitle: 'Aqui tenes un resumen de la actividad del sistema.',
   show_date: true,
 })
+const canManagePermissions = ref(false)
+const permissionsLoading = ref(false)
+const permissionSaving = ref(false)
+const permissionsCatalog = ref<Array<{ id: number; code: string; name: string; description: string | null }>>([])
+const permissionTeams = ref<Array<{ id: number; name: string; permission_codes: string[] }>>([])
+const selectedPermissionTeamId = ref<number | null>(null)
+const selectedPermissionCodes = ref<string[]>([])
 
 function showToast(type: 'success' | 'error', message: string) {
   toast.value = { show: true, type, message }
@@ -275,6 +342,70 @@ async function saveLayout() {
   }
 }
 
+const selectedPermissionTeamName = computed(() => {
+  const t = permissionTeams.value.find((x) => x.id === selectedPermissionTeamId.value)
+  return t?.name || ''
+})
+
+function selectPermissionTeam(id: number) {
+  selectedPermissionTeamId.value = id
+  const t = permissionTeams.value.find((x) => x.id === id)
+  selectedPermissionCodes.value = Array.isArray(t?.permission_codes) ? [...t!.permission_codes] : []
+}
+
+function togglePermissionCode(code: string, e: Event) {
+  const checked = (e.target as HTMLInputElement).checked
+  const set = new Set(selectedPermissionCodes.value)
+  if (checked) set.add(code)
+  else set.delete(code)
+  selectedPermissionCodes.value = Array.from(set.values())
+}
+
+async function loadPermissions() {
+  if (!token.value) return
+  permissionsLoading.value = true
+  try {
+    const res: any = await $fetch(`${apiBase || 'http://localhost:8000'}/api/permissions/catalog`, {
+      headers: { Authorization: `Bearer ${token.value}` },
+    })
+    canManagePermissions.value = true
+    permissionsCatalog.value = Array.isArray(res?.permissions) ? res.permissions : []
+    permissionTeams.value = Array.isArray(res?.teams) ? res.teams : []
+    if (!selectedPermissionTeamId.value && permissionTeams.value.length) {
+      selectPermissionTeam(permissionTeams.value[0].id)
+    }
+  } catch (e: any) {
+    if (e?.status === 403 || e?.data?.message === 'Forbidden') {
+      canManagePermissions.value = false
+    }
+    permissionsCatalog.value = []
+    permissionTeams.value = []
+  } finally {
+    permissionsLoading.value = false
+  }
+}
+
+async function savePermissions() {
+  if (!token.value || !selectedPermissionTeamId.value || !canManagePermissions.value) return
+  permissionSaving.value = true
+  try {
+    await $fetch(`${apiBase || 'http://localhost:8000'}/api/permissions/teams/${selectedPermissionTeamId.value}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token.value}` },
+      body: {
+        permission_codes: selectedPermissionCodes.value,
+      },
+    })
+    const idx = permissionTeams.value.findIndex((t) => t.id === selectedPermissionTeamId.value)
+    if (idx >= 0) permissionTeams.value[idx].permission_codes = [...selectedPermissionCodes.value]
+    showToast('success', 'Permisos actualizados')
+  } catch (e) {
+    showToast('error', 'No se pudieron guardar los permisos')
+  } finally {
+    permissionSaving.value = false
+  }
+}
+
 onBeforeMount(async () => {
   if (!token.value) {
     if (process.client) {
@@ -293,6 +424,7 @@ onBeforeMount(async () => {
   }
 
   await loadLayout()
+  await loadPermissions()
 })
 
 onBeforeUnmount(() => {

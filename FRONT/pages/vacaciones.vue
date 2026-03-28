@@ -72,7 +72,7 @@
                 :key="cell.key"
                 class="h-8 rounded-md text-[11px] relative"
                 :class="dayCellClass(cell.iso, cell.currentMonth)"
-                :disabled="isPastIso(cell.iso)"
+                :disabled="isPastIso(cell.iso) || !isWorkingIso(cell.iso)"
                 @pointerdown="onDayPointerDown(cell.iso, $event)"
                 @pointerenter="onDayPointerEnter(cell.iso)"
                 @pointerup="onDayPointerUp"
@@ -81,7 +81,7 @@
                 <span
                   v-if="eventsByDate[cell.iso]?.length"
                   class="absolute left-1 right-1 bottom-1 h-1 rounded-full"
-                  :style="{ backgroundColor: eventsByDate[cell.iso][0].color || '#3B82F6' }"
+                  :style="{ backgroundColor: eventsByDate[cell.iso][0].display_color || '#3B82F6' }"
                 />
               </button>
             </div>
@@ -98,7 +98,7 @@
               :key="cell.key"
               class="h-20 rounded-lg p-2 text-left relative"
               :class="dayCellClass(cell.iso, cell.currentMonth)"
-              :disabled="isPastIso(cell.iso)"
+              :disabled="isPastIso(cell.iso) || !isWorkingIso(cell.iso)"
               @pointerdown="onDayPointerDown(cell.iso, $event)"
               @pointerenter="onDayPointerEnter(cell.iso)"
               @pointerup="onDayPointerUp"
@@ -109,9 +109,9 @@
                   v-for="ev in (eventsByDate[cell.iso] || []).slice(0, 2)"
                   :key="`${cell.iso}-${ev.id}`"
                   class="truncate text-[10px] px-1.5 py-0.5 rounded"
-                  :style="{ backgroundColor: `${ev.color || '#1D4ED8'}33`, color: ev.color || '#93C5FD' }"
+                  :style="{ backgroundColor: `${ev.display_color || '#1D4ED8'}33`, color: ev.display_color || '#93C5FD' }"
                 >
-                  {{ ev.title }}
+                  {{ ev.title }} · {{ statusShort(ev.approval_status) }}
                 </div>
                 <div v-if="(eventsByDate[cell.iso] || []).length > 2" class="text-[10px] text-gray-400">
                   +{{ (eventsByDate[cell.iso] || []).length - 2 }} mas
@@ -120,6 +120,28 @@
             </button>
           </div>
         </div>
+
+        <section class="rounded-2xl border border-gray-800 bg-gray-900 p-4">
+          <h2 class="text-sm font-semibold text-white mb-3">Estado de mis solicitudes</h2>
+          <div v-if="!recentRequests.length" class="text-sm text-gray-500">Todavia no hay solicitudes en este periodo.</div>
+          <div v-else class="space-y-2">
+            <div
+              v-for="req in recentRequests"
+              :key="`req-${req.id}`"
+              class="rounded-xl border border-gray-800 bg-gray-950 px-3 py-2"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-sm text-gray-200 truncate">{{ req.title }}</p>
+                <span class="text-[11px] px-2 py-1 rounded-full border uppercase tracking-wide" :class="statusBadgeClass(req.approval_status)">
+                  {{ statusLabel(req.approval_status) }}
+                </span>
+              </div>
+              <p class="text-xs text-gray-400">{{ req.start_date }} a {{ req.end_date }} · {{ req.event_type_name }}</p>
+              <p v-if="!req.all_day" class="text-xs text-blue-300">Horario: {{ req.start_time }} - {{ req.end_time }}</p>
+              <p v-if="req.approval_comment" class="text-xs text-amber-200 mt-1">Motivo RRHH: {{ req.approval_comment }}</p>
+            </div>
+          </div>
+        </section>
       </main>
     </div>
 
@@ -138,6 +160,9 @@
         </div>
         <div class="rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-300">
           Dias seleccionados: {{ selectedDaysSummary }}
+        </div>
+        <div class="rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-xs text-gray-300">
+          Al guardar, la solicitud queda <strong>pendiente</strong> y RRHH debe aprobarla.
         </div>
 
         <div class="grid gap-3">
@@ -237,8 +262,13 @@ type CalendarEvent = {
   end_time: string
   all_day: boolean
   color: string | null
+  display_color: string | null
+  approval_status: 'pending' | 'approved' | 'rejected'
+  approval_comment: string | null
+  reviewed_at: string | null
   event_type_id: number
   event_type_name: string
+  created_at: string | null
 }
 
 const router = useRouter()
@@ -432,6 +462,11 @@ const canChooseHours = computed(() => selectedTotalDays.value === 1 && !!schedul
 
 const scheduleDaysText = computed(() => (scheduleDays.value.length ? scheduleDays.value.join(', ') : 'Sin definir'))
 const isEditMode = computed(() => editingEventId.value !== null)
+const recentRequests = computed(() => {
+  return [...events.value]
+    .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+    .slice(0, 8)
+})
 
 function showToast(type: 'success' | 'error', message: string) {
   toast.value = { show: true, type, message }
@@ -441,8 +476,27 @@ function showToast(type: 'success' | 'error', message: string) {
   }, 2800)
 }
 
+function statusShort(status: string): string {
+  if (status === 'approved') return 'ok'
+  if (status === 'rejected') return 'no'
+  return 'pend'
+}
+
+function statusLabel(status: string): string {
+  if (status === 'approved') return 'Aprobada'
+  if (status === 'rejected') return 'Rechazada'
+  return 'Pendiente'
+}
+
+function statusBadgeClass(status: string): string {
+  if (status === 'approved') return 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
+  if (status === 'rejected') return 'border-red-500/40 text-red-300 bg-red-500/10'
+  return 'border-gray-500/40 text-gray-200 bg-gray-500/20'
+}
+
 function isInSelectedRange(iso: string): boolean {
   if (!selectedRange.value.start || !selectedRange.value.end) return false
+  if (!isWorkingIso(iso)) return false
   return iso >= selectedRange.value.start && iso <= selectedRange.value.end
 }
 
@@ -521,6 +575,7 @@ function closeModal() {
 function onDayPointerDown(iso: string, e: PointerEvent) {
   if (e.button !== 0) return
   if (isPastIso(iso)) return
+  if (!isWorkingIso(iso)) return
   isDragging.value = true
   dragStartIso.value = iso
   dragEndIso.value = iso
@@ -529,6 +584,7 @@ function onDayPointerDown(iso: string, e: PointerEvent) {
 function onDayPointerEnter(iso: string) {
   if (!isDragging.value) return
   if (isPastIso(iso)) return
+  if (!isWorkingIso(iso)) return
   dragEndIso.value = iso
 }
 
@@ -626,7 +682,7 @@ async function saveEvent() {
     })
     closeModal()
     await loadCalendar()
-    showToast('success', wasEdit ? 'Evento actualizado correctamente' : 'Evento guardado correctamente')
+    showToast('success', wasEdit ? 'Solicitud actualizada y enviada a RRHH' : 'Solicitud enviada a RRHH')
   } catch (e: any) {
     errorMessage.value = e?.data?.message || 'No se pudo guardar el evento'
     showToast('error', errorMessage.value)

@@ -1,6 +1,6 @@
 <template>
-  <div class="w-full h-full">
-    <div class="relative overflow-hidden bg-gray-900 border border-gray-800 rounded-2xl p-4 flex flex-col h-full shadow-lg shadow-black/40 transition-transform hover:-translate-y-0.5">
+  <div class="w-full">
+    <div class="relative overflow-hidden bg-gray-900 border border-gray-800 rounded-2xl p-5 flex flex-col shadow-lg shadow-black/40 transition-transform hover:-translate-y-0.5">
       <div class="absolute -top-6 -right-6 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none"></div>
       <div class="flex items-center gap-2 mb-3">
         <div class="w-7 h-7 rounded-lg bg-emerald-500/15 flex items-center justify-center shrink-0">
@@ -17,8 +17,8 @@
       <div v-if="loading" class="space-y-3">
         <div v-for="i in 4" :key="i" class="h-9 rounded-lg bg-gray-800 animate-pulse"></div>
       </div>
-      <div v-else class="flex-1 overflow-y-auto">
-        <div v-if="members && members.length" class="space-y-2">
+      <div v-else>
+        <div v-if="members && members.length" class="space-y-2 max-h-40 overflow-y-auto pr-1 team-scroll">
           <div v-for="m in members" :key="m.id" class="flex items-center gap-2 p-2 rounded-lg bg-gray-800/70">
             <div class="w-8 h-8 rounded-full overflow-hidden bg-gray-700 flex items-center justify-center text-xs text-gray-300">
               <img v-if="m.photo" :src="m.photo" class="w-full h-full object-cover" />
@@ -41,3 +41,24 @@ defineProps({
   loading: { type: Boolean as PropType<boolean>, default: false },
 })
 </script>
+
+<style scoped>
+.team-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(16, 185, 129, 0.55) rgba(31, 41, 55, 0.4);
+}
+
+.team-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.team-scroll::-webkit-scrollbar-track {
+  background: rgba(31, 41, 55, 0.4);
+  border-radius: 9999px;
+}
+
+.team-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(to bottom, rgba(52, 211, 153, 0.85), rgba(16, 185, 129, 0.85));
+  border-radius: 9999px;
+}
+</style>

@@ -33,6 +33,8 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::get('/employees/{employeeId}/documents/{docId}/download', [AuthController::class, 'employeeDocumentDownload']);
     Route::put('/employees/{id}', [AuthController::class, 'updateEmployee']);
     Route::delete('/employees/{id}', [AuthController::class, 'deleteEmployee']);
+    Route::get('/permissions/catalog', [AuthController::class, 'permissionsCatalog']);
+    Route::put('/permissions/teams/{id}', [AuthController::class, 'updateTeamPermissions']);
 
     // attendance control
     Route::post('/attendance/start', [AuthController::class, 'startAttendance']);
@@ -45,6 +47,7 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::get('/attendance/day', [AuthController::class, 'attendanceDay']);
     Route::get('/attendance/month', [AuthController::class, 'attendanceMonth']);
     Route::get('/attendance/who-is-in', [AuthController::class, 'attendanceWhoIsIn']);
+    Route::post('/attendance/requests', [AuthController::class, 'requestAttendanceAdjustment']);
 
     Route::get('/dashboard', [DashboardController::class, 'index']);
     Route::get('/dashboard/layout', [DashboardController::class, 'dashboardLayout']);
@@ -75,6 +78,8 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::get('/timeoff/calendar', [TimeOffController::class, 'calendar']);
     Route::post('/timeoff/events', [TimeOffController::class, 'create']);
     Route::put('/timeoff/events/{id}', [TimeOffController::class, 'update']);
+    Route::get('/timeoff/requests', [TimeOffController::class, 'requests']);
+    Route::post('/timeoff/requests/{id}/review', [TimeOffController::class, 'review']);
 
     // documents center
     Route::get('/documents', [DocumentController::class, 'index']);

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Events\TimeOffRequestUpdated;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -15,6 +16,42 @@ use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
+    private function attendanceRequestEventTypeId(): int
+    {
+        $existing = DB::table('event_types')
+            ->whereRaw('LOWER(name) = ?', ['fichaje'])
+            ->whereNull('deleted_at')
+            ->first(['id']);
+
+        if ($existing && isset($existing->id)) {
+            return (int) $existing->id;
+        }
+
+        return (int) DB::table('event_types')->insertGetId([
+            'name' => 'Fichaje',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    private function isAdminUser(?object $user): bool
+    {
+        return (int) ($user->user_type_id ?? 0) === 1;
+    }
+
+    private function isHrTeam(?object $user): bool
+    {
+        if (!$user || empty($user->team_id)) return false;
+        $team = DB::table('teams')->where('id', (int) $user->team_id)->first(['name']);
+        if (!$team || empty($team->name)) return false;
+        return str_contains(strtolower((string) $team->name), 'rrhh');
+    }
+
+    private function canManageEmployees(?object $user): bool
+    {
+        return $this->isHrTeam($user) || $this->isAdminUser($user);
+    }
+
     /**
      * Compute worked seconds for an attendance row, discounting pause span.
      * With the current schema we store one pause/resume pair (latest values).
@@ -216,8 +253,121 @@ class AuthController extends Controller
 
     public function user(Request $request)
     {
-        return response()->json($request->user())
-            ->header('Access-Control-Allow-Origin', '*');
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        $permissions = DB::table('team_permision')
+            ->join('permisions', 'team_permision.permision_id', '=', 'permisions.id')
+            ->where('team_permision.team_id', (int) ($user->team_id ?? 0))
+            ->orderBy('permisions.code', 'asc')
+            ->pluck('permisions.code')
+            ->values()
+            ->all();
+
+        $payload = $user->toArray();
+        $payload['permissions'] = $permissions;
+        $payload['is_hr_team'] = $this->isHrTeam($user);
+        $payload['is_admin'] = $this->isAdminUser($user);
+
+        return response()->json($payload)->header('Access-Control-Allow-Origin', '*');
+    }
+
+    private function canManagePermissions(?object $user): bool
+    {
+        return $this->isHrTeam($user) || $this->isAdminUser($user);
+    }
+
+    public function permissionsCatalog(Request $request)
+    {
+        $user = $request->user();
+        if (!$this->canManagePermissions($user)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $permissions = DB::table('permisions')
+            ->orderBy('code', 'asc')
+            ->get(['id', 'code', 'name', 'description']);
+
+        $assignments = DB::table('team_permision')
+            ->join('permisions', 'team_permision.permision_id', '=', 'permisions.id')
+            ->select('team_permision.team_id', 'permisions.code')
+            ->get();
+
+        $codesByTeam = [];
+        foreach ($assignments as $a) {
+            if (!isset($codesByTeam[$a->team_id])) {
+                $codesByTeam[$a->team_id] = [];
+            }
+            $codesByTeam[$a->team_id][] = $a->code;
+        }
+
+        $teams = DB::table('teams')
+            ->orderBy('name', 'asc')
+            ->get(['id', 'name'])
+            ->map(function ($t) use ($codesByTeam) {
+                return [
+                    'id' => $t->id,
+                    'name' => $t->name,
+                    'permission_codes' => array_values(array_unique($codesByTeam[$t->id] ?? [])),
+                ];
+            })
+            ->values();
+
+        return response()->json([
+            'permissions' => $permissions,
+            'teams' => $teams,
+        ])->header('Access-Control-Allow-Origin', '*');
+    }
+
+    public function updateTeamPermissions(Request $request, int $id)
+    {
+        $auth = $request->user();
+        if (!$this->canManagePermissions($auth)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $team = DB::table('teams')->where('id', $id)->first(['id']);
+        if (!$team) {
+            return response()->json(['message' => 'Team not found'], 404);
+        }
+
+        $data = $request->validate([
+            'permission_codes' => 'nullable|array',
+            'permission_codes.*' => 'string|max:100',
+        ]);
+
+        $codes = array_values(array_unique($data['permission_codes'] ?? []));
+        if (!count($codes)) {
+            DB::table('team_permision')->where('team_id', $team->id)->delete();
+            return response()->json(['status' => 'ok', 'permission_codes' => []])->header('Access-Control-Allow-Origin', '*');
+        }
+
+        $permissions = DB::table('permisions')
+            ->whereIn('code', $codes)
+            ->get(['id', 'code']);
+
+        $permissionIds = $permissions->pluck('id')->values()->all();
+        $validCodes = $permissions->pluck('code')->values()->all();
+
+        DB::transaction(function () use ($team, $permissionIds) {
+            DB::table('team_permision')->where('team_id', $team->id)->delete();
+            $now = now();
+            foreach ($permissionIds as $pid) {
+                DB::table('team_permision')->insert([
+                    'team_id' => $team->id,
+                    'permision_id' => $pid,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
+            }
+        });
+
+        return response()->json([
+            'status' => 'ok',
+            'permission_codes' => $validCodes,
+        ])->header('Access-Control-Allow-Origin', '*');
     }
 
     /**
@@ -496,7 +646,7 @@ class AuthController extends Controller
             return response()->json(['message' => 'Unauthenticated'], 401);
         }
 
-        $isPrivileged = in_array((int) $user->team_id, [1, 2], true);
+        $isPrivileged = $this->isHrTeam($user);
 
         $requestedDate = $request->query('date');
         try {
@@ -591,7 +741,7 @@ class AuthController extends Controller
             return response()->json(['message' => 'Unauthenticated'], 401);
         }
 
-        $isPrivileged = in_array((int) $user->team_id, [1, 2], true);
+        $isPrivileged = $this->isHrTeam($user);
 
         $monthInput = (string) ($request->query('month') ?: Carbon::today()->format('Y-m'));
         try {
@@ -685,6 +835,10 @@ class AuthController extends Controller
             ->join('event_types', 'events.event_type_id', '=', 'event_types.id')
             ->where('events.user_id', $selectedUserId)
             ->whereNull('events.deleted_at')
+            ->where(function ($q) {
+                $q->whereNull('events.approval_status')
+                    ->orWhere('events.approval_status', 'approved');
+            })
             ->where(function ($q) use ($monthStart, $monthEnd) {
                 $q->whereBetween('events.start_at', [$monthStart->toDateTimeString(), $monthEnd->toDateTimeString()])
                     ->orWhereBetween('events.end_at', [$monthStart->toDateTimeString(), $monthEnd->toDateTimeString()])
@@ -706,6 +860,40 @@ class AuthController extends Controller
                 'events.color',
                 'event_types.name as event_type_name',
             ]);
+
+        $attendanceRequestTypeId = $this->attendanceRequestEventTypeId();
+        $pendingAttendanceRequests = DB::table('events')
+            ->where('user_id', $selectedUserId)
+            ->where('event_type_id', $attendanceRequestTypeId)
+            ->whereNull('deleted_at')
+            ->where('approval_status', 'pending')
+            ->where(function ($q) use ($monthStart, $monthEnd) {
+                $q->whereBetween('start_at', [$monthStart->toDateTimeString(), $monthEnd->toDateTimeString()])
+                    ->orWhereBetween('end_at', [$monthStart->toDateTimeString(), $monthEnd->toDateTimeString()])
+                    ->orWhere(function ($q2) use ($monthStart, $monthEnd) {
+                        $q2->where('start_at', '<=', $monthStart->toDateTimeString())
+                            ->where(function ($q3) use ($monthEnd) {
+                                $q3->where('end_at', '>=', $monthEnd->toDateTimeString())
+                                    ->orWhereNull('end_at');
+                            });
+                    });
+            })
+            ->orderBy('created_at', 'desc')
+            ->get(['id', 'start_at', 'end_at']);
+
+        $pendingAttendanceRequestsByDate = [];
+        foreach ($pendingAttendanceRequests as $req) {
+            $reqStart = Carbon::parse($req->start_at)->startOfDay();
+            $reqEnd = $req->end_at ? Carbon::parse($req->end_at)->startOfDay() : $reqStart->copy();
+            $cursorReq = $reqStart->copy();
+            while ($cursorReq->lte($reqEnd)) {
+                $dateKey = $cursorReq->toDateString();
+                if (!isset($pendingAttendanceRequestsByDate[$dateKey])) {
+                    $pendingAttendanceRequestsByDate[$dateKey] = (int) $req->id;
+                }
+                $cursorReq->addDay();
+            }
+        }
 
         $eventsByDate = [];
         foreach ($rawEvents as $event) {
@@ -787,9 +975,39 @@ class AuthController extends Controller
                     'status' => $att->status ?? null,
                     'is_working_day' => $isWorkingDay,
                     'events' => $eventsByDate[$key] ?? [],
+                    'attendance_request_pending' => isset($pendingAttendanceRequestsByDate[$key]),
+                    'attendance_request_id' => $pendingAttendanceRequestsByDate[$key] ?? null,
                 ];
             }
             $cursor->addDay();
+        }
+
+        $requestRows = DB::table('events')
+            ->where('user_id', $selectedUserId)
+            ->whereNull('deleted_at')
+            ->where(function ($q) use ($monthStart, $monthEnd) {
+                $q->whereBetween('start_at', [$monthStart->toDateTimeString(), $monthEnd->toDateTimeString()])
+                    ->orWhereBetween('end_at', [$monthStart->toDateTimeString(), $monthEnd->toDateTimeString()])
+                    ->orWhere(function ($q2) use ($monthStart, $monthEnd) {
+                        $q2->where('start_at', '<=', $monthStart->toDateTimeString())
+                            ->where(function ($q3) use ($monthEnd) {
+                                $q3->where('end_at', '>=', $monthEnd->toDateTimeString())
+                                    ->orWhereNull('end_at');
+                            });
+                    });
+            })
+            ->get(['approval_status']);
+
+        $requestsTotal = 0;
+        $requestsPending = 0;
+        $requestsApproved = 0;
+        $requestsRejected = 0;
+        foreach ($requestRows as $rq) {
+            $requestsTotal++;
+            $st = strtolower(trim((string) ($rq->approval_status ?? 'approved')));
+            if ($st === 'pending') $requestsPending++;
+            elseif ($st === 'rejected') $requestsRejected++;
+            else $requestsApproved++;
         }
 
         $teams = DB::table('teams')
@@ -815,6 +1033,10 @@ class AuthController extends Controller
                 'worked_hhmm' => $this->formatMinutesAsHHMM($workedMinutes),
                 'target_minutes' => $targetMinutes,
                 'target_hhmm' => $this->formatMinutesAsHHMM($targetMinutes),
+                'requests_total' => $requestsTotal,
+                'requests_pending' => $requestsPending,
+                'requests_approved' => $requestsApproved,
+                'requests_rejected' => $requestsRejected,
             ],
             'include_non_working' => $includeNonWorking,
             'rows' => $rows,
@@ -832,7 +1054,7 @@ class AuthController extends Controller
             return response()->json(['message' => 'Unauthenticated'], 401);
         }
 
-        $isPrivileged = in_array((int) $user->team_id, [1, 2], true);
+        $isPrivileged = $this->isHrTeam($user);
 
         $today = Carbon::today()->toDateString();
         $teamFilter = $request->query('team_id');
@@ -902,6 +1124,140 @@ class AuthController extends Controller
         ])->header('Access-Control-Allow-Origin', '*');
     }
 
+    public function requestAttendanceAdjustment(Request $request)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        $data = $request->validate([
+            'date' => 'required|date_format:Y-m-d',
+        ]);
+
+        $targetDate = Carbon::createFromFormat('Y-m-d', $data['date'])->startOfDay();
+        $today = Carbon::today();
+        if ($targetDate->gt($today)) {
+            return response()->json(['message' => 'Solo puedes solicitar fichajes de hoy o dias pasados'], 422);
+        }
+
+        $attendance = DB::table('attendances')
+            ->where('user_id', $user->id)
+            ->whereDate('date', $targetDate->toDateString())
+            ->orderBy('created_at', 'desc')
+            ->first(['id', 'start_time', 'end_time']);
+
+        $missingEntry = false;
+        $missingExit = false;
+        if (! $attendance) {
+            $missingEntry = true;
+            $missingExit = true;
+        } else {
+            $missingEntry = empty($attendance->start_time);
+            $missingExit = empty($attendance->end_time);
+        }
+
+        if (! $missingEntry && ! $missingExit) {
+            return response()->json(['message' => 'Ese dia ya tiene entrada y salida registradas'], 422);
+        }
+
+        $requestKind = $missingEntry && $missingExit
+            ? 'entry_exit'
+            : ($missingEntry ? 'entry' : 'exit');
+
+        $eventTypeId = $this->attendanceRequestEventTypeId();
+        $pendingExists = DB::table('events')
+            ->where('user_id', $user->id)
+            ->where('event_type_id', $eventTypeId)
+            ->whereNull('deleted_at')
+            ->where('approval_status', 'pending')
+            ->whereDate('start_at', $targetDate->toDateString())
+            ->exists();
+
+        if ($pendingExists) {
+            return response()->json(['message' => 'Ya existe una solicitud pendiente para ese dia'], 422);
+        }
+
+        $schedule = DB::table('schedules')
+            ->where('user_id', $user->id)
+            ->orderBy('id', 'desc')
+            ->first();
+        if (! $schedule) {
+            $schedule = DB::table('schedules')
+                ->join('user_schedules', 'schedules.id', '=', 'user_schedules.schedule_id')
+                ->where('user_schedules.user_id', $user->id)
+                ->select('schedules.*')
+                ->orderBy('schedules.id', 'desc')
+                ->first();
+        }
+
+        $scheduleStart = isset($schedule->start_time) ? substr((string) $schedule->start_time, 0, 5) : '09:00';
+        $scheduleEnd = isset($schedule->end_time) ? substr((string) $schedule->end_time, 0, 5) : '18:00';
+
+        $startAt = $targetDate->copy();
+        $endAt = $targetDate->copy();
+        if ($requestKind === 'entry_exit') {
+            [$sh, $sm] = array_map('intval', explode(':', $scheduleStart));
+            [$eh, $em] = array_map('intval', explode(':', $scheduleEnd));
+            $startAt->setTime($sh, $sm, 0);
+            $endAt->setTime($eh, $em, 0);
+        } elseif ($requestKind === 'exit') {
+            $existingStart = !empty($attendance->start_time) ? substr((string) $attendance->start_time, 0, 5) : $scheduleStart;
+            [$sh, $sm] = array_map('intval', explode(':', $existingStart));
+            [$eh, $em] = array_map('intval', explode(':', $scheduleEnd));
+            $startAt->setTime($sh, $sm, 0);
+            $endAt->setTime($eh, $em, 0);
+        } else {
+            $existingEnd = !empty($attendance->end_time) ? substr((string) $attendance->end_time, 0, 5) : $scheduleEnd;
+            [$sh, $sm] = array_map('intval', explode(':', $scheduleStart));
+            [$eh, $em] = array_map('intval', explode(':', $existingEnd));
+            $startAt->setTime($sh, $sm, 0);
+            $endAt->setTime($eh, $em, 0);
+        }
+
+        if ($endAt->lte($startAt)) {
+            $endAt = $startAt->copy()->addHours(8);
+        }
+
+        $titleByKind = [
+            'entry_exit' => 'Solicitud de fichaje: entrada y salida faltantes',
+            'entry' => 'Solicitud de fichaje: entrada faltante',
+            'exit' => 'Solicitud de fichaje: salida faltante',
+        ];
+
+        $description = sprintf(
+            'Regularizacion de fichaje del %s. Tipo: %s.',
+            $targetDate->format('Y-m-d'),
+            $requestKind
+        );
+
+        $eventId = DB::table('events')->insertGetId([
+            'title' => $titleByKind[$requestKind] ?? 'Solicitud de fichaje',
+            'description' => $description,
+            'start_at' => $startAt->toDateTimeString(),
+            'end_at' => $endAt->toDateTimeString(),
+            'user_id' => $user->id,
+            'event_type_id' => $eventTypeId,
+            'all_day' => false,
+            'color' => '#F59E0B',
+            'approval_status' => 'pending',
+            'approval_comment' => null,
+            'reviewed_by_user_id' => null,
+            'reviewed_at' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        event(new TimeOffRequestUpdated((int) $eventId, (int) $user->id, 'created'));
+
+        return response()->json([
+            'status' => 'ok',
+            'request_id' => (int) $eventId,
+            'request_kind' => $requestKind,
+            'date' => $targetDate->toDateString(),
+        ])->header('Access-Control-Allow-Origin', '*');
+    }
+
     /**
      * Change password for authenticated user.
      */
@@ -929,7 +1285,7 @@ class AuthController extends Controller
     public function updateSchedule(Request $request)
     {
         $user = $request->user();
-        if ($user->user_type_id !== 1) {
+        if (!$this->isHrTeam($user)) {
             return response()->json(['message'=>'Forbidden'], 403);
         }
         $data = $request->validate([
@@ -967,7 +1323,7 @@ class AuthController extends Controller
     public function employees(Request $request)
     {
         $user = $request->user();
-        if (! $user || $user->user_type_id !== 1) {
+        if (!$this->canManageEmployees($user)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
@@ -1000,7 +1356,7 @@ class AuthController extends Controller
     public function getEmployee(Request $request, int $id)
     {
         $user = $request->user();
-        if (! $user || $user->user_type_id !== 1) {
+        if (!$this->canManageEmployees($user)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
@@ -1041,7 +1397,7 @@ class AuthController extends Controller
     public function employeeAttendanceMonth(Request $request, int $id)
     {
         $user = $request->user();
-        if (! $user || $user->user_type_id !== 1) {
+        if (!$this->canManageEmployees($user)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
@@ -1146,6 +1502,34 @@ class AuthController extends Controller
             $cursor->addDay();
         }
 
+        $requestRows = DB::table('events')
+            ->where('user_id', $employee->id)
+            ->whereNull('deleted_at')
+            ->where(function ($q) use ($monthStart, $monthEnd) {
+                $q->whereBetween('start_at', [$monthStart->toDateTimeString(), $monthEnd->toDateTimeString()])
+                    ->orWhereBetween('end_at', [$monthStart->toDateTimeString(), $monthEnd->toDateTimeString()])
+                    ->orWhere(function ($q2) use ($monthStart, $monthEnd) {
+                        $q2->where('start_at', '<=', $monthStart->toDateTimeString())
+                            ->where(function ($q3) use ($monthEnd) {
+                                $q3->where('end_at', '>=', $monthEnd->toDateTimeString())
+                                    ->orWhereNull('end_at');
+                            });
+                    });
+            })
+            ->get(['approval_status']);
+
+        $requestsTotal = 0;
+        $requestsPending = 0;
+        $requestsApproved = 0;
+        $requestsRejected = 0;
+        foreach ($requestRows as $rq) {
+            $requestsTotal++;
+            $st = strtolower(trim((string) ($rq->approval_status ?? 'approved')));
+            if ($st === 'pending') $requestsPending++;
+            elseif ($st === 'rejected') $requestsRejected++;
+            else $requestsApproved++;
+        }
+
         return response()->json([
             'month' => $monthDate->format('Y-m'),
             'employee_id' => $employee->id,
@@ -1158,6 +1542,10 @@ class AuthController extends Controller
                 'working_days' => $workingDaysInMonth,
                 'missing_days' => max(0, $workingDaysInMonth - $workedDaysCount),
                 'compliance_percent' => $targetMinutes > 0 ? (int) round(($workedMinutes / $targetMinutes) * 100) : 0,
+                'requests_total' => $requestsTotal,
+                'requests_pending' => $requestsPending,
+                'requests_approved' => $requestsApproved,
+                'requests_rejected' => $requestsRejected,
             ],
             'schedule' => [
                 'start_time' => $schedule->start_time ?? null,
@@ -1175,7 +1563,7 @@ class AuthController extends Controller
     public function employeeDocuments(Request $request, int $id)
     {
         $user = $request->user();
-        if (! $user || $user->user_type_id !== 1) {
+        if (!$this->canManageEmployees($user)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
@@ -1214,7 +1602,7 @@ class AuthController extends Controller
     public function employeeDocumentDownload(Request $request, int $employeeId, int $docId)
     {
         $user = $request->user();
-        if (! $user || $user->user_type_id !== 1) {
+        if (!$this->canManageEmployees($user)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
@@ -1246,7 +1634,7 @@ class AuthController extends Controller
     public function updateEmployee(Request $request, int $id)
     {
         $user = $request->user();
-        if (! $user || $user->user_type_id !== 1) {
+        if (!$this->canManageEmployees($user)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
@@ -1326,7 +1714,7 @@ class AuthController extends Controller
     public function deleteEmployee(Request $request, int $id)
     {
         $user = $request->user();
-        if (! $user || $user->user_type_id !== 1) {
+        if (!$this->canManageEmployees($user)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 

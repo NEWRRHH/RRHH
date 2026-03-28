@@ -10,6 +10,52 @@ use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
+    private function normalizeScheduleDays($days): array
+    {
+        $default = ['L', 'M', 'X', 'J', 'V'];
+        if (empty($days)) return $default;
+        $decoded = is_string($days) ? json_decode($days, true) : $days;
+        if (!is_array($decoded)) return $default;
+        $allowed = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+        $normalized = array_values(array_intersect($allowed, array_map('strtoupper', $decoded)));
+        return count($normalized) ? $normalized : $default;
+    }
+
+    private function loadScheduleDaysForUser(int $userId): array
+    {
+        $schedule = DB::table('schedules')
+            ->where('user_id', $userId)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        if (!$schedule) {
+            $schedule = DB::table('schedules')
+                ->join('user_schedules', 'schedules.id', '=', 'user_schedules.schedule_id')
+                ->where('user_schedules.user_id', $userId)
+                ->select('schedules.*')
+                ->orderBy('schedules.id', 'desc')
+                ->first();
+        }
+
+        return $this->normalizeScheduleDays($schedule->days ?? null);
+    }
+
+    private function calculateWorkingDays(Carbon $start, Carbon $end, array $scheduleDays): int
+    {
+        $weekMap = [1 => 'L', 2 => 'M', 3 => 'X', 4 => 'J', 5 => 'V', 6 => 'S', 7 => 'D'];
+        $count = 0;
+        $cursor = $start->copy()->startOfDay();
+        $last = $end->copy()->startOfDay();
+
+        while ($cursor->lte($last)) {
+            $letter = $weekMap[$cursor->dayOfWeekIso] ?? 'L';
+            if (in_array($letter, $scheduleDays, true)) $count++;
+            $cursor->addDay();
+        }
+
+        return $count;
+    }
+
     private function timeToMinutes(?string $time): int
     {
         if (!$time) return 0;
@@ -658,15 +704,19 @@ class DashboardController extends Controller
     {
         $user  = $request->user();
         $today = Carbon::today();
+        $scheduleDays = $this->loadScheduleDaysForUser((int) $user->id);
         $yearStart = $today->copy()->startOfYear();
         $yearEnd = $today->copy()->endOfYear();
 
-        $requestedYear = 0;
+        $requestedWorkingDates = [];
         $requestedRows = DB::table('events')
-            ->join('event_types', 'events.event_type_id', '=', 'event_types.id')
             ->where('events.user_id', $user->id)
+            ->where('events.event_type_id', 2)
             ->whereNull('events.deleted_at')
-            ->whereRaw('LOWER(TRIM(event_types.name)) = ?', ['vacaciones'])
+            ->where(function ($q) {
+                $q->whereNull('events.approval_status')
+                    ->orWhereIn('events.approval_status', ['approved', 'pending']);
+            })
             ->where(function ($q) use ($yearStart, $yearEnd) {
                 $q->whereBetween('events.start_at', [$yearStart->toDateTimeString(), $yearEnd->toDateTimeString()])
                   ->orWhereBetween('events.end_at', [$yearStart->toDateTimeString(), $yearEnd->toDateTimeString()])
@@ -686,17 +736,30 @@ class DashboardController extends Controller
             if ($end->lt($yearStart) || $start->gt($yearEnd)) continue;
             $clampedStart = $start->lt($yearStart) ? $yearStart->copy() : $start->copy();
             $clampedEnd = $end->gt($yearEnd) ? $yearEnd->copy() : $end->copy();
-            $requestedYear += ((int) $clampedStart->diffInDays($clampedEnd)) + 1;
+
+            $cursor = $clampedStart->copy();
+            while ($cursor->lte($clampedEnd)) {
+                $weekMap = [1 => 'L', 2 => 'M', 3 => 'X', 4 => 'J', 5 => 'V', 6 => 'S', 7 => 'D'];
+                $letter = $weekMap[$cursor->dayOfWeekIso] ?? 'L';
+                if (in_array($letter, $scheduleDays, true)) {
+                    $requestedWorkingDates[$cursor->toDateString()] = true;
+                }
+                $cursor->addDay();
+            }
         }
+        $requestedYear = count($requestedWorkingDates);
 
         $vacationDaysTotal = (int) ($user->vacation_days_total ?? 0);
         $vacationDaysRemaining = max(0, $vacationDaysTotal - $requestedYear);
 
         $event = DB::table('events')
-            ->join('event_types', 'events.event_type_id', '=', 'event_types.id')
             ->where('events.user_id', $user->id)
+            ->where('events.event_type_id', 2)
             ->whereNull('events.deleted_at')
-            ->whereRaw('LOWER(TRIM(event_types.name)) = ?', ['vacaciones'])
+            ->where(function ($q) {
+                $q->whereNull('events.approval_status')
+                    ->orWhereIn('events.approval_status', ['approved', 'pending']);
+            })
             ->where('events.start_at', '>=', $today->toDateTimeString())
             ->orderBy('events.start_at', 'asc')
             ->select('events.start_at', 'events.end_at')
@@ -715,7 +778,7 @@ class DashboardController extends Controller
         $start        = Carbon::parse($event->start_at)->startOfDay();
         $end          = $event->end_at ? Carbon::parse($event->end_at)->startOfDay() : $start->copy();
         $daysUntil    = (int) $today->diffInDays($start, false);
-        $vacationDays = (int) $start->diffInDays($end) + 1; // inclusive
+        $vacationDays = $this->calculateWorkingDays($start, $end, $scheduleDays);
 
         return response()->json([
             'days_until_vacation' => max(0, $daysUntil),

@@ -21,23 +21,35 @@
         </div>
       </header>
 
-      <main class="relative z-10 flex-1 min-h-0 p-6 overflow-hidden">
+      <main class="relative z-10 flex-1 min-h-0 p-3 sm:p-4 lg:p-6 overflow-hidden">
         <div class="h-full flex flex-col gap-4">
-          <div class="inline-flex rounded-xl border border-gray-700 p-1 bg-gray-900 w-max">
-            <button
-              class="px-4 py-2 rounded-lg text-sm transition"
-              :class="activeTab === 'monthly' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
-              @click="activeTab = 'monthly'"
-            >
-              Mensual
-            </button>
-            <button
-              class="px-4 py-2 rounded-lg text-sm transition"
-              :class="activeTab === 'who_is_in' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
-              @click="activeTab = 'who_is_in'"
-            >
-              Who's in
-            </button>
+          <div class="max-w-full overflow-x-auto">
+            <div class="inline-flex rounded-xl border border-gray-700 p-1 bg-gray-900 w-max">
+              <button
+                class="px-4 py-2 rounded-lg text-sm transition whitespace-nowrap"
+                :class="activeTab === 'monthly' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
+                @click="activeTab = 'monthly'"
+              >
+                Mensual
+              </button>
+              <button
+                class="px-4 py-2 rounded-lg text-sm transition whitespace-nowrap"
+                :class="activeTab === 'who_is_in' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
+                @click="activeTab = 'who_is_in'"
+              >
+                Who's in
+              </button>
+            </div>
+          </div>
+
+          <div
+            v-if="requestNotice.text"
+            class="rounded-xl border px-3 py-2 text-sm"
+            :class="requestNotice.type === 'error'
+              ? 'border-red-500/30 bg-red-500/10 text-red-200'
+              : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'"
+          >
+            {{ requestNotice.text }}
           </div>
 
           <div v-if="activeTab === 'monthly'" class="h-full grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-4">
@@ -84,36 +96,40 @@
             </aside>
 
             <section class="bg-gray-900 border border-gray-800 rounded-3xl p-5 flex flex-col min-h-0 overflow-hidden shadow-sm">
-              <div class="flex items-center justify-between gap-3 mb-5">
-                <div class="flex items-center gap-2">
+              <div class="flex flex-col gap-3 mb-5 lg:flex-row lg:items-center lg:justify-between">
+                <div class="flex flex-wrap items-center gap-2">
                   <button
                     @click="changeMonth(-1)"
-                    class="h-11 w-11 rounded-xl border border-gray-700 text-gray-300 hover:bg-gray-800"
+                    class="h-10 w-10 sm:h-11 sm:w-11 rounded-xl border border-gray-700 text-gray-300 hover:bg-gray-800"
                     aria-label="Mes anterior"
                   >
                     <svg class="w-5 h-5 mx-auto" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
                     </svg>
                   </button>
-                  <div class="h-11 min-w-[180px] px-4 rounded-xl border border-gray-700 bg-gray-800 text-white font-medium flex items-center justify-center">
+                  <div class="h-10 sm:h-11 min-w-[140px] sm:min-w-[180px] px-3 sm:px-4 rounded-xl border border-gray-700 bg-gray-800 text-white text-sm sm:text-base font-medium flex items-center justify-center">
                     {{ monthLabel }}
                   </div>
                   <button
                     @click="changeMonth(1)"
-                    class="h-11 w-11 rounded-xl border border-gray-700 text-gray-300 hover:bg-gray-800"
+                    class="h-10 w-10 sm:h-11 sm:w-11 rounded-xl border border-gray-700 text-gray-300 hover:bg-gray-800"
                     aria-label="Mes siguiente"
                   >
                     <svg class="w-5 h-5 mx-auto" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
                     </svg>
                   </button>
-                  <div class="h-11 px-4 rounded-xl border border-gray-700 bg-gray-800 text-gray-300 text-sm flex items-center">
+                  <div class="hidden sm:flex h-11 px-4 rounded-xl border border-gray-700 bg-gray-800 text-gray-300 text-sm items-center">
                     Mensual
                   </div>
                 </div>
 
-                <button class="h-11 px-5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-500" @click="loadMonthData">
-                  Solicitar fichaje
+                <button
+                  class="h-10 sm:h-11 w-full sm:w-auto px-5 rounded-xl text-white text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  :disabled="requestingAttendance"
+                  @click="openRequestModal"
+                >
+                  {{ requestingAttendance ? 'Enviando...' : 'Solicitar fichaje' }}
                 </button>
               </div>
 
@@ -156,8 +172,8 @@
               </div>
 
               <div class="flex-1 min-h-0 overflow-y-auto overflow-x-auto rounded-2xl border border-gray-800">
-                <div class="min-w-[980px]">
-                  <div class="grid grid-cols-[150px_110px_minmax(0,1fr)] px-3 py-2 text-gray-400 text-sm border-b border-gray-800 bg-gray-800/50 sticky top-0 z-10">
+                <div class="min-w-[760px] sm:min-w-[840px] lg:min-w-[980px]">
+                  <div class="grid grid-cols-[120px_90px_minmax(0,1fr)] sm:grid-cols-[150px_110px_minmax(0,1fr)] px-3 py-2 text-gray-400 text-xs sm:text-sm border-b border-gray-800 bg-gray-800/50 sticky top-0 z-10">
                     <div>Fecha</div>
                     <div>Horas</div>
                     <div class="relative">
@@ -170,15 +186,13 @@
                   <div
                     v-for="row in monthRows"
                     :key="row.date"
-                    class="grid grid-cols-[150px_110px_minmax(0,1fr)] px-3 py-3 border-b border-gray-800 items-center"
+                    class="grid grid-cols-[120px_90px_minmax(0,1fr)] sm:grid-cols-[150px_110px_minmax(0,1fr)] px-3 py-3 border-b border-gray-800 items-center"
                   >
-                    <div class="text-gray-200 text-sm">
+                    <div class="text-gray-200 text-xs sm:text-sm">
                       <div class="font-medium">{{ shortDate(row.date) }}</div>
                       <div class="text-xs text-gray-500 uppercase">{{ row.weekday }}</div>
                     </div>
-                    <div class="text-gray-200 text-sm font-medium">
-                      {{ workedLabel(row) }}
-                    </div>
+                    <div class="text-gray-200 text-xs sm:text-sm font-medium">{{ workedLabel(row) }}</div>
                     <div class="relative h-5 rounded-full bg-gray-800 overflow-hidden">
                       <div
                         v-for="(tick, idx) in hourTicks"
@@ -282,6 +296,33 @@
           </div>
         </div>
       </main>
+      <div v-if="requestModal.open" class="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center" @click.self="closeRequestModal">
+        <div class="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-4 space-y-4">
+          <h2 class="text-white font-semibold">Solicitar fichaje</h2>
+          <p class="text-xs text-gray-400">Selecciona la fecha para pedir regularizacion de entrada/salida.</p>
+          <p v-if="!isOwnSelectedUser" class="text-xs text-amber-300">
+            Debes seleccionar tu usuario para solicitar fichajes.
+          </p>
+          <input
+            v-model="requestModal.date"
+            type="date"
+            class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white"
+            :max="todayIso"
+          />
+          <div class="flex justify-end gap-2">
+            <button class="px-3 py-2 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800" @click="closeRequestModal">
+              Cancelar
+            </button>
+            <button
+              class="px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50"
+              :disabled="requestingAttendance || !requestModal.date || !isOwnSelectedUser"
+              @click="confirmRequestModal"
+            >
+              Confirmar
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -299,7 +340,7 @@ definePageMeta({ auth: true })
 declare const process: any
 declare const $fetch: any
 
-const { token, fetchUser, logout, apiBase, setToken } = useAuth()
+const { token, fetchUser, logout, apiBase, setToken, user } = useAuth()
 const router = useRouter()
 const sidebar = ref<{ open: boolean } | null>(null)
 
@@ -327,6 +368,8 @@ const whoIsInTeamFilter = ref('')
 const whoIsInTeams = ref<any[]>([])
 const whoIsInWorkingCount = ref(0)
 let whoIsInInterval: any = null
+const requestingAttendance = ref(false)
+const requestNotice = ref<{ type: 'success' | 'error'; text: string }>({ type: 'success', text: '' })
 
 const dayStart = 6 * 60
 const dayEnd = 19 * 60
@@ -348,6 +391,10 @@ const monthLabel = computed(() => {
   const d = new Date(y, (m || 1) - 1, 1)
   return d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
 })
+const currentUserId = computed(() => Number((user.value as any)?.id || 0))
+const todayIso = computed(() => new Date().toISOString().slice(0, 10))
+const isOwnSelectedUser = computed(() => Number(selectedUserId.value || 0) === currentUserId.value)
+const requestModal = ref<{ open: boolean; date: string }>({ open: false, date: '' })
 
 function openSidebar() {
   if (sidebar.value) sidebar.value.open = true
@@ -471,6 +518,77 @@ function workedColorClass(seconds?: number) {
   return 'text-amber-300'
 }
 
+function missingAttendanceKind(row: any): 'entry_exit' | 'entry' | 'exit' | null {
+  const hasStart = !!row?.start_time
+  const hasEnd = !!row?.end_time
+  if (!hasStart && !hasEnd) return 'entry_exit'
+  if (!hasStart && hasEnd) return 'entry'
+  if (hasStart && !hasEnd) return 'exit'
+  return null
+}
+
+function canRequestAttendanceForRow(row: any): boolean {
+  if (!row || !row.date) return false
+  if (Number(selectedUserId.value || 0) !== currentUserId.value) return false
+  if (row.attendance_request_pending) return false
+  if (String(row.date) > todayIso.value) return false
+  return missingAttendanceKind(row) !== null
+}
+
+function openRequestModal() {
+  requestModal.value = {
+    open: true,
+    date: todayIso.value,
+  }
+}
+
+function closeRequestModal() {
+  requestModal.value = { open: false, date: '' }
+}
+
+async function requestAttendanceByDate(date: string) {
+  if (!token.value || !date || requestingAttendance.value) return
+  requestingAttendance.value = true
+  requestNotice.value = { type: 'success', text: '' }
+  try {
+    const res: any = await $fetch(`${apiBase || 'http://localhost:8000'}/api/attendance/requests`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token.value}` },
+      body: { date },
+    })
+    const kind = String(res?.request_kind || '')
+    const kindLabel = kind === 'entry_exit' ? 'entrada y salida' : kind === 'entry' ? 'entrada' : kind === 'exit' ? 'salida' : 'fichaje'
+    requestNotice.value = { type: 'success', text: `Solicitud enviada a RRHH para ${date} (${kindLabel}).` }
+    await loadMonthData()
+    closeRequestModal()
+  } catch (e: any) {
+    requestNotice.value = {
+      type: 'error',
+      text: e?.data?.message || 'No se pudo enviar la solicitud de fichaje.',
+    }
+  } finally {
+    requestingAttendance.value = false
+  }
+}
+
+async function confirmRequestModal() {
+  const date = requestModal.value.date
+  if (!date) {
+    requestNotice.value = { type: 'error', text: 'Debes seleccionar una fecha.' }
+    return
+  }
+  if (date > todayIso.value) {
+    requestNotice.value = { type: 'error', text: 'No puedes solicitar fichajes para fechas futuras.' }
+    return
+  }
+  const row = monthRows.value.find((r: any) => String(r?.date || '') === date)
+  if (row && !canRequestAttendanceForRow(row)) {
+    requestNotice.value = { type: 'error', text: 'Ese dia no tiene fichaje faltante o ya posee solicitud pendiente.' }
+    return
+  }
+  await requestAttendanceByDate(date)
+}
+
 async function loadMonthData() {
   if (!token.value) return
   const params = new URLSearchParams()
@@ -583,4 +701,3 @@ onBeforeUnmount(() => {
   if (whoIsInInterval) clearInterval(whoIsInInterval)
 })
 </script>
-

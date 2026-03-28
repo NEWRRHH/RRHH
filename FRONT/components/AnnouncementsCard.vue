@@ -1,6 +1,6 @@
 <template>
-  <div class="w-full h-full">
-    <div class="relative overflow-hidden bg-gray-900 border border-gray-800 rounded-2xl p-4 flex flex-col h-full shadow-lg shadow-black/40 transition-transform hover:-translate-y-0.5">
+  <div class="w-full">
+    <div class="relative overflow-hidden bg-gray-900 border border-gray-800 rounded-2xl p-5 flex flex-col shadow-lg shadow-black/40 transition-transform hover:-translate-y-0.5">
       <div class="absolute -top-6 -right-6 w-24 h-24 bg-fuchsia-500/10 rounded-full blur-2xl pointer-events-none"></div>
       <div class="flex items-center gap-2 mb-3">
         <div class="w-7 h-7 rounded-lg bg-fuchsia-500/15 flex items-center justify-center shrink-0">
@@ -14,7 +14,7 @@
       <div v-if="loading" class="space-y-2">
         <div v-for="i in 3" :key="i" class="h-14 rounded-lg bg-gray-800 animate-pulse"></div>
       </div>
-      <div v-else class="flex-1 overflow-y-auto space-y-2">
+      <div v-else class="space-y-2 max-h-40 overflow-y-auto pr-1 announcements-scroll">
         <div v-for="a in items" :key="a.id" class="rounded-lg bg-gray-800/70 px-3 py-2">
           <div class="text-sm text-white truncate">{{ a.title }}</div>
           <div class="text-[11px] text-gray-400 truncate">{{ a.author }}</div>
@@ -33,3 +33,23 @@ defineProps({
 })
 </script>
 
+<style scoped>
+.announcements-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(217, 70, 239, 0.55) rgba(31, 41, 55, 0.4);
+}
+
+.announcements-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.announcements-scroll::-webkit-scrollbar-track {
+  background: rgba(31, 41, 55, 0.4);
+  border-radius: 9999px;
+}
+
+.announcements-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(to bottom, rgba(232, 121, 249, 0.85), rgba(217, 70, 239, 0.85));
+  border-radius: 9999px;
+}
+</style>

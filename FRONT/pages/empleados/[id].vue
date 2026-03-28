@@ -24,7 +24,7 @@
         </div>
       </header>
 
-      <main class="flex-1 p-6 overflow-auto">
+      <main class="flex-1 p-3 sm:p-4 lg:p-6 overflow-auto">
         <div class="max-w-6xl mx-auto space-y-4">
           <div class="flex items-center gap-2">
             <button @click="router.push('/empleados')" class="px-3 py-1.5 rounded-lg border border-gray-700 text-xs text-gray-300 hover:bg-gray-800">
@@ -41,30 +41,32 @@
           </template>
 
           <template v-else>
-            <div class="inline-flex rounded-xl border border-gray-700 p-1 bg-gray-900">
-              <button
-                v-for="tab in tabs"
-                :key="tab.id"
-                class="px-4 py-2 rounded-lg text-sm transition"
-                :class="activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
-                @click="activeTab = tab.id"
-              >
-                {{ tab.label }}
-              </button>
+            <div class="max-w-full overflow-x-auto">
+              <div class="inline-flex rounded-xl border border-gray-700 p-1 bg-gray-900 w-max">
+                <button
+                  v-for="tab in tabs"
+                  :key="tab.id"
+                  class="px-4 py-2 rounded-lg text-sm transition whitespace-nowrap"
+                  :class="activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
+                  @click="activeTab = tab.id"
+                >
+                  {{ tab.label }}
+                </button>
+              </div>
             </div>
 
             <section v-if="activeTab === 'fichajes'" class="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-4">
-              <div class="flex items-center justify-between">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <h2 class="text-white font-semibold">Fichajes mensuales</h2>
-                <div class="flex items-center gap-2">
-                  <button @click="changeMonth(-1)" class="h-9 w-9 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800">‹</button>
-                  <div class="h-9 px-3 rounded-lg border border-gray-700 bg-gray-800 text-sm text-white flex items-center">{{ monthLabel }}</div>
-                  <button @click="changeMonth(1)" class="h-9 w-9 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800">›</button>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <button @click="changeMonth(-1)" class="h-9 w-9 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800">&#8249;</button>
+                  <div class="h-9 min-w-[140px] sm:min-w-[180px] px-3 rounded-lg border border-gray-700 bg-gray-800 text-sm text-white flex items-center justify-center">{{ monthLabel }}</div>
+                  <button @click="changeMonth(1)" class="h-9 w-9 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800">&#8250;</button>
                 </div>
               </div>
 
               <div class="overflow-x-auto rounded-xl border border-gray-800">
-                <table class="min-w-full text-sm">
+                <table class="min-w-[760px] sm:min-w-full text-xs sm:text-sm">
                   <thead class="bg-gray-800/60 text-gray-300">
                     <tr>
                       <th class="text-left px-3 py-2">Fecha</th>
@@ -117,6 +119,25 @@
                   <div class="text-xs text-gray-400">Dias con fichaje</div>
                   <div class="text-2xl font-bold text-white">{{ attendanceSummary.worked_days || 0 }} / {{ attendanceSummary.working_days || 0 }}</div>
                   <div class="text-xs text-gray-500 mt-1">Faltantes: {{ attendanceSummary.missing_days || 0 }}</div>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mt-3">
+                <div class="rounded-xl border border-gray-800 bg-gray-800/60 p-3">
+                  <div class="text-xs text-gray-400">Solicitudes</div>
+                  <div class="text-2xl font-bold text-white">{{ attendanceSummary.requests_total || 0 }}</div>
+                </div>
+                <div class="rounded-xl border border-gray-800 bg-gray-800/60 p-3">
+                  <div class="text-xs text-gray-400">Pendientes</div>
+                  <div class="text-2xl font-bold text-amber-300">{{ attendanceSummary.requests_pending || 0 }}</div>
+                </div>
+                <div class="rounded-xl border border-gray-800 bg-gray-800/60 p-3">
+                  <div class="text-xs text-gray-400">Aprobadas</div>
+                  <div class="text-2xl font-bold text-emerald-300">{{ attendanceSummary.requests_approved || 0 }}</div>
+                </div>
+                <div class="rounded-xl border border-gray-800 bg-gray-800/60 p-3">
+                  <div class="text-xs text-gray-400">Rechazadas</div>
+                  <div class="text-2xl font-bold text-red-300">{{ attendanceSummary.requests_rejected || 0 }}</div>
                 </div>
               </div>
 
@@ -326,7 +347,7 @@ const tabs: Array<{ id: TabId; label: string }> = [
   { id: 'documentos', label: 'Documentos' },
 ]
 
-const { token, fetchUser, logout, apiBase, setToken } = useAuth()
+const { token, fetchUser, logout, apiBase, setToken, user } = useAuth()
 const router = useRouter()
 const route = useRoute()
 const sidebar = ref<{ open: boolean } | null>(null)
@@ -644,6 +665,10 @@ onBeforeMount(async () => {
   } else {
     await fetchUser()
   }
+  const canViewEmployees = Boolean((user.value as any)?.is_hr_team) || Boolean((user.value as any)?.is_admin) || Number((user.value as any)?.user_type_id || 0) === 1
+  if (!canViewEmployees) {
+    return router.push('/dashboard')
+  }
 
   await loadEmployee()
   await loadAttendance()
@@ -654,3 +679,4 @@ onBeforeUnmount(() => {
   if (toastTimer) clearTimeout(toastTimer)
 })
 </script>
+

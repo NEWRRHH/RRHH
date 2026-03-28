@@ -120,7 +120,7 @@ import UserMenu from '../../components/UserMenu.vue'
 declare const process: any
 declare const $fetch: any
 
-const { token, fetchUser, logout, apiBase, setToken } = useAuth()
+const { token, fetchUser, logout, apiBase, setToken, user } = useAuth()
 const router = useRouter()
 const sidebar = ref<{ open: boolean } | null>(null)
 
@@ -168,10 +168,18 @@ async function removeEmployee(employee: any) {
 }
 
 async function loadEmployees() {
-  const res = await $fetch(`${apiBase || 'http://localhost:8000'}/api/employees`, {
-    headers: { Authorization: `Bearer ${token.value}` },
-  })
-  employees.value = res?.employees || []
+  try {
+    const res = await $fetch(`${apiBase || 'http://localhost:8000'}/api/employees`, {
+      headers: { Authorization: `Bearer ${token.value}` },
+    })
+    employees.value = res?.employees || []
+  } catch (e: any) {
+    if (e?.status === 403 || e?.data?.message === 'Forbidden') {
+      router.push('/dashboard')
+      return
+    }
+    employees.value = []
+  }
 }
 
 watch(teamTabs, (tabs) => {
@@ -209,6 +217,10 @@ onBeforeMount(async () => {
     }
   } else {
     await fetchUser()
+  }
+  const canViewEmployees = Boolean((user.value as any)?.is_hr_team) || Boolean((user.value as any)?.is_admin) || Number((user.value as any)?.user_type_id || 0) === 1
+  if (!canViewEmployees) {
+    return router.push('/dashboard')
   }
 
   await loadEmployees()

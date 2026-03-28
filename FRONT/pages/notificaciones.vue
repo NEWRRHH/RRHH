@@ -13,6 +13,12 @@
           </svg>
         </button>
         <h1 class="text-base font-semibold text-white">Notificaciones</h1>
+        <button
+          class="lg:hidden px-3 py-1.5 rounded-lg border border-gray-700 text-xs text-gray-200 hover:bg-gray-800 transition"
+          @click="showUserPanel = !showUserPanel"
+        >
+          {{ showUserPanel ? 'Cerrar lista' : 'Usuarios' }}
+        </button>
         <div class="ml-auto flex items-center gap-3">
           <AttendanceButton class="!text-[11px]" />
           <UserMenu />
@@ -20,8 +26,20 @@
       </header>
 
       <main class="relative z-10 flex-1 min-h-0 p-0 overflow-hidden flex">
+        <div
+          v-if="showUserPanel && isMobile"
+          class="absolute inset-0 z-20 bg-black/50"
+          @click="showUserPanel = false"
+        />
         <!-- conversation list + users -->
-        <aside class="w-64 border-r border-gray-800 bg-gray-900 flex-shrink-0 overflow-y-auto">
+        <aside
+          :class="[
+            'border-r border-gray-800 bg-gray-900 flex-shrink-0 overflow-y-auto',
+            isMobile
+              ? (showUserPanel ? 'absolute left-0 top-0 bottom-0 z-30 w-72 max-w-[85vw]' : 'hidden')
+              : 'w-64'
+          ]"
+        >
           <div class="px-4 py-2 text-xs text-gray-400 uppercase tracking-wide">Usuarios</div>
           <ul>
             <li
@@ -193,6 +211,9 @@ function selectConversation(user: any) {
       unread_count: 0,
     })
   }
+  if (isMobile.value) {
+    showUserPanel.value = false
+  }
 }
 
 async function sendMessage() {
@@ -230,6 +251,15 @@ function formatDate(dt: string) {
 }
 
 onMounted(() => {
+  isMobile.value = window.innerWidth < 1024
+  showUserPanel.value = !isMobile.value
+  resizeHandler = () => {
+    isMobile.value = window.innerWidth < 1024
+    if (isMobile.value) showUserPanel.value = false
+    else showUserPanel.value = true
+  }
+  window.addEventListener('resize', resizeHandler)
+
   loadConversations()
 
   // Watch the shared reactive state set by useAuth's single Echo listener.
@@ -244,6 +274,10 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (resizeHandler) {
+    window.removeEventListener('resize', resizeHandler)
+    resizeHandler = null
+  }
   if (stopRealtimeWatch) {
     stopRealtimeWatch()
     stopRealtimeWatch = null
@@ -314,6 +348,9 @@ watch(currentPartner, (val) => {
 
 const messagesContainer = ref<HTMLElement | null>(null)
 const markingReadFor = new Set<number>()
+const isMobile = ref(false)
+const showUserPanel = ref(false)
+let resizeHandler: (() => void) | null = null
 
 async function markConversationReadRealtime(userId: number) {
   if (!token.value || markingReadFor.has(userId)) return
