@@ -31,10 +31,16 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::get('/employees/{id}/attendance-month', [AuthController::class, 'employeeAttendanceMonth']);
     Route::get('/employees/{id}/documents', [AuthController::class, 'employeeDocuments']);
     Route::get('/employees/{employeeId}/documents/{docId}/download', [AuthController::class, 'employeeDocumentDownload']);
+    Route::post('/employees', [AuthController::class, 'createEmployee']);
+    Route::post('/employees/{id}', [AuthController::class, 'updateEmployee']);
     Route::put('/employees/{id}', [AuthController::class, 'updateEmployee']);
     Route::delete('/employees/{id}', [AuthController::class, 'deleteEmployee']);
     Route::get('/permissions/catalog', [AuthController::class, 'permissionsCatalog']);
     Route::put('/permissions/teams/{id}', [AuthController::class, 'updateTeamPermissions']);
+    Route::get('/settings/schedules', [AuthController::class, 'scheduleTemplates']);
+    Route::post('/settings/schedules', [AuthController::class, 'createScheduleTemplate']);
+    Route::put('/settings/schedules/{id}', [AuthController::class, 'updateScheduleTemplate']);
+    Route::delete('/settings/schedules/{id}', [AuthController::class, 'deleteScheduleTemplate']);
 
     // attendance control
     Route::post('/attendance/start', [AuthController::class, 'startAttendance']);

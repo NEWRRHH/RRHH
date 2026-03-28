@@ -44,7 +44,11 @@ class AuthController extends Controller
         if (!$user || empty($user->team_id)) return false;
         $team = DB::table('teams')->where('id', (int) $user->team_id)->first(['name']);
         if (!$team || empty($team->name)) return false;
-        return str_contains(strtolower((string) $team->name), 'rrhh');
+        $name = strtolower(trim((string) $team->name));
+        return str_contains($name, 'rrhh')
+            || str_contains($name, 'rr.hh')
+            || str_contains($name, 'recursos humanos')
+            || $name === 'rh';
     }
 
     private function canManageEmployees(?object $user): bool
@@ -77,6 +81,11 @@ class AuthController extends Controller
     private function canDeleteEmployeeUsers(?object $user): bool
     {
         return $this->hasPermission($user, 'employees.delete');
+    }
+
+    private function canCreateEmployeeUsers(?object $user): bool
+    {
+        return $this->hasPermission($user, 'employees.create');
     }
 
     /**
@@ -299,8 +308,9 @@ class AuthController extends Controller
         $payload['is_admin'] = $this->isAdminUser($user);
         $payload['can_view_employee_details'] = $this->canViewEmployeeDetails($user);
         $payload['can_delete_employee'] = $this->canDeleteEmployeeUsers($user);
+        $payload['can_create_employee'] = $this->canCreateEmployeeUsers($user);
         $payload['can_access_announcements'] = $this->isHrTeam($user) || $this->isAdminUser($user);
-        $payload['can_access_settings'] = $this->isAdminUser($user);
+        $payload['can_access_settings'] = $this->isAdminUser($user) || $this->isHrTeam($user);
 
         return response()->json($payload)->header('Access-Control-Allow-Origin', '*');
     }
@@ -308,6 +318,273 @@ class AuthController extends Controller
     private function canManagePermissions(?object $user): bool
     {
         return $this->isAdminUser($user);
+    }
+
+    private function canManageScheduleTemplates(?object $user): bool
+    {
+        return $this->isAdminUser($user) || $this->isHrTeam($user);
+    }
+
+    private function formatScheduleTemplate(object $schedule): array
+    {
+        $days = $this->normalizeScheduleDays($schedule->days ?? null);
+        $start = isset($schedule->start_time) ? substr((string) $schedule->start_time, 0, 5) : null;
+        $end = isset($schedule->end_time) ? substr((string) $schedule->end_time, 0, 5) : null;
+
+        return [
+            'id' => (int) $schedule->id,
+            'start_time' => $start,
+            'end_time' => $end,
+            'days' => $days,
+            'label' => trim(implode('-', [$start ?: '--:--', $end ?: '--:--']) . ' | ' . implode(', ', $days)),
+        ];
+    }
+
+    private function loadScheduleTemplatesCollection()
+    {
+        return DB::table('schedules')
+            ->whereNull('user_id')
+            ->whereNull('deleted_at')
+            ->orderBy('id', 'desc')
+            ->get(['id', 'start_time', 'end_time', 'days']);
+    }
+
+    private function scheduleTemplateExists(string $startTime, string $endTime, array $days, ?int $excludeId = null): bool
+    {
+        $targetStart = substr($startTime, 0, 5);
+        $targetEnd = substr($endTime, 0, 5);
+        $targetDays = $this->normalizeScheduleDays($days);
+
+        $query = DB::table('schedules')
+            ->whereNull('user_id')
+            ->whereNull('deleted_at');
+
+        if ($excludeId) {
+            $query->where('id', '!=', $excludeId);
+        }
+
+        $rows = $query->get(['id', 'start_time', 'end_time', 'days']);
+
+        foreach ($rows as $row) {
+            $rowStart = isset($row->start_time) ? substr((string) $row->start_time, 0, 5) : '';
+            $rowEnd = isset($row->end_time) ? substr((string) $row->end_time, 0, 5) : '';
+            $rowDays = $this->normalizeScheduleDays($row->days ?? null);
+
+            if ($rowStart === $targetStart && $rowEnd === $targetEnd && $rowDays === $targetDays) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function getScheduleTemplatesByIds(array $templateIds)
+    {
+        $ids = array_values(array_unique(array_map('intval', $templateIds)));
+        if (!count($ids)) {
+            return collect();
+        }
+
+        return DB::table('schedules')
+            ->whereNull('user_id')
+            ->whereNull('deleted_at')
+            ->whereIn('id', $ids)
+            ->orderBy('id', 'asc')
+            ->get(['id', 'start_time', 'end_time', 'days']);
+    }
+
+    private function hasOverlappingDaysInTemplates($templates): bool
+    {
+        $seen = [];
+        foreach ($templates as $tpl) {
+            $days = $this->normalizeScheduleDays($tpl->days ?? null);
+            foreach ($days as $day) {
+                if (isset($seen[$day])) {
+                    return true;
+                }
+                $seen[$day] = true;
+            }
+        }
+
+        return false;
+    }
+
+    private function getAssignedScheduleTemplateIds(int $userId): array
+    {
+        return DB::table('user_schedules')
+            ->where('user_id', $userId)
+            ->orderBy('id', 'asc')
+            ->pluck('schedule_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function syncUserScheduleTemplates(int $userId, $templates): void
+    {
+        DB::table('user_schedules')->where('user_id', $userId)->delete();
+
+        if (!count($templates)) {
+            return;
+        }
+
+        $now = now();
+        $rows = [];
+        foreach ($templates as $tpl) {
+            $rows[] = [
+                'user_id' => $userId,
+                'schedule_id' => (int) $tpl->id,
+                'days' => json_encode($this->normalizeScheduleDays($tpl->days ?? null)),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+
+        if (count($rows)) {
+            DB::table('user_schedules')->insert($rows);
+        }
+    }
+
+    private function loadAssignedScheduleTemplatesForUser(int $userId)
+    {
+        return DB::table('user_schedules')
+            ->join('schedules', 'user_schedules.schedule_id', '=', 'schedules.id')
+            ->where('user_schedules.user_id', $userId)
+            ->whereNull('schedules.deleted_at')
+            ->orderBy('user_schedules.id', 'asc')
+            ->get(['schedules.id', 'schedules.start_time', 'schedules.end_time', 'schedules.days'])
+            ->map(fn ($s) => $this->formatScheduleTemplate($s))
+            ->values();
+    }
+
+    public function scheduleTemplates(Request $request)
+    {
+        $user = $request->user();
+        if (!$this->canManageScheduleTemplates($user)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $templates = $this->loadScheduleTemplatesCollection()
+            ->map(fn ($s) => $this->formatScheduleTemplate($s))
+            ->values();
+
+        return response()->json(['schedules' => $templates])->header('Access-Control-Allow-Origin', '*');
+    }
+
+    public function createScheduleTemplate(Request $request)
+    {
+        $user = $request->user();
+        if (!$this->canManageScheduleTemplates($user)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $data = $request->validate([
+            'start_time' => 'required|date_format:H:i',
+            'end_time' => 'required|date_format:H:i',
+            'days' => 'required|array|min:1',
+            'days.*' => 'in:L,M,X,J,V,S,D',
+        ]);
+
+        $days = array_values(array_unique($this->normalizeScheduleDays($data['days'] ?? null)));
+
+        $exists = $this->scheduleTemplateExists((string) $data['start_time'], (string) $data['end_time'], $days);
+
+        if ($exists) {
+            return response()->json(['message' => 'Ese horario ya existe'], 422);
+        }
+
+        $id = DB::table('schedules')->insertGetId([
+            'user_id' => null,
+            'start_time' => $data['start_time'],
+            'end_time' => $data['end_time'],
+            'days' => json_encode($days),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $schedule = DB::table('schedules')->where('id', $id)->first(['id', 'start_time', 'end_time', 'days']);
+
+        return response()->json([
+            'status' => 'ok',
+            'schedule' => $schedule ? $this->formatScheduleTemplate($schedule) : null,
+        ], 201)->header('Access-Control-Allow-Origin', '*');
+    }
+
+    public function updateScheduleTemplate(Request $request, int $id)
+    {
+        $user = $request->user();
+        if (!$this->canManageScheduleTemplates($user)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $schedule = DB::table('schedules')
+            ->where('id', $id)
+            ->whereNull('user_id')
+            ->whereNull('deleted_at')
+            ->first(['id']);
+
+        if (!$schedule) {
+            return response()->json(['message' => 'Jornada no encontrada'], 404);
+        }
+
+        $data = $request->validate([
+            'start_time' => 'required|date_format:H:i',
+            'end_time' => 'required|date_format:H:i',
+            'days' => 'required|array|min:1',
+            'days.*' => 'in:L,M,X,J,V,S,D',
+        ]);
+
+        $days = array_values(array_unique($this->normalizeScheduleDays($data['days'] ?? null)));
+
+        $exists = $this->scheduleTemplateExists((string) $data['start_time'], (string) $data['end_time'], $days, $id);
+
+        if ($exists) {
+            return response()->json(['message' => 'Ya existe una jornada con esos datos'], 422);
+        }
+
+        DB::table('schedules')
+            ->where('id', $id)
+            ->update([
+                'start_time' => $data['start_time'],
+                'end_time' => $data['end_time'],
+                'days' => json_encode($days),
+                'updated_at' => now(),
+            ]);
+
+        $updated = DB::table('schedules')->where('id', $id)->first(['id', 'start_time', 'end_time', 'days']);
+
+        return response()->json([
+            'status' => 'ok',
+            'schedule' => $updated ? $this->formatScheduleTemplate($updated) : null,
+        ])->header('Access-Control-Allow-Origin', '*');
+    }
+
+    public function deleteScheduleTemplate(Request $request, int $id)
+    {
+        $user = $request->user();
+        if (!$this->canManageScheduleTemplates($user)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $schedule = DB::table('schedules')
+            ->where('id', $id)
+            ->whereNull('user_id')
+            ->whereNull('deleted_at')
+            ->first(['id']);
+
+        if (!$schedule) {
+            return response()->json(['message' => 'Jornada no encontrada'], 404);
+        }
+
+        DB::table('schedules')
+            ->where('id', $id)
+            ->update([
+                'deleted_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+        return response()->json(['status' => 'ok'])->header('Access-Control-Allow-Origin', '*');
     }
 
     public function permissionsCatalog(Request $request)
@@ -411,11 +688,11 @@ class AuthController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email,' . $user->id,
             'photo' => 'nullable|image|max:2048',
-            'birth_date' => 'nullable|date',
+              'birth_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
             'dni' => 'nullable|string|max:30',
             'social_security_number' => 'nullable|string|max:50',
             'contract_type' => 'nullable|string|max:50',
-            'contract_start_date' => 'nullable|date',
+              'contract_start_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
         ]);
         $user->name = $data['name'];
         $user->email = $data['email'];
@@ -631,7 +908,13 @@ class AuthController extends Controller
     public function attendanceInfo(Request $request)
     {
         $user = $request->user();
-        $info = ['working' => false, 'attendance' => null, 'schedule' => null];
+        $info = [
+            'working' => false,
+            'attendance' => null,
+            'schedule' => null,
+            'schedule_template_ids' => [],
+            'assigned_schedule_templates' => [],
+        ];
         if ($user) {
             $info['working'] = DB::table('attendances')
                 ->where('user_id', $user->id)
@@ -662,6 +945,8 @@ class AuthController extends Controller
                 $sched->days = $this->normalizeScheduleDays($sched->days ?? null);
             }
             $info['schedule'] = $sched;
+            $info['schedule_template_ids'] = $this->getAssignedScheduleTemplateIds((int) $user->id);
+            $info['assigned_schedule_templates'] = $this->loadAssignedScheduleTemplatesForUser((int) $user->id);
         }
         return response()->json($info);
     }
@@ -1320,26 +1605,56 @@ class AuthController extends Controller
             return response()->json(['message'=>'Forbidden'], 403);
         }
         $data = $request->validate([
-            'start_time' => 'required|date_format:H:i',
-            'end_time' => 'required|date_format:H:i',
+            'start_time' => 'nullable|date_format:H:i',
+            'end_time' => 'nullable|date_format:H:i',
             'days' => 'nullable|array',
             'days.*' => 'in:L,M,X,J,V,S,D',
+            'schedule_template_ids' => 'nullable|array',
+            'schedule_template_ids.*' => 'integer|exists:schedules,id',
         ]);
         $days = array_values(array_unique($this->normalizeScheduleDays($data['days'] ?? null)));
+        $startTime = $data['start_time'] ?? null;
+        $endTime = $data['end_time'] ?? null;
+        $templates = collect();
+
+        $templateIds = $data['schedule_template_ids'] ?? [];
+        if (count($templateIds)) {
+            $templates = $this->getScheduleTemplatesByIds($templateIds);
+            if ($this->hasOverlappingDaysInTemplates($templates)) {
+                return response()->json(['message' => 'No puedes seleccionar jornadas con dias repetidos'], 422);
+            }
+
+            if ($templates->count()) {
+                $templateDays = [];
+                foreach ($templates as $tpl) {
+                    $templateDays = array_merge($templateDays, $this->normalizeScheduleDays($tpl->days ?? null));
+                }
+                $days = array_values(array_unique($templateDays));
+                $firstTemplate = $templates->first();
+                $startTime = isset($firstTemplate->start_time) ? substr((string) $firstTemplate->start_time, 0, 5) : $startTime;
+                $endTime = isset($firstTemplate->end_time) ? substr((string) $firstTemplate->end_time, 0, 5) : $endTime;
+            }
+        }
+
+        $this->syncUserScheduleTemplates((int) $user->id, $templates);
+
+        if (empty($startTime) || empty($endTime)) {
+            return response()->json(['message' => 'Debes indicar horario o seleccionar una jornada valida'], 422);
+        }
         // find existing schedule
         $sched = DB::table('schedules')->where('user_id', $user->id)->first();
         if ($sched) {
             DB::table('schedules')->where('id', $sched->id)->update([
-                'start_time' => $data['start_time'],
-                'end_time' => $data['end_time'],
+                'start_time' => $startTime,
+                'end_time' => $endTime,
                 'days' => json_encode($days),
                 'updated_at' => now(),
             ]);
         } else {
             DB::table('schedules')->insert([
                 'user_id' => $user->id,
-                'start_time' => $data['start_time'],
-                'end_time' => $data['end_time'],
+                'start_time' => $startTime,
+                'end_time' => $endTime,
                 'days' => json_encode($days),
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -1374,11 +1689,134 @@ class AuthController extends Controller
             ->get();
 
         $teams = DB::table('teams')->select('id', 'name')->orderBy('name')->get();
+        $userTypes = DB::table('user_types')->select('id', 'name')->orderBy('name')->get();
+        $scheduleTemplates = $this->loadScheduleTemplatesCollection()
+            ->map(fn ($s) => $this->formatScheduleTemplate($s))
+            ->values();
 
         return response()->json([
             'employees' => $employees,
             'teams' => $teams,
+            'user_types' => $userTypes,
+            'schedule_templates' => $scheduleTemplates,
         ]);
+    }
+
+    /**
+     * Create one employee user.
+     */
+    public function createEmployee(Request $request)
+    {
+        $user = $request->user();
+        if (!$this->canCreateEmployeeUsers($user)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $data = $request->validate([
+            'name' => 'required|string|max:255',
+            'username' => 'nullable|string|max:255|unique:users,username',
+            'email' => 'required|email|unique:users,email',
+            'password' => ['required','confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
+            'team_id' => 'nullable|integer|exists:teams,id',
+            'user_type_id' => 'nullable|integer|exists:user_types,id',
+            'role' => 'nullable|string|max:255',
+            'photo' => 'nullable|image|max:2048',
+            'first_name' => 'nullable|string|max:50',
+            'last_name' => 'nullable|string|max:50',
+            'phone' => 'nullable|string|max:20',
+            'hire_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
+            'birth_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
+            'dni' => 'nullable|string|max:30',
+            'social_security_number' => 'nullable|string|max:50',
+            'contract_type' => 'nullable|string|max:50',
+            'contract_start_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
+            'vacation_days_total' => 'nullable|integer|min:0|max:365',
+            'start_time' => 'nullable|date_format:H:i',
+            'end_time' => 'nullable|date_format:H:i',
+            'days' => 'nullable|array',
+            'days.*' => 'in:L,M,X,J,V,S,D',
+            'schedule_template_ids' => 'nullable|array',
+            'schedule_template_ids.*' => 'integer|exists:schedules,id',
+        ]);
+
+        $employee = new User();
+        $employee->name = $data['name'];
+        $employee->username = $data['username'] ?? null;
+        $employee->email = $data['email'];
+        $employee->password = Hash::make($data['password']);
+        $employee->team_id = $data['team_id'] ?? null;
+        $employee->user_type_id = $data['user_type_id'] ?? null;
+        $employee->role = $data['role'] ?? null;
+        $employee->first_name = $data['first_name'] ?? null;
+        $employee->last_name = $data['last_name'] ?? null;
+        $employee->phone = $data['phone'] ?? null;
+        $employee->hire_date = $data['hire_date'] ?? null;
+        $employee->birth_date = $data['birth_date'] ?? null;
+        $employee->dni = $data['dni'] ?? null;
+        $employee->social_security_number = $data['social_security_number'] ?? null;
+        $employee->contract_type = $data['contract_type'] ?? null;
+        $employee->contract_start_date = $data['contract_start_date'] ?? null;
+        $employee->vacation_days_total = isset($data['vacation_days_total']) ? (int) $data['vacation_days_total'] : 0;
+
+        if ($request->hasFile('photo')) {
+            $path = $request->file('photo')->store('avatars', 'public');
+            $employee->photo = '/storage/' . $path;
+        }
+
+        $employee->save();
+
+        if ($this->isHrTeam($user)) {
+            $days = array_values(array_unique($this->normalizeScheduleDays($data['days'] ?? null)));
+            $startTime = $data['start_time'] ?? null;
+            $endTime = $data['end_time'] ?? null;
+            $templates = collect();
+
+            $templateIds = $data['schedule_template_ids'] ?? [];
+            if (count($templateIds)) {
+                $templates = $this->getScheduleTemplatesByIds($templateIds);
+
+                if ($this->hasOverlappingDaysInTemplates($templates)) {
+                    return response()->json(['message' => 'No puedes seleccionar jornadas con dias repetidos'], 422);
+                }
+
+                if ($templates->count()) {
+                    $templateDays = [];
+                    foreach ($templates as $tpl) {
+                        $templateDays = array_merge($templateDays, $this->normalizeScheduleDays($tpl->days ?? null));
+                    }
+                    if (!count($days)) {
+                        $days = array_values(array_unique($templateDays));
+                    }
+                    if (!$startTime || !$endTime) {
+                        $firstTemplate = $templates->first();
+                        $startTime = $startTime ?: (isset($firstTemplate->start_time) ? substr((string) $firstTemplate->start_time, 0, 5) : null);
+                        $endTime = $endTime ?: (isset($firstTemplate->end_time) ? substr((string) $firstTemplate->end_time, 0, 5) : null);
+                    }
+                }
+            }
+
+            $this->syncUserScheduleTemplates((int) $employee->id, $templates);
+
+            if (! empty($startTime) && ! empty($endTime)) {
+            DB::table('schedules')->insert([
+                'user_id' => $employee->id,
+                'start_time' => $startTime,
+                'end_time' => $endTime,
+                'days' => json_encode($days),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            }
+        }
+
+        return response()->json([
+            'status' => 'ok',
+            'employee' => [
+                'id' => $employee->id,
+                'name' => $employee->name,
+                'email' => $employee->email,
+            ],
+        ], 201);
     }
 
     /**
@@ -1414,11 +1852,17 @@ class AuthController extends Controller
         }
 
         $teams = DB::table('teams')->select('id', 'name')->orderBy('name')->get();
+        $scheduleTemplates = $this->loadScheduleTemplatesCollection()
+            ->map(fn ($s) => $this->formatScheduleTemplate($s))
+            ->values();
 
         return response()->json([
             'employee' => $employee,
             'schedule' => $schedule,
             'teams' => $teams,
+            'schedule_templates' => $scheduleTemplates,
+            'schedule_template_ids' => $this->getAssignedScheduleTemplateIds((int) $employee->id),
+            'assigned_schedule_templates' => $this->loadAssignedScheduleTemplatesForUser((int) $employee->id),
         ]);
     }
 
@@ -1680,18 +2124,20 @@ class AuthController extends Controller
             'team_id' => 'nullable|integer|exists:teams,id',
             'photo' => 'nullable|image|max:2048',
             'phone' => 'nullable|string|max:20',
-            'hire_date' => 'nullable|date',
-            'birth_date' => 'nullable|date',
+            'hire_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
+            'birth_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
             'dni' => 'nullable|string|max:30',
             'social_security_number' => 'nullable|string|max:50',
             'contract_type' => 'nullable|string|max:50',
-            'contract_start_date' => 'nullable|date',
+            'contract_start_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
             'vacation_days_total' => 'nullable|integer|min:0|max:365',
             'password' => ['nullable','confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
             'start_time' => 'nullable|date_format:H:i',
             'end_time' => 'nullable|date_format:H:i',
             'days' => 'nullable|array',
             'days.*' => 'in:L,M,X,J,V,S,D',
+            'schedule_template_ids' => 'nullable|array',
+            'schedule_template_ids.*' => 'integer|exists:schedules,id',
         ]);
 
         $employee->name = $data['name'];
@@ -1714,25 +2160,56 @@ class AuthController extends Controller
         }
         $employee->save();
 
-        if (! empty($data['start_time']) && ! empty($data['end_time'])) {
+        if ($this->isHrTeam($user)) {
             $days = array_values(array_unique($this->normalizeScheduleDays($data['days'] ?? null)));
+            $startTime = $data['start_time'] ?? null;
+            $endTime = $data['end_time'] ?? null;
+            $templates = collect();
+
+            $templateIds = $data['schedule_template_ids'] ?? [];
+            if (count($templateIds)) {
+                $templates = $this->getScheduleTemplatesByIds($templateIds);
+                if ($this->hasOverlappingDaysInTemplates($templates)) {
+                    return response()->json(['message' => 'No puedes seleccionar jornadas con dias repetidos'], 422);
+                }
+
+                if ($templates->count()) {
+                    $templateDays = [];
+                    foreach ($templates as $tpl) {
+                        $templateDays = array_merge($templateDays, $this->normalizeScheduleDays($tpl->days ?? null));
+                    }
+                    if (!count($days)) {
+                        $days = array_values(array_unique($templateDays));
+                    }
+                    if (!$startTime || !$endTime) {
+                        $firstTemplate = $templates->first();
+                        $startTime = $startTime ?: (isset($firstTemplate->start_time) ? substr((string) $firstTemplate->start_time, 0, 5) : null);
+                        $endTime = $endTime ?: (isset($firstTemplate->end_time) ? substr((string) $firstTemplate->end_time, 0, 5) : null);
+                    }
+                }
+            }
+
+            $this->syncUserScheduleTemplates((int) $employee->id, $templates);
+
+            if (! empty($startTime) && ! empty($endTime)) {
             $sched = DB::table('schedules')->where('user_id', $employee->id)->first();
             if ($sched) {
                 DB::table('schedules')->where('id', $sched->id)->update([
-                    'start_time' => $data['start_time'],
-                    'end_time' => $data['end_time'],
+                    'start_time' => $startTime,
+                    'end_time' => $endTime,
                     'days' => json_encode($days),
                     'updated_at' => now(),
                 ]);
             } else {
                 DB::table('schedules')->insert([
                     'user_id' => $employee->id,
-                    'start_time' => $data['start_time'],
-                    'end_time' => $data['end_time'],
+                    'start_time' => $startTime,
+                    'end_time' => $endTime,
                     'days' => json_encode($days),
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
+            }
             }
         }
 

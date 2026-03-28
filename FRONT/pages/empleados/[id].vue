@@ -260,18 +260,37 @@
                   </div>
                 </div>
 
-                <div class="pt-4 border-t border-gray-800">
-                  <h3 class="text-sm text-gray-300 mb-2">Horario</h3>
-                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <input v-model="form.start_time" type="time" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
-                    <input v-model="form.end_time" type="time" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
+                <div v-if="canViewWorkDays" class="pt-4 border-t border-gray-800">
+                  <h3 class="text-sm text-gray-200 mb-3">Jornadas asignadas</h3>
+                  <p class="text-xs text-gray-400 mb-3">Selecciona una o varias jornadas sin solapar dias.</p>
+                  <div v-if="scheduleTemplates.length" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <button
+                      v-for="tpl in scheduleTemplates"
+                      :key="`emp-tpl-${tpl.id}`"
+                      type="button"
+                      @click="toggleScheduleTemplate(tpl.id, !selectedScheduleTemplateIds.includes(tpl.id))"
+                      class="text-left rounded-xl border px-3 py-3 transition"
+                      :class="selectedScheduleTemplateIds.includes(tpl.id)
+                        ? 'border-cyan-400 bg-cyan-500/10 ring-1 ring-cyan-500/30'
+                        : 'border-gray-700 bg-gray-800/60 hover:border-gray-500 hover:bg-gray-800'"
+                    >
+                      <div class="flex items-center justify-between gap-2">
+                        <span class="text-sm font-semibold" :class="selectedScheduleTemplateIds.includes(tpl.id) ? 'text-cyan-200' : 'text-gray-100'">
+                          {{ tpl.start_time }} - {{ tpl.end_time }}
+                        </span>
+                        <span class="text-[11px] px-2 py-0.5 rounded-full" :class="selectedScheduleTemplateIds.includes(tpl.id) ? 'bg-cyan-400/20 text-cyan-200' : 'bg-gray-700 text-gray-300'">
+                          {{ selectedScheduleTemplateIds.includes(tpl.id) ? 'Seleccionada' : 'Disponible' }}
+                        </span>
+                      </div>
+                      <div class="mt-2 flex flex-wrap gap-1.5">
+                        <span v-for="day in tpl.days" :key="`emp-tpl-day-${tpl.id}-${day}`" class="text-[11px] px-2 py-0.5 rounded-full bg-gray-900/70 border border-gray-700 text-gray-300">
+                          {{ day }}
+                        </span>
+                      </div>
+                    </button>
                   </div>
-                  <div class="mt-3 flex flex-wrap gap-2">
-                    <label v-for="d in dayOptions" :key="d" class="inline-flex items-center gap-2 text-xs text-gray-300 bg-gray-800 px-2 py-1 rounded">
-                      <input type="checkbox" :value="d" v-model="form.days" class="accent-blue-500" />
-                      <span>{{ d }}</span>
-                    </label>
-                  </div>
+                  <p v-else class="text-xs text-gray-500">No hay jornadas creadas.</p>
+                  <p v-if="scheduleSelectionError" class="mt-3 text-xs text-red-400">{{ scheduleSelectionError }}</p>
                 </div>
 
                 <div class="flex justify-end">
@@ -368,8 +387,11 @@ const attendanceSummary = ref<any>({
 })
 const employeeDocuments = ref<any[]>([])
 const teams = ref<any[]>([])
+const scheduleTemplates = ref<any[]>([])
 const preview = ref<string | null>(null)
 const downloadingDocId = ref<number | null>(null)
+const selectedScheduleTemplateIds = ref<number[]>([])
+const scheduleSelectionError = ref('')
 
 const form = ref<any>({
   name: '',
@@ -390,7 +412,6 @@ const form = ref<any>({
   days: ['L', 'M', 'X', 'J', 'V'],
   photo: null,
 })
-const dayOptions = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
 const toast = ref<{ show: boolean; type: 'success' | 'error'; message: string }>({ show: false, type: 'success', message: '' })
 let toastTimer: any = null
@@ -419,6 +440,10 @@ const canViewEmployeeDetails = computed(() => {
   if (currentUser?.can_view_employee_details) return true
   const permissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : []
   return permissions.includes('employees.view_details')
+})
+const canViewWorkDays = computed(() => {
+  const currentUser: any = user.value || {}
+  return Boolean(currentUser?.is_hr_team)
 })
 const dailyBars = computed(() => {
   const rows = Array.isArray(attendanceRows.value) ? attendanceRows.value : []
@@ -502,6 +527,49 @@ function minutesToHHMM(minutes: number): string {
   return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
 }
 
+function resolvePhotoUrl(path?: string | null) {
+  if (!path) return null
+  const raw = String(path)
+  if (/^https?:\/\//i.test(raw)) return raw
+  const base = String(apiBase || 'http://localhost:8000').replace(/\/+$/, '')
+  return raw.startsWith('/') ? `${base}${raw}` : `${base}/${raw}`
+}
+
+function normalizeTimeToHm(value?: string | null) {
+  if (!value) return ''
+  const raw = String(value).trim()
+  if (/^\d{2}:\d{2}:\d{2}$/.test(raw)) return raw.slice(0, 5)
+  if (/^\d{2}:\d{2}$/.test(raw)) return raw
+  return raw
+}
+
+function hasOverlappingDays(ids: number[]) {
+  const used = new Set<string>()
+  const selected = scheduleTemplates.value.filter((t: any) => ids.includes(Number(t.id)))
+  for (const tpl of selected) {
+    for (const day of Array.isArray(tpl?.days) ? tpl.days : []) {
+      if (used.has(day)) return true
+      used.add(day)
+    }
+  }
+  return false
+}
+
+function toggleScheduleTemplate(id: number, checked: boolean) {
+  const set = new Set<number>(selectedScheduleTemplateIds.value)
+  if (checked) set.add(id)
+  else set.delete(id)
+
+  const next = Array.from(set.values())
+  if (hasOverlappingDays(next)) {
+    scheduleSelectionError.value = 'No puedes seleccionar jornadas con dias repetidos.'
+    return
+  }
+
+  scheduleSelectionError.value = ''
+  selectedScheduleTemplateIds.value = next
+}
+
 async function loadEmployee() {
   error.value = null
   loadingEmployee.value = true
@@ -522,12 +590,17 @@ async function loadEmployee() {
     form.value.contract_type = employee.contract_type || ''
     form.value.contract_start_date = employee.contract_start_date || ''
     form.value.vacation_days_total = Number(employee.vacation_days_total || 0)
-    preview.value = employee.photo || employee.profile_photo_path || null
+    preview.value = resolvePhotoUrl(employee.photo || employee.profile_photo_path)
 
     const schedule = res?.schedule || null
-    form.value.start_time = schedule?.start_time || ''
-    form.value.end_time = schedule?.end_time || ''
+    form.value.start_time = normalizeTimeToHm(schedule?.start_time || '')
+    form.value.end_time = normalizeTimeToHm(schedule?.end_time || '')
     form.value.days = Array.isArray(schedule?.days) && schedule.days.length ? schedule.days : ['L', 'M', 'X', 'J', 'V']
+    scheduleTemplates.value = res?.schedule_templates || []
+    selectedScheduleTemplateIds.value = Array.isArray(res?.schedule_template_ids)
+      ? res.schedule_template_ids.map((id: any) => Number(id)).filter((id: number) => Number.isFinite(id))
+      : []
+    scheduleSelectionError.value = ''
 
     teams.value = res?.teams || []
   } catch (e: any) {
@@ -567,6 +640,10 @@ async function loadDocuments() {
 
 async function saveProfile() {
   if (!token.value || !employeeId.value) return
+  if (scheduleSelectionError.value) {
+    showToast('error', scheduleSelectionError.value)
+    return
+  }
   savingProfile.value = true
   try {
     const data = new FormData()
@@ -586,14 +663,17 @@ async function saveProfile() {
       data.append('password', form.value.password)
       data.append('password_confirmation', form.value.password_confirmation || '')
     }
-    if (form.value.start_time) data.append('start_time', form.value.start_time)
-    if (form.value.end_time) data.append('end_time', form.value.end_time)
-    for (const d of form.value.days || []) data.append('days[]', d)
+    if (canViewWorkDays.value) {
+      for (const id of selectedScheduleTemplateIds.value) data.append('schedule_template_ids[]', String(id))
+    }
     if (form.value.photo) data.append('photo', form.value.photo)
 
     await $fetch(`${apiBase || 'http://localhost:8000'}/api/employees/${employeeId.value}`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token.value}` },
+      headers: {
+        Authorization: `Bearer ${token.value}`,
+        Accept: 'application/json',
+      },
       body: data,
     })
 

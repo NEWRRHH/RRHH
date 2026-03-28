@@ -130,6 +130,7 @@ const userInitial = computed(() => String((user.value as any)?.name || '?').char
 const requestsCount = ref(0)
 const isHrTeam = computed(() => Boolean((user.value as any)?.is_hr_team))
 const isAdmin = computed(() => Boolean((user.value as any)?.is_admin) || Number((user.value as any)?.user_type_id || 0) === 1)
+const canAccessSettings = computed(() => Boolean((user.value as any)?.can_access_settings) || isAdmin.value || isHrTeam.value)
 const canSeeEmployees = computed(() => isHrTeam.value || isAdmin.value)
 const canSeeAnnouncements = computed(() => isHrTeam.value || isAdmin.value)
 let requestsTimer: ReturnType<typeof setInterval> | null = null
@@ -259,8 +260,8 @@ const navItems = computed(() => [
       <path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
     </svg>`
   },
-  ...(isAdmin.value ? [{
-    label: 'Configuración',
+  ...(canAccessSettings.value ? [{
+    label: 'Configuracion',
     to: '/configuracion',
     active: route.path.startsWith('/configuracion'),
     icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
