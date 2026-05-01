@@ -1,8 +1,8 @@
 <template>
-  <div class="flex min-h-screen bg-gray-950">
+  <div class="flex h-screen overflow-hidden bg-gray-950">
     <!-- sidebar y top bar reuse existing layout structure -->
     <AppSidebar ref="sidebar" @logout="onLogout" />
-    <div class="flex-1 flex flex-col min-w-0 relative z-10">
+    <div class="flex-1 h-screen flex flex-col min-w-0 relative z-10 overflow-hidden">
       <header class="relative z-40 h-16 shrink-0 flex items-center gap-4 px-6 border-b border-gray-800 bg-gray-900/60 backdrop-blur">
         <button
           class="lg:hidden flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition"
@@ -13,15 +13,33 @@
           </svg>
         </button>
         <h1 class="text-base font-semibold text-white">Notificaciones</h1>
+        <button
+          class="lg:hidden px-3 py-1.5 rounded-lg border border-gray-700 text-xs text-gray-200 hover:bg-gray-800 transition"
+          @click="showUserPanel = !showUserPanel"
+        >
+          {{ showUserPanel ? 'Cerrar lista' : 'Usuarios' }}
+        </button>
         <div class="ml-auto flex items-center gap-3">
           <AttendanceButton class="!text-[11px]" />
           <UserMenu />
         </div>
       </header>
 
-      <main class="relative z-10 flex-1 p-0 overflow-hidden flex">
+      <main class="relative z-10 flex-1 min-h-0 p-0 overflow-hidden flex">
+        <div
+          v-if="showUserPanel && isMobile"
+          class="absolute inset-0 z-20 bg-black/50"
+          @click="showUserPanel = false"
+        />
         <!-- conversation list + users -->
-        <aside class="w-64 border-r border-gray-800 bg-gray-900 flex-shrink-0 overflow-y-auto">
+        <aside
+          :class="[
+            'border-r border-gray-800 bg-gray-900 flex-shrink-0 overflow-y-auto',
+            isMobile
+              ? (showUserPanel ? 'absolute left-0 top-0 bottom-0 z-30 w-72 max-w-[85vw]' : 'hidden')
+              : 'w-64'
+          ]"
+        >
           <div class="px-4 py-2 text-xs text-gray-400 uppercase tracking-wide">Usuarios</div>
           <ul>
             <li
@@ -73,17 +91,22 @@
         </aside>
 
         <!-- message area -->
-        <div class="flex-1 flex flex-col">
+        <div class="flex-1 min-h-0 flex flex-col">
           <div class="px-4 py-2 border-b border-gray-800 bg-gray-900 flex items-center justify-between">
             <span class="font-semibold text-white">
               {{ currentPartner ? currentPartner.name : 'Sin conversación seleccionada' }}
             </span>
           </div>
-          <div ref="messagesContainer" class="flex-1 overflow-y-auto p-4">
+          <div ref="messagesContainer" class="flex-1 min-h-0 overflow-y-auto p-4">
             <div v-for="msg in messages" :key="msg.id" class="mb-2 flex" :class="msg.sender_id === user?.id ? 'justify-end' : 'justify-start'">
               <div :class="[msg.sender_id === user?.id ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-100', 'rounded-lg px-3 py-2 max-w-xs']">
                 <div class="text-sm">{{ msg.content }}</div>
-                <div class="text-xs text-gray-400 mt-1 text-right">{{ formatDate(msg.created_at) }}</div>
+                <div class="text-xs text-gray-400 mt-1 text-right flex items-center justify-end gap-1">
+                  <span>{{ formatDate(msg.created_at) }}</span>
+                  <span v-if="msg.sender_id === user?.id" :class="msg.read ? 'text-blue-200' : 'text-gray-300'">
+                    {{ msg.read ? '✓✓' : '✓' }}
+                  </span>
+                </div>
               </div>
             </div>
             <div v-if="messages.length === 0" class="text-gray-400 text-center mt-6">Selecciona una conversación para comenzar</div>
@@ -109,7 +132,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 
 definePageMeta({ auth: true })
 
@@ -120,7 +143,7 @@ import AttendanceButton from '../components/AttendanceButton.vue'
 import UserMenu from '../components/UserMenu.vue'
 import AppSidebar from '../components/AppSidebar.vue'
 
-const { user, token, apiBase, fetchUser, unreadNotifications, fetchUnread, logout, realtimeInstance } = useAuth()
+const { user, token, apiBase, fetchUser, fetchUnread, logout, lastReceivedMessage, lastReadReceipt } = useAuth()
 const router = useRouter()
 const sidebar = ref<{ open: boolean } | null>(null)
 
@@ -188,6 +211,9 @@ function selectConversation(user: any) {
       unread_count: 0,
     })
   }
+  if (isMobile.value) {
+    showUserPanel.value = false
+  }
 }
 
 async function sendMessage() {
@@ -225,39 +251,90 @@ function formatDate(dt: string) {
 }
 
 onMounted(() => {
+  isMobile.value = window.innerWidth < 1024
+  showUserPanel.value = !isMobile.value
+  resizeHandler = () => {
+    isMobile.value = window.innerWidth < 1024
+    if (isMobile.value) showUserPanel.value = false
+    else showUserPanel.value = true
+  }
+  window.addEventListener('resize', resizeHandler)
+
   loadConversations()
 
-  // if websocket already connected, listen for incoming messages
-  const echo = realtimeInstance()
-  if (echo && user.value) {
-    echo.private(`user.${user.value.id}`).listen('MessageSent', handleRealtime)
+  // Watch the shared reactive state set by useAuth's single Echo listener.
+  // This avoids subscribing to Echo here (which caused stale closures and
+  // duplicate listeners on every mount/navigation).
+  stopRealtimeWatch = watch(lastReceivedMessage, (e) => {
+    if (e) handleRealtime(e)
+  })
+  stopReadReceiptWatch = watch(lastReadReceipt, (e) => {
+    if (e) handleReadReceipt(e)
+  })
+})
+
+onBeforeUnmount(() => {
+  if (resizeHandler) {
+    window.removeEventListener('resize', resizeHandler)
+    resizeHandler = null
+  }
+  if (stopRealtimeWatch) {
+    stopRealtimeWatch()
+    stopRealtimeWatch = null
+  }
+  if (stopReadReceiptWatch) {
+    stopReadReceiptWatch()
+    stopReadReceiptWatch = null
   }
 })
+
+let stopRealtimeWatch: null | (() => void) = null
+let stopReadReceiptWatch: null | (() => void) = null
+const processedRealtimeKeys = new Set<string>()
 
 function handleRealtime(e: any) {
   // e.conversation holds the entire conversation row
   const conv = e.conversation
-  // update global unread count / badge
-  unreadNotifications.value++
+  const last = Array.isArray(conv?.conversation) ? conv.conversation[conv.conversation.length - 1] : null
+  if (!last) return
+  const me = user.value?.id
+  const isOwnMessage = last.sender_id === me
 
   // update conversations list: ensure partner exists and adjust unread_count
-  const partnerId = conv.sender_id === user.value.id ? conv.receiver_id : conv.sender_id
+  const partnerId = isOwnMessage ? conv.receiver_id : last.sender_id
+  const isActiveConversation = !!currentPartner.value && currentPartner.value.id === partnerId
   let item = conversations.value.find(c => c.user.id === partnerId)
   if (!item) {
     // insert at top if new
     item = { user: {id: partnerId, name: 'Usuario'}, last_message: null, last_at: null, unread_count: 0 }
     conversations.value.unshift(item)
   }
-  item.unread_count = 1 // or increment as appropriate
+  item.unread_count = (isActiveConversation || isOwnMessage) ? 0 : ((item.unread_count || 0) + 1)
 
   // if the conversation currently open, append the message and scroll
-  if (currentPartner.value && currentPartner.value.id === partnerId) {
-    const last = conv.conversation[conv.conversation.length - 1]
+  if (isActiveConversation) {
+    const dedupeKey = `${last.id || ''}|${last.sender_id}|${last.created_at}|${last.content}`
+    if (processedRealtimeKeys.has(dedupeKey)) return
+    processedRealtimeKeys.add(dedupeKey)
+
+    const alreadyExists = messages.value.some((m) =>
+      m.sender_id === last.sender_id &&
+      m.created_at === last.created_at &&
+      m.content === last.content
+    )
+    if (alreadyExists) return
+
     messages.value.push(last)
     nextTick(() => {
       const container = messagesContainer.value as HTMLElement
       container.scrollTop = container.scrollHeight
     })
+
+    // If user is focused on this chat, mark incoming message as read immediately
+    // so global badges (sidebar/dashboard) stay in sync.
+    if (!isOwnMessage) {
+      void markConversationReadRealtime(partnerId)
+    }
   }
 }
 
@@ -270,4 +347,36 @@ watch(currentPartner, (val) => {
 })
 
 const messagesContainer = ref<HTMLElement | null>(null)
+const markingReadFor = new Set<number>()
+const isMobile = ref(false)
+const showUserPanel = ref(false)
+let resizeHandler: (() => void) | null = null
+
+async function markConversationReadRealtime(userId: number) {
+  if (!token.value || markingReadFor.has(userId)) return
+  markingReadFor.add(userId)
+  try {
+    await $fetch(`${apiBase}/api/notifications/conversation/${userId}`, {
+      headers: { Authorization: `Bearer ${token.value}` }
+    })
+    await fetchUnread()
+  } catch (e) {
+    console.error('failed to mark conversation read in realtime', e)
+  } finally {
+    markingReadFor.delete(userId)
+  }
+}
+
+function handleReadReceipt(e: any) {
+  const readerId = Number(e?.reader_id || 0)
+  if (!readerId) return
+  if (!currentPartner.value || currentPartner.value.id !== readerId) return
+
+  messages.value = messages.value.map((m: any) => {
+    if (m.sender_id === user.value?.id) {
+      return { ...m, read: true }
+    }
+    return m
+  })
+}
 </script>

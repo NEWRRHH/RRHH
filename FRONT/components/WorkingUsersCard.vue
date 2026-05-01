@@ -1,8 +1,16 @@
 <template>
-  <!-- cards are the same size and this one scrolls when content overflows -->
-  <div class="w-full max-w-[230px] h-72">
-    <div class="bg-gray-900 border border-gray-800 rounded-2xl p-4 flex flex-col h-full shadow-lg shadow-black/40 transition-transform hover:-translate-y-0.5">
-      <h3 class="text-xs text-gray-300 uppercase tracking-wide mb-3">En trabajo</h3>
+  <div class="w-full h-full">
+    <div class="relative overflow-hidden bg-gray-900 border border-gray-800 rounded-2xl p-4 flex flex-col h-full shadow-lg shadow-black/40 transition-transform hover:-translate-y-0.5">
+      <div class="absolute -top-6 -right-6 w-24 h-24 bg-green-500/10 rounded-full blur-2xl pointer-events-none"></div>
+
+      <div class="flex items-center gap-2 mb-3">
+        <div class="w-7 h-7 rounded-lg bg-green-500/15 flex items-center justify-center shrink-0">
+          <svg class="w-4 h-4 text-green-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <h3 class="text-xs text-gray-300 uppercase tracking-wide font-medium">En trabajo</h3>
+      </div>
 
       <div v-if="loading" class="space-y-3">
         <div v-for="i in 3" :key="i" class="flex items-center gap-3">
@@ -33,7 +41,7 @@
 <script setup lang="ts">
 import type { PropType } from 'vue'
 
-const props = defineProps({
+defineProps({
   users: { type: Array as PropType<Array<Record<string, any>>>, default: () => [] },
   loading: { type: Boolean as PropType<boolean>, default: false }
 })

@@ -52,13 +52,17 @@ return [
 
         'reverb' => [
             'driver' => 'reverb',
-            'host' => env('REVERB_HOST', '127.0.0.1'),
-            'port' => env('REVERB_PORT', 6001),
             'app_id' => env('REVERB_APP_ID'),
             'key' => env('REVERB_APP_KEY'),
             'secret' => env('REVERB_APP_SECRET'),
-            // additional options like tls, allowed_origins, etc. are
-            // controlled via config/reverb.php or environment variables.
+            // host/port/scheme must be inside 'options' so the Pusher SDK
+            // sends HTTP requests to the Reverb server instead of pusherapp.com
+            'options' => [
+                'host' => env('REVERB_HOST', '127.0.0.1'),
+                'port' => env('REVERB_PORT', 6001),
+                'scheme' => 'http',
+                'useTLS' => false,
+            ],
         ],
     ],
 ];

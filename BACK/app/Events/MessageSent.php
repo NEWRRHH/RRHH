@@ -6,26 +6,28 @@ use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
-// we only need the contract interface; the other imports were pointing
-// to non-existent classes which triggered the error seen in logs.
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast as ShouldBroadcastContract;
+// ShouldBroadcastNow broadcasts synchronously (no queue worker needed).
+// This guarantees instant delivery to Reverb without requiring `queue:work`.
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Queue\SerializesModels;
 
 /**
  * Event fired when a notification/message is created or updated.
  */
-class MessageSent implements ShouldBroadcastContract
+class MessageSent implements ShouldBroadcastNow
 {
     use InteractsWithSockets, SerializesModels;
 
     public $conversation;
+    public int $targetUserId;
 
     /**
      * Create a new event instance.
      */
-    public function __construct($conversation)
+    public function __construct($conversation, int $targetUserId)
     {
         $this->conversation = $conversation;
+        $this->targetUserId = $targetUserId;
     }
 
     /**
@@ -35,9 +37,19 @@ class MessageSent implements ShouldBroadcastContract
      */
     public function broadcastOn()
     {
-        // conversation object contains receiver_id; broadcast on their private channel
-        $receiver = $this->conversation->receiver_id;
-        return new PrivateChannel("user.{$receiver}");
+        // Always broadcast to the recipient of the current message,
+        // not the historical receiver stored in the conversation row.
+        return new PrivateChannel("user.{$this->targetUserId}");
+    }
+
+    /**
+     * Short event name so the frontend can listen with '.MessageSent'.
+     * Without this, Laravel broadcasts as 'App\Events\MessageSent'
+     * which Echo would never match with .listen('MessageSent', ...).
+     */
+    public function broadcastAs(): string
+    {
+        return 'MessageSent';
     }
 
     /**

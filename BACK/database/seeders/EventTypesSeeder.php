@@ -14,6 +14,7 @@ class EventTypesSeeder extends Seeder
             ['name' => 'General', 'created_at' => $now, 'updated_at' => $now],
             ['name' => 'Vacaciones', 'created_at' => $now, 'updated_at' => $now],
             ['name' => 'Permiso', 'created_at' => $now, 'updated_at' => $now],
+            ['name' => 'Fichaje', 'created_at' => $now, 'updated_at' => $now],
             ['name' => 'Reunión', 'created_at' => $now, 'updated_at' => $now],
         ];
 
@@ -25,3 +26,4 @@ class EventTypesSeeder extends Seeder
         }
     }
 }
+
