@@ -228,21 +228,39 @@ class TimeOffController extends Controller
 
     private function loadScheduleForUser(int $userId): ?object
     {
-        $schedule = DB::table('schedules')
-            ->where('user_id', $userId)
-            ->orderBy('id', 'desc')
-            ->first();
+        $templates = DB::table('user_schedules')
+            ->join('schedules', 'user_schedules.schedule_id', '=', 'schedules.id')
+            ->where('user_schedules.user_id', $userId)
+            ->whereNull('schedules.deleted_at')
+            ->orderBy('user_schedules.id', 'asc')
+            ->get(['schedules.start_time', 'schedules.end_time', 'schedules.days']);
 
-        if (!$schedule) {
-            $schedule = DB::table('schedules')
-                ->join('user_schedules', 'schedules.id', '=', 'user_schedules.schedule_id')
-                ->where('user_schedules.user_id', $userId)
-                ->select('schedules.*')
-                ->orderBy('schedules.id', 'desc')
-                ->first();
+        if (!$templates->count()) {
+            return null;
         }
 
-        return $schedule ?: null;
+        $daysUnion = [];
+        $earliestStart = null;
+        $latestEnd = null;
+
+        foreach ($templates as $tpl) {
+            $daysUnion = array_values(array_unique(array_merge($daysUnion, $this->normalizeScheduleDays($tpl->days ?? null))));
+            $start = isset($tpl->start_time) ? substr((string) $tpl->start_time, 0, 5) : null;
+            $end = isset($tpl->end_time) ? substr((string) $tpl->end_time, 0, 5) : null;
+
+            if ($start && ($earliestStart === null || $start < $earliestStart)) {
+                $earliestStart = $start;
+            }
+            if ($end && ($latestEnd === null || $end > $latestEnd)) {
+                $latestEnd = $end;
+            }
+        }
+
+        return (object) [
+            'start_time' => $earliestStart,
+            'end_time' => $latestEnd,
+            'days' => $daysUnion,
+        ];
     }
 
     private function normalizeScheduleDays($days): array

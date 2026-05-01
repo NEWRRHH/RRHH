@@ -23,8 +23,8 @@
 
       <main class="relative z-10 flex-1 min-h-0 p-3 sm:p-4 lg:p-6 overflow-hidden">
         <div class="h-full flex flex-col gap-4">
-          <div class="max-w-full overflow-x-auto">
-            <div class="inline-flex rounded-xl border border-gray-700 p-1 bg-gray-900 w-max">
+          <div class="max-w-full">
+            <div class="flex flex-wrap rounded-xl border border-gray-700 p-1 bg-gray-900 gap-1">
               <button
                 class="px-4 py-2 rounded-lg text-sm transition whitespace-nowrap"
                 :class="activeTab === 'monthly' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
@@ -38,6 +38,13 @@
                 @click="activeTab = 'who_is_in'"
               >
                 Who's in
+              </button>
+              <button
+                class="px-4 py-2 rounded-lg text-sm transition whitespace-nowrap"
+                :class="activeTab === 'absences' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
+                @click="activeTab = 'absences'"
+              >
+                Ausencias
               </button>
             </div>
           </div>
@@ -219,6 +226,117 @@
             </section>
           </div>
 
+          <div v-else-if="activeTab === 'absences'" class="h-full grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-4">
+            <aside class="bg-gray-900 border border-gray-800 rounded-3xl p-4 flex flex-col min-h-0 shadow-sm">
+              <h2 class="text-sm font-semibold text-white mb-3">
+                {{ canViewAll ? 'Usuarios' : 'Mis ausencias' }}
+              </h2>
+
+              <div v-if="canViewAll" class="mb-3">
+                <label class="block text-xs text-gray-400 mb-1">Equipo</label>
+                <select
+                  v-model="teamFilter"
+                  class="w-full bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded-xl px-2.5 py-2 focus:outline-none"
+                >
+                  <option value="">Todos los equipos</option>
+                  <option v-for="t in teams" :key="t.id" :value="String(t.id)">{{ t.name }}</option>
+                </select>
+              </div>
+
+              <div class="flex-1 overflow-y-auto space-y-2 pr-1">
+                <button
+                  v-for="u in users"
+                  :key="u.id"
+                  @click="selectUser(u.id)"
+                  :class="[
+                    'w-full text-left p-2.5 rounded-xl border transition',
+                    selectedUserId === u.id
+                      ? 'bg-blue-600/20 border-blue-500 text-white'
+                      : 'bg-gray-800 border-gray-700 text-gray-200 hover:bg-gray-700'
+                  ]"
+                >
+                  <div class="flex items-center gap-2.5">
+                    <div class="w-9 h-9 rounded-full overflow-hidden bg-gray-700 flex items-center justify-center text-xs font-semibold">
+                      <img v-if="u.photo" :src="u.photo" class="w-full h-full object-cover" />
+                      <span v-else>{{ (u.full_name || '?').charAt(0).toUpperCase() }}</span>
+                    </div>
+                    <div class="min-w-0">
+                      <div class="text-sm truncate">{{ u.full_name }}</div>
+                      <div class="text-[11px] text-gray-400 truncate">{{ u.team_name || 'Sin equipo' }}</div>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </aside>
+
+            <section class="bg-gray-900 border border-gray-800 rounded-3xl p-5 flex flex-col min-h-0 overflow-hidden shadow-sm">
+              <div class="flex flex-col gap-3 mb-5 lg:flex-row lg:items-center lg:justify-between">
+                <div class="flex flex-wrap items-center gap-2">
+                  <button
+                    @click="changeMonth(-1)"
+                    class="h-10 w-10 sm:h-11 sm:w-11 rounded-xl border border-gray-700 text-gray-300 hover:bg-gray-800"
+                    aria-label="Mes anterior"
+                  >
+                    <svg class="w-5 h-5 mx-auto" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <div class="h-10 sm:h-11 min-w-[140px] sm:min-w-[180px] px-3 sm:px-4 rounded-xl border border-gray-700 bg-gray-800 text-white text-sm sm:text-base font-medium flex items-center justify-center">
+                    {{ monthLabel }}
+                  </div>
+                  <button
+                    @click="changeMonth(1)"
+                    class="h-10 w-10 sm:h-11 sm:w-11 rounded-xl border border-gray-700 text-gray-300 hover:bg-gray-800"
+                    aria-label="Mes siguiente"
+                  >
+                    <svg class="w-5 h-5 mx-auto" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div class="px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-200">
+                  Ausencias del mes:
+                  <span class="font-semibold">{{ absencesCount }}</span>
+                </div>
+              </div>
+
+              <div class="text-xs text-gray-400 mb-3">
+                Usuario seleccionado:
+                <span class="text-gray-200 font-medium">{{ selectedUserName }}</span>
+              </div>
+              <p class="text-xs text-gray-500 mb-3">
+                Se listan solo dias laborables sin fichaje, excluyendo vacaciones y dias con comprobante cargado.
+              </p>
+
+              <div class="flex-1 min-h-0 overflow-y-auto rounded-2xl border border-gray-800">
+                <div class="grid grid-cols-[160px_120px_minmax(0,1fr)] px-4 py-3 text-gray-400 text-xs sm:text-sm border-b border-gray-800 bg-gray-800/50 sticky top-0 z-10">
+                  <div>Fecha</div>
+                  <div>Dia</div>
+                  <div>Estado</div>
+                </div>
+
+                <div
+                  v-for="row in absencesRows"
+                  :key="`absence-${row.date}`"
+                  class="grid grid-cols-[160px_120px_minmax(0,1fr)] px-4 py-3 border-b border-gray-800 items-center"
+                >
+                  <div class="text-gray-200 text-sm font-medium">{{ shortDate(row.date) }}</div>
+                  <div class="text-gray-400 text-sm">{{ row.weekday }}</div>
+                  <div>
+                    <span class="px-2.5 py-1 rounded-full text-xs border border-red-500/40 bg-red-500/15 text-red-200 uppercase tracking-wide">
+                      Sin fichaje
+                    </span>
+                  </div>
+                </div>
+
+                <div v-if="!absencesRows.length" class="px-4 py-12 text-center text-gray-500 text-sm">
+                  No hay ausencias para los filtros seleccionados.
+                </div>
+              </div>
+            </section>
+          </div>
+
           <div v-else class="h-full grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-4">
             <section class="bg-gray-900 border border-gray-800 rounded-3xl p-5 flex flex-col min-h-0 shadow-sm">
               <div class="flex items-center justify-between mb-4">
@@ -344,12 +462,14 @@ const { token, fetchUser, logout, apiBase, setToken, user } = useAuth()
 const router = useRouter()
 const sidebar = ref<{ open: boolean } | null>(null)
 
-const activeTab = ref<'monthly' | 'who_is_in'>('monthly')
+const activeTab = ref<'monthly' | 'who_is_in' | 'absences'>('monthly')
 
 const canViewAll = ref(false)
 const users = ref<any[]>([])
 const teams = ref<any[]>([])
 const monthRows = ref<any[]>([])
+const absencesRows = ref<any[]>([])
+const absencesCount = ref(0)
 const summary = ref<{ worked_hhmm: string; target_hhmm: string; worked_minutes: number; target_minutes: number }>({
   worked_hhmm: '00:00',
   target_hhmm: '00:00',
@@ -605,6 +725,8 @@ async function loadMonthData() {
   users.value = res?.users || []
   teams.value = res?.teams || []
   monthRows.value = res?.rows || []
+  absencesRows.value = res?.absences?.rows || []
+  absencesCount.value = Number(res?.absences?.count || absencesRows.value.length || 0)
   summary.value = res?.summary || summary.value
   includeNonWorkingDays.value = !!res?.include_non_working
   selectedUserId.value = res?.selected_user_id || null
@@ -655,7 +777,7 @@ const onLogout = async () => {
 }
 
 watch([selectedMonth, teamFilter, includeNonWorkingDays], () => {
-  if (activeTab.value !== 'monthly') return
+  if (activeTab.value === 'who_is_in') return
   loadMonthData()
 })
 
@@ -665,11 +787,11 @@ watch(whoIsInTeamFilter, () => {
 })
 
 watch(activeTab, async (tab) => {
-  if (tab === 'monthly') {
-    await loadMonthData()
+  if (tab === 'who_is_in') {
+    await loadWhoIsInData()
     return
   }
-  await loadWhoIsInData()
+  await loadMonthData()
 })
 
 onBeforeMount(async () => {

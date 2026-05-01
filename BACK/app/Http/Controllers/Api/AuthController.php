@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\Password;
 use Carbon\Carbon;
@@ -343,7 +344,6 @@ class AuthController extends Controller
     private function loadScheduleTemplatesCollection()
     {
         return DB::table('schedules')
-            ->whereNull('user_id')
             ->whereNull('deleted_at')
             ->orderBy('id', 'desc')
             ->get(['id', 'start_time', 'end_time', 'days']);
@@ -356,7 +356,6 @@ class AuthController extends Controller
         $targetDays = $this->normalizeScheduleDays($days);
 
         $query = DB::table('schedules')
-            ->whereNull('user_id')
             ->whereNull('deleted_at');
 
         if ($excludeId) {
@@ -386,7 +385,6 @@ class AuthController extends Controller
         }
 
         return DB::table('schedules')
-            ->whereNull('user_id')
             ->whereNull('deleted_at')
             ->whereIn('id', $ids)
             ->orderBy('id', 'asc')
@@ -430,15 +428,19 @@ class AuthController extends Controller
         }
 
         $now = now();
+        $hasDaysColumn = Schema::hasColumn('user_schedules', 'days');
         $rows = [];
         foreach ($templates as $tpl) {
-            $rows[] = [
+            $row = [
                 'user_id' => $userId,
                 'schedule_id' => (int) $tpl->id,
-                'days' => json_encode($this->normalizeScheduleDays($tpl->days ?? null)),
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
+            if ($hasDaysColumn) {
+                $row['days'] = json_encode($this->normalizeScheduleDays($tpl->days ?? null));
+            }
+            $rows[] = $row;
         }
 
         if (count($rows)) {
@@ -456,6 +458,60 @@ class AuthController extends Controller
             ->get(['schedules.id', 'schedules.start_time', 'schedules.end_time', 'schedules.days'])
             ->map(fn ($s) => $this->formatScheduleTemplate($s))
             ->values();
+    }
+
+    private function loadAssignedScheduleTemplatesCollectionForUser(int $userId)
+    {
+        return DB::table('user_schedules')
+            ->join('schedules', 'user_schedules.schedule_id', '=', 'schedules.id')
+            ->where('user_schedules.user_id', $userId)
+            ->whereNull('schedules.deleted_at')
+            ->orderBy('user_schedules.id', 'asc')
+            ->get(['schedules.id', 'schedules.start_time', 'schedules.end_time', 'schedules.days']);
+    }
+
+    private function buildEffectiveScheduleFromTemplates($templates): ?object
+    {
+        if (!count($templates)) {
+            return null;
+        }
+
+        $unionDays = [];
+        $earliestStart = null;
+        $latestEnd = null;
+
+        foreach ($templates as $tpl) {
+            $days = $this->normalizeScheduleDays($tpl->days ?? null);
+            $unionDays = array_values(array_unique(array_merge($unionDays, $days)));
+
+            $start = isset($tpl->start_time) ? substr((string) $tpl->start_time, 0, 5) : null;
+            $end = isset($tpl->end_time) ? substr((string) $tpl->end_time, 0, 5) : null;
+
+            if ($start) {
+                if ($earliestStart === null || $this->timeStringToMinutes($start) < $this->timeStringToMinutes($earliestStart)) {
+                    $earliestStart = $start;
+                }
+            }
+            if ($end) {
+                if ($latestEnd === null || $this->timeStringToMinutes($end) > $this->timeStringToMinutes($latestEnd)) {
+                    $latestEnd = $end;
+                }
+            }
+        }
+
+        return (object) [
+            'id' => null,
+            'start_time' => $earliestStart,
+            'end_time' => $latestEnd,
+            'days' => $unionDays,
+        ];
+    }
+
+    private function loadEffectiveScheduleForUser(int $userId): ?object
+    {
+        $templates = $this->loadAssignedScheduleTemplatesCollectionForUser($userId);
+        $fromTemplates = $this->buildEffectiveScheduleFromTemplates($templates);
+        return $fromTemplates;
     }
 
     public function scheduleTemplates(Request $request)
@@ -495,7 +551,6 @@ class AuthController extends Controller
         }
 
         $id = DB::table('schedules')->insertGetId([
-            'user_id' => null,
             'start_time' => $data['start_time'],
             'end_time' => $data['end_time'],
             'days' => json_encode($days),
@@ -520,7 +575,6 @@ class AuthController extends Controller
 
         $schedule = DB::table('schedules')
             ->where('id', $id)
-            ->whereNull('user_id')
             ->whereNull('deleted_at')
             ->first(['id']);
 
@@ -569,7 +623,6 @@ class AuthController extends Controller
 
         $schedule = DB::table('schedules')
             ->where('id', $id)
-            ->whereNull('user_id')
             ->whereNull('deleted_at')
             ->first(['id']);
 
@@ -691,16 +744,12 @@ class AuthController extends Controller
               'birth_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
             'dni' => 'nullable|string|max:30',
             'social_security_number' => 'nullable|string|max:50',
-            'contract_type' => 'nullable|string|max:50',
-              'contract_start_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
         ]);
         $user->name = $data['name'];
         $user->email = $data['email'];
         $user->birth_date = $data['birth_date'] ?? $user->birth_date;
         $user->dni = $data['dni'] ?? $user->dni;
         $user->social_security_number = $data['social_security_number'] ?? $user->social_security_number;
-        $user->contract_type = $data['contract_type'] ?? $user->contract_type;
-        $user->contract_start_date = $data['contract_start_date'] ?? $user->contract_start_date;
         if ($request->hasFile('photo')) {
             $path = $request->file('photo')->store('avatars', 'public');
             $user->photo = '/storage/' . $path;
@@ -721,6 +770,38 @@ class AuthController extends Controller
             return response()->json(['message' => 'Unauthenticated'], 401);
         }
 
+        $now = Carbon::now();
+        $today = $now->toDateString();
+
+        $alreadyClosedToday = DB::table('attendances')
+            ->where('user_id', $user->id)
+            ->whereDate('date', $today)
+            ->whereNotNull('start_time')
+            ->whereNotNull('end_time')
+            ->exists();
+
+        if ($alreadyClosedToday) {
+            return response()->json(['message' => 'Ya registraste entrada y salida hoy.'], 422);
+        }
+
+        $effectiveSchedule = $this->loadEffectiveScheduleForUser((int) $user->id);
+        if ($effectiveSchedule && !empty($effectiveSchedule->start_time)) {
+            $weekMap = [1 => 'L', 2 => 'M', 3 => 'X', 4 => 'J', 5 => 'V', 6 => 'S', 7 => 'D'];
+            $dayLetter = $weekMap[$now->dayOfWeekIso] ?? 'L';
+            $scheduleDays = $this->normalizeScheduleDays($effectiveSchedule->days ?? null);
+
+            if (in_array($dayLetter, $scheduleDays, true)) {
+                $scheduleStart = substr((string) $effectiveSchedule->start_time, 0, 5);
+                $allowedFrom = Carbon::parse($today . ' ' . $scheduleStart)->subMinutes(15);
+                if ($now->lt($allowedFrom)) {
+                    return response()->json([
+                        'message' => 'Solo puedes fichar entrada hasta 15 minutos antes de tu horario.',
+                        'allowed_from' => $allowedFrom->format('H:i'),
+                    ], 422);
+                }
+            }
+        }
+
         // use the current bearer token as session token
         $token = $request->bearerToken() ?: $user->session_token;
         if (! $token) {
@@ -734,6 +815,7 @@ class AuthController extends Controller
         $open = DB::table('attendances')
             ->where('user_id', $user->id)
             ->where('status', 'en_trabajo')
+            ->whereNull('end_date')
             ->orderBy('created_at', 'desc')
             ->first();
 
@@ -743,7 +825,6 @@ class AuthController extends Controller
                 'updated_at' => now(),
             ]);
         } else {
-            $now = Carbon::now();
             DB::table('attendances')->insert([
                 'user_id' => $user->id,
                 'session_token' => $token,
@@ -928,19 +1009,7 @@ class AuthController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->first();
 
-            // try direct schedule on user or via pivot
-            $sched = DB::table('schedules')
-                ->where('user_id', $user->id)
-                ->orderBy('id', 'desc')
-                ->first();
-            if (! $sched) {
-                $sched = DB::table('schedules')
-                    ->join('user_schedules', 'schedules.id', '=', 'user_schedules.schedule_id')
-                    ->where('user_schedules.user_id', $user->id)
-                    ->select('schedules.*')
-                    ->orderBy('schedules.id', 'desc')
-                    ->first();
-            }
+            $sched = $this->loadEffectiveScheduleForUser((int) $user->id);
             if ($sched) {
                 $sched->days = $this->normalizeScheduleDays($sched->days ?? null);
             }
@@ -1114,18 +1183,7 @@ class AuthController extends Controller
             $selectedUserId = (int) ($users->first()['id'] ?? $user->id);
         }
 
-        $schedule = DB::table('schedules')
-            ->where('user_id', $selectedUserId)
-            ->orderBy('id', 'desc')
-            ->first();
-        if (! $schedule) {
-            $schedule = DB::table('schedules')
-                ->join('user_schedules', 'schedules.id', '=', 'user_schedules.schedule_id')
-                ->where('user_schedules.user_id', $selectedUserId)
-                ->select('schedules.*')
-                ->orderBy('schedules.id', 'desc')
-                ->first();
-        }
+        $schedule = $this->loadEffectiveScheduleForUser((int) $selectedUserId);
         $scheduleDays = $this->normalizeScheduleDays($schedule->days ?? null);
         $dailyTargetMinutes = $this->scheduleDailyMinutes($schedule);
 
@@ -1212,11 +1270,14 @@ class AuthController extends Controller
         }
 
         $eventsByDate = [];
+        $vacationsByDate = [];
         foreach ($rawEvents as $event) {
             $eventStart = Carbon::parse($event->start_at);
             $eventEnd = $event->end_at ? Carbon::parse($event->end_at) : $eventStart->copy();
             $cursorDate = $eventStart->copy()->startOfDay();
             $lastDate = $eventEnd->copy()->startOfDay();
+            $eventTypeName = trim((string) ($event->event_type_name ?? ''));
+            $isVacation = Str::contains(Str::lower($eventTypeName), 'vacacion');
 
             while ($cursorDate->lte($lastDate)) {
                 $dateKey = $cursorDate->toDateString();
@@ -1236,9 +1297,27 @@ class AuthController extends Controller
                     'start_time' => substr($dayStartTime, 0, 5),
                     'end_time' => substr($dayEndTime, 0, 5),
                 ];
+                if ($isVacation) {
+                    $vacationsByDate[$dateKey] = true;
+                }
                 $cursorDate->addDay();
             }
         }
+
+        $receiptDocsByDate = DB::table('documents')
+            ->where('user_id', $selectedUserId)
+            ->whereNull('deleted_at')
+            ->where('category', 'receipt')
+            ->whereDate('created_at', '>=', $monthStart->toDateString())
+            ->whereDate('created_at', '<=', $monthEnd->toDateString())
+            ->selectRaw('DATE(created_at) as doc_date')
+            ->pluck('doc_date')
+            ->filter()
+            ->map(function ($d) {
+                return (string) $d;
+            })
+            ->flip()
+            ->toArray();
 
         // One record per date: keep the latest row for that day.
         $rowsByDate = [];
@@ -1249,8 +1328,10 @@ class AuthController extends Controller
         }
 
         $rows = [];
+        $absences = [];
         $targetMinutes = 0;
         $workedMinutes = 0;
+        $todayKey = Carbon::today()->toDateString();
         $weekMap = [
             1 => 'L',
             2 => 'M',
@@ -1276,6 +1357,24 @@ class AuthController extends Controller
                 $rowWorked = $this->timeStringToMinutes((string) $att->hours_worked);
             }
             $workedMinutes += $rowWorked;
+
+            $hasAttendance = $att
+                && (
+                    !empty($att->start_time)
+                    || !empty($att->end_time)
+                    || !empty($att->hours_worked)
+                );
+            $hasVacation = isset($vacationsByDate[$key]);
+            $hasReceipt = isset($receiptDocsByDate[$key]);
+            $isPastOrToday = $key <= $todayKey;
+
+            if ($isWorkingDay && $isPastOrToday && ! $hasAttendance && ! $hasVacation && ! $hasReceipt) {
+                $absences[] = [
+                    'date' => $key,
+                    'weekday' => $dayLetter,
+                    'reason' => 'sin_fichaje',
+                ];
+            }
 
             // Default table shows only configured working days (e.g. L-V).
             // Optionally include non-working days when requested by UI switch.
@@ -1356,6 +1455,10 @@ class AuthController extends Controller
             ],
             'include_non_working' => $includeNonWorking,
             'rows' => $rows,
+            'absences' => [
+                'count' => count($absences),
+                'rows' => $absences,
+            ],
         ]);
     }
 
@@ -1494,18 +1597,7 @@ class AuthController extends Controller
             return response()->json(['message' => 'Ya existe una solicitud pendiente para ese dia'], 422);
         }
 
-        $schedule = DB::table('schedules')
-            ->where('user_id', $user->id)
-            ->orderBy('id', 'desc')
-            ->first();
-        if (! $schedule) {
-            $schedule = DB::table('schedules')
-                ->join('user_schedules', 'schedules.id', '=', 'user_schedules.schedule_id')
-                ->where('user_schedules.user_id', $user->id)
-                ->select('schedules.*')
-                ->orderBy('schedules.id', 'desc')
-                ->first();
-        }
+        $schedule = $this->loadEffectiveScheduleForUser((int) $user->id);
 
         $scheduleStart = isset($schedule->start_time) ? substr((string) $schedule->start_time, 0, 5) : '09:00';
         $scheduleEnd = isset($schedule->end_time) ? substr((string) $schedule->end_time, 0, 5) : '18:00';
@@ -1638,28 +1730,10 @@ class AuthController extends Controller
 
         $this->syncUserScheduleTemplates((int) $user->id, $templates);
 
-        if (empty($startTime) || empty($endTime)) {
-            return response()->json(['message' => 'Debes indicar horario o seleccionar una jornada valida'], 422);
+        if (!count($templates)) {
+            return response()->json(['message' => 'Debes seleccionar al menos una jornada existente'], 422);
         }
-        // find existing schedule
-        $sched = DB::table('schedules')->where('user_id', $user->id)->first();
-        if ($sched) {
-            DB::table('schedules')->where('id', $sched->id)->update([
-                'start_time' => $startTime,
-                'end_time' => $endTime,
-                'days' => json_encode($days),
-                'updated_at' => now(),
-            ]);
-        } else {
-            DB::table('schedules')->insert([
-                'user_id' => $user->id,
-                'start_time' => $startTime,
-                'end_time' => $endTime,
-                'days' => json_encode($days),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-        }
+
         return response()->json(['status'=>'ok']);
     }
 
@@ -1686,7 +1760,13 @@ class AuthController extends Controller
             )
             ->whereNull('users.deleted_at')
             ->orderBy('users.id', 'asc')
-            ->get();
+            ->get()
+            ->map(function ($employee) {
+                $row = (array) $employee;
+                $row['assigned_schedule_templates'] = $this->loadAssignedScheduleTemplatesForUser((int) $employee->id);
+                return $row;
+            })
+            ->values();
 
         $teams = DB::table('teams')->select('id', 'name')->orderBy('name')->get();
         $userTypes = DB::table('user_types')->select('id', 'name')->orderBy('name')->get();
@@ -1765,7 +1845,7 @@ class AuthController extends Controller
 
         $employee->save();
 
-        if ($this->isHrTeam($user)) {
+        if ($this->canCreateEmployeeUsers($user)) {
             $days = array_values(array_unique($this->normalizeScheduleDays($data['days'] ?? null)));
             $startTime = $data['start_time'] ?? null;
             $endTime = $data['end_time'] ?? null;
@@ -1796,17 +1876,6 @@ class AuthController extends Controller
             }
 
             $this->syncUserScheduleTemplates((int) $employee->id, $templates);
-
-            if (! empty($startTime) && ! empty($endTime)) {
-            DB::table('schedules')->insert([
-                'user_id' => $employee->id,
-                'start_time' => $startTime,
-                'end_time' => $endTime,
-                'days' => json_encode($days),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-            }
         }
 
         return response()->json([
@@ -1834,19 +1903,7 @@ class AuthController extends Controller
             return response()->json(['message' => 'Employee not found'], 404);
         }
 
-        $schedule = DB::table('schedules')
-            ->where('user_id', $employee->id)
-            ->orderBy('id', 'desc')
-            ->first();
-
-        if (! $schedule) {
-            $schedule = DB::table('schedules')
-                ->join('user_schedules', 'schedules.id', '=', 'user_schedules.schedule_id')
-                ->where('user_schedules.user_id', $employee->id)
-                ->select('schedules.*')
-                ->orderBy('schedules.id', 'desc')
-                ->first();
-        }
+        $schedule = $this->loadEffectiveScheduleForUser((int) $employee->id);
         if ($schedule) {
             $schedule->days = $this->normalizeScheduleDays($schedule->days ?? null);
         }
@@ -1892,18 +1949,7 @@ class AuthController extends Controller
         $monthStart = $monthDate->copy()->startOfMonth();
         $monthEnd = $monthDate->copy()->endOfMonth();
 
-        $schedule = DB::table('schedules')
-            ->where('user_id', $employee->id)
-            ->orderBy('id', 'desc')
-            ->first();
-        if (! $schedule) {
-            $schedule = DB::table('schedules')
-                ->join('user_schedules', 'schedules.id', '=', 'user_schedules.schedule_id')
-                ->where('user_schedules.user_id', $employee->id)
-                ->select('schedules.*')
-                ->orderBy('schedules.id', 'desc')
-                ->first();
-        }
+        $schedule = $this->loadEffectiveScheduleForUser((int) $employee->id);
         $scheduleDays = $this->normalizeScheduleDays($schedule->days ?? null);
         $dailyTargetMinutes = $this->scheduleDailyMinutes($schedule);
 
@@ -2160,7 +2206,7 @@ class AuthController extends Controller
         }
         $employee->save();
 
-        if ($this->isHrTeam($user)) {
+        if ($this->canViewEmployeeDetails($user)) {
             $days = array_values(array_unique($this->normalizeScheduleDays($data['days'] ?? null)));
             $startTime = $data['start_time'] ?? null;
             $endTime = $data['end_time'] ?? null;
@@ -2190,27 +2236,6 @@ class AuthController extends Controller
             }
 
             $this->syncUserScheduleTemplates((int) $employee->id, $templates);
-
-            if (! empty($startTime) && ! empty($endTime)) {
-            $sched = DB::table('schedules')->where('user_id', $employee->id)->first();
-            if ($sched) {
-                DB::table('schedules')->where('id', $sched->id)->update([
-                    'start_time' => $startTime,
-                    'end_time' => $endTime,
-                    'days' => json_encode($days),
-                    'updated_at' => now(),
-                ]);
-            } else {
-                DB::table('schedules')->insert([
-                    'user_id' => $employee->id,
-                    'start_time' => $startTime,
-                    'end_time' => $endTime,
-                    'days' => json_encode($days),
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-            }
-            }
         }
 
         return response()->json(['status' => 'ok']);

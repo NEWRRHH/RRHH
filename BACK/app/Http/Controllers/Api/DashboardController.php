@@ -23,21 +23,45 @@ class DashboardController extends Controller
 
     private function loadScheduleDaysForUser(int $userId): array
     {
-        $schedule = DB::table('schedules')
-            ->where('user_id', $userId)
-            ->orderBy('id', 'desc')
-            ->first();
+        $schedule = $this->loadEffectiveScheduleForUser($userId);
+        return $this->normalizeScheduleDays($schedule->days ?? null);
+    }
 
-        if (!$schedule) {
-            $schedule = DB::table('schedules')
-                ->join('user_schedules', 'schedules.id', '=', 'user_schedules.schedule_id')
-                ->where('user_schedules.user_id', $userId)
-                ->select('schedules.*')
-                ->orderBy('schedules.id', 'desc')
-                ->first();
+    private function loadEffectiveScheduleForUser(int $userId): ?object
+    {
+        $templates = DB::table('user_schedules')
+            ->join('schedules', 'user_schedules.schedule_id', '=', 'schedules.id')
+            ->where('user_schedules.user_id', $userId)
+            ->whereNull('schedules.deleted_at')
+            ->orderBy('user_schedules.id', 'asc')
+            ->get(['schedules.start_time', 'schedules.end_time', 'schedules.days']);
+
+        if (!$templates->count()) {
+            return null;
         }
 
-        return $this->normalizeScheduleDays($schedule->days ?? null);
+        $daysUnion = [];
+        $earliestStart = null;
+        $latestEnd = null;
+
+        foreach ($templates as $tpl) {
+            $daysUnion = array_values(array_unique(array_merge($daysUnion, $this->normalizeScheduleDays($tpl->days ?? null))));
+            $start = isset($tpl->start_time) ? substr((string) $tpl->start_time, 0, 5) : null;
+            $end = isset($tpl->end_time) ? substr((string) $tpl->end_time, 0, 5) : null;
+
+            if ($start && ($earliestStart === null || $this->timeToMinutes($start) < $this->timeToMinutes($earliestStart))) {
+                $earliestStart = $start;
+            }
+            if ($end && ($latestEnd === null || $this->timeToMinutes($end) > $this->timeToMinutes($latestEnd))) {
+                $latestEnd = $end;
+            }
+        }
+
+        return (object) [
+            'start_time' => $earliestStart,
+            'end_time' => $latestEnd,
+            'days' => $daysUnion,
+        ];
     }
 
     private function calculateWorkingDays(Carbon $start, Carbon $end, array $scheduleDays): int
@@ -76,19 +100,7 @@ class DashboardController extends Controller
 
     private function dailyTargetMinutesForUser(int $userId): int
     {
-        $schedule = DB::table('schedules')
-            ->where('user_id', $userId)
-            ->orderBy('id', 'desc')
-            ->first();
-
-        if (!$schedule) {
-            $schedule = DB::table('schedules')
-                ->join('user_schedules', 'schedules.id', '=', 'user_schedules.schedule_id')
-                ->where('user_schedules.user_id', $userId)
-                ->select('schedules.*')
-                ->orderBy('schedules.id', 'desc')
-                ->first();
-        }
+        $schedule = $this->loadEffectiveScheduleForUser($userId);
 
         if (!$schedule || empty($schedule->start_time) || empty($schedule->end_time)) return 0;
 
@@ -156,18 +168,7 @@ class DashboardController extends Controller
 
     private function targetMinutesMonthForUser(int $userId, Carbon $today): int
     {
-        $schedule = DB::table('schedules')
-            ->where('user_id', $userId)
-            ->orderBy('id', 'desc')
-            ->first();
-        if (!$schedule) {
-            $schedule = DB::table('schedules')
-                ->join('user_schedules', 'schedules.id', '=', 'user_schedules.schedule_id')
-                ->where('user_schedules.user_id', $userId)
-                ->select('schedules.*')
-                ->orderBy('schedules.id', 'desc')
-                ->first();
-        }
+        $schedule = $this->loadEffectiveScheduleForUser($userId);
         if (!$schedule) return 0;
 
         $scheduleDays = ['L', 'M', 'X', 'J', 'V'];

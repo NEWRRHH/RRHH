@@ -94,9 +94,9 @@
             <!-- schedule read-only list -->
             <div class="mb-6 pt-4 border-t border-gray-700">
               <h3 class="text-sm text-gray-200 mb-3">Jornadas del usuario</h3>
-              <div v-if="assignedScheduleTemplates.length" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div v-if="displayScheduleTemplates.length" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <article
-                  v-for="tpl in assignedScheduleTemplates"
+                  v-for="tpl in displayScheduleTemplates"
                   :key="`profile-assigned-${tpl.id}`"
                   class="rounded-xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 to-sky-500/5 p-3"
                 >
@@ -133,17 +133,13 @@
                   </div>
                   <div>
                     <label class="block text-sm text-gray-300 mb-1" for="contract_type">Tipo de contrato</label>
-                    <select id="contract_type" v-model="form.contract_type" class="w-full px-3 py-2 bg-gray-700/60 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
-                      <option value="">Sin definir</option>
-                      <option value="indefinido">Indefinido</option>
-                      <option value="temporal">Temporal</option>
-                      <option value="practicas">Practicas</option>
-                      <option value="autonomo">Autonomo</option>
-                    </select>
+                    <input id="contract_type" :value="contractTypeLabel" disabled class="w-full px-3 py-2 bg-gray-800 text-gray-300 rounded-lg border border-gray-700 cursor-not-allowed" />
+                    <p class="mt-1 text-[11px] text-gray-500">Solo lectura. Este dato lo gestiona RRHH.</p>
                   </div>
                   <div>
                     <label class="block text-sm text-gray-300 mb-1" for="contract_start_date">Inicio de contrato</label>
-                    <input id="contract_start_date" v-model="form.contract_start_date" type="date" class="w-full px-3 py-2 bg-gray-700/60 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+                    <input id="contract_start_date" v-model="form.contract_start_date" type="date" disabled class="w-full px-3 py-2 bg-gray-800 text-gray-300 rounded-lg border border-gray-700 cursor-not-allowed" />
+                    <p class="mt-1 text-[11px] text-gray-500">Solo lectura. Este dato lo gestiona RRHH.</p>
                   </div>
                 </div>
             </div>
@@ -195,12 +191,34 @@ const loading = ref(false)
 const preview = ref<string | null>(null)
 const assignedScheduleTemplates = ref<any[]>([])
 
+const contractTypeLabel = computed(() => {
+  const raw = String(form.value.contract_type || '').trim()
+  if (!raw) return 'Sin definir'
+  const value = raw.toLowerCase()
+  if (value === 'indefinido') return 'Indefinido'
+  if (value === 'temporal') return 'Temporal'
+  if (value === 'practicas') return 'Practicas'
+  if (value === 'autonomo') return 'Autonomo'
+  return raw
+})
+
+const displayScheduleTemplates = computed(() => {
+  if (assignedScheduleTemplates.value.length) return assignedScheduleTemplates.value
+  if (!form.value.start_time || !form.value.end_time) return []
+  return [{
+    id: 0,
+    start_time: form.value.start_time,
+    end_time: form.value.end_time,
+    days: Array.isArray(form.value.days) ? form.value.days : ['L', 'M', 'X', 'J', 'V'],
+  }]
+})
+
 onBeforeMount(async () => {
-  if (user.value) {
-    fillForm()
-  } else if (token.value) {
+  if (token.value) {
     await fetchUser()
     if (user.value) fillForm()
+  } else if (user.value) {
+    fillForm()
   }
 })
 
@@ -269,8 +287,6 @@ const save = async () => {
     data.append('birth_date', form.value.birth_date || '')
     data.append('dni', form.value.dni || '')
     data.append('social_security_number', form.value.social_security_number || '')
-    data.append('contract_type', form.value.contract_type || '')
-    data.append('contract_start_date', form.value.contract_start_date || '')
     if (form.value.photo) data.append('photo', form.value.photo)
     // update profile
     const res: any = await $fetch(`${apiBase}/api/user`, {

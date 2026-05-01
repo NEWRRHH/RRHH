@@ -263,6 +263,22 @@
                 <div v-if="canViewWorkDays" class="pt-4 border-t border-gray-800">
                   <h3 class="text-sm text-gray-200 mb-3">Jornadas asignadas</h3>
                   <p class="text-xs text-gray-400 mb-3">Selecciona una o varias jornadas sin solapar dias.</p>
+                  <div v-if="selectedTemplates.length" class="mb-3 flex flex-wrap gap-2">
+                    <span
+                      v-for="tpl in selectedTemplates"
+                      :key="`selected-chip-${tpl.id}`"
+                      class="inline-flex items-center gap-2 text-[11px] px-2 py-1 rounded-full border border-cyan-500/40 bg-cyan-500/10 text-cyan-200"
+                    >
+                      <span>{{ tpl.start_time }}-{{ tpl.end_time }} · {{ (tpl.days || []).join(', ') }}</span>
+                      <button
+                        type="button"
+                        class="text-cyan-100 hover:text-white"
+                        @click="toggleScheduleTemplate(tpl.id, false)"
+                      >
+                        Quitar
+                      </button>
+                    </span>
+                  </div>
                   <div v-if="scheduleTemplates.length" class="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <button
                       v-for="tpl in scheduleTemplates"
@@ -442,8 +458,11 @@ const canViewEmployeeDetails = computed(() => {
   return permissions.includes('employees.view_details')
 })
 const canViewWorkDays = computed(() => {
-  const currentUser: any = user.value || {}
-  return Boolean(currentUser?.is_hr_team)
+  return canViewEmployeeDetails.value
+})
+const selectedTemplates = computed(() => {
+  const ids = new Set<number>(selectedScheduleTemplateIds.value)
+  return scheduleTemplates.value.filter((tpl: any) => ids.has(Number(tpl.id)))
 })
 const dailyBars = computed(() => {
   const rows = Array.isArray(attendanceRows.value) ? attendanceRows.value : []

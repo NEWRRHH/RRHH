@@ -56,6 +56,7 @@
                   <th class="text-left px-4 py-3">Empleado</th>
                   <th class="text-left px-4 py-3">Email</th>
                   <th class="text-left px-4 py-3">Equipo</th>
+                  <th class="text-left px-4 py-3">Jornadas</th>
                   <th class="text-right px-4 py-3">Acciones</th>
                 </tr>
               </thead>
@@ -72,6 +73,18 @@
                   </td>
                   <td class="px-4 py-3 text-gray-300">{{ employee.email }}</td>
                   <td class="px-4 py-3 text-gray-300">{{ employee.team_name || 'Sin equipo' }}</td>
+                  <td class="px-4 py-3">
+                    <div v-if="employee.assigned_schedule_templates?.length" class="flex flex-wrap gap-1.5">
+                      <span
+                        v-for="tpl in employee.assigned_schedule_templates"
+                        :key="`emp-list-schedule-${employee.id}-${tpl.id}`"
+                        class="text-[11px] px-2 py-0.5 rounded-full border border-cyan-500/40 bg-cyan-500/10 text-cyan-200"
+                      >
+                        {{ tpl.start_time }}-{{ tpl.end_time }} · {{ (tpl.days || []).join(', ') }}
+                      </span>
+                    </div>
+                    <span v-else class="text-xs text-gray-500">Sin jornadas asignadas</span>
+                  </td>
                   <td class="px-4 py-3 text-right">
                     <div v-if="canViewEmployeeDetails || canDeleteEmployee" class="relative inline-block action-menu">
                       <button @click.stop="toggleMenu(employee.id)" class="p-2 rounded hover:bg-gray-800">
@@ -102,7 +115,7 @@
                 </tr>
 
                 <tr v-if="!filteredEmployees.length">
-                  <td colspan="4" class="px-4 py-6 text-center text-gray-400">No hay empleados disponibles</td>
+                  <td colspan="5" class="px-4 py-6 text-center text-gray-400">No hay empleados disponibles</td>
                 </tr>
               </tbody>
             </table>
@@ -215,7 +228,7 @@
             </div>
           </div>
 
-          <div v-if="isHrTeam" class="pt-3 border-t border-gray-800">
+          <div v-if="canCreateEmployee" class="pt-3 border-t border-gray-800">
             <h4 class="text-sm text-gray-300 mb-2">Horario laboral</h4>
             <div class="mb-3">
               <label class="block text-xs text-gray-400 mb-2">Seleccionar horarios existentes</label>
@@ -549,7 +562,7 @@ async function submitCreateEmployee() {
     data.append('contract_start_date', createForm.value.contract_start_date || '')
     data.append('vacation_days_total', String(Number(createForm.value.vacation_days_total || 0)))
 
-    if (isHrTeam.value) {
+    if (canCreateEmployee.value) {
       data.append('start_time', createForm.value.start_time || '')
       data.append('end_time', createForm.value.end_time || '')
       for (const d of createForm.value.days || []) data.append('days[]', d)
