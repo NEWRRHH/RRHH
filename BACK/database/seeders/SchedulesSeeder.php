@@ -12,10 +12,8 @@ class SchedulesSeeder extends Seeder
     {
         // create a default schedule for the first user
         DB::table('schedules')->insert([
-            'user_id' => 1,
             'start_time' => '09:00:00',
             'end_time' => '18:00:00',
-            'days' => json_encode(['L', 'M', 'X', 'J', 'V']),
             'created_at' => now(),
             'updated_at' => now(),
         ]);
