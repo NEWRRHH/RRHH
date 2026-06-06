@@ -3,7 +3,7 @@
     <AppSidebar ref="sidebar" @logout="onLogout" />
 
     <div class="flex-1 flex flex-col min-w-0 relative z-10">
-      <header class="relative z-40 h-16 shrink-0 flex items-center gap-4 px-6 border-b border-gray-800 bg-gray-900/60 backdrop-blur">
+      <header class="relative z-40 h-16 shrink-0 flex items-center gap-2 sm:gap-4 px-3 sm:px-6 border-b border-gray-800 bg-gray-900/60 backdrop-blur overflow-x-auto">
         <button
           class="lg:hidden flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition"
           @click="openSidebar"
@@ -13,7 +13,7 @@
           </svg>
         </button>
 
-        <div>
+        <div class="hidden sm:block">
           <h1 class="text-base font-semibold text-white">Empleado</h1>
           <p class="text-[11px] text-gray-400">{{ form.name || 'Cargando...' }}</p>
         </div>
@@ -33,7 +33,46 @@
           </div>
 
           <template v-if="loadingEmployee">
-            <div class="rounded-2xl border border-gray-800 bg-gray-900 p-8 text-center text-gray-300">Cargando empleado...</div>
+            <div class="animate-pulse space-y-4">
+              <!-- Back button skeleton -->
+              <div class="h-8 w-20 rounded-lg bg-gray-800"></div>
+
+              <!-- Tab bar skeleton -->
+              <div class="inline-flex rounded-xl border border-gray-800 p-1 bg-gray-900 gap-1">
+                <div v-for="i in 4" :key="'tab-' + i" class="h-9 w-28 rounded-lg bg-gray-800"></div>
+              </div>
+
+              <!-- Main content card skeleton -->
+              <div class="rounded-2xl border border-gray-800 bg-gray-900 p-5">
+                <div class="h-5 w-48 rounded bg-gray-800 mb-6"></div>
+
+                <div class="flex items-start gap-6">
+                  <!-- Avatar skeleton -->
+                  <div class="w-24 h-24 rounded-full bg-gray-800 shrink-0"></div>
+
+                  <!-- Fields grid skeleton -->
+                  <div class="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div v-for="i in 10" :key="'field-' + i" class="space-y-1.5">
+                      <div class="h-3 w-16 rounded bg-gray-800"></div>
+                      <div class="h-9 w-full rounded-lg bg-gray-800"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Password section skeleton -->
+                <div class="pt-4 mt-4 border-t border-gray-800 space-y-3">
+                  <div class="h-4 w-40 rounded bg-gray-800"></div>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div v-for="i in 2" :key="'pass-' + i" class="h-9 rounded-lg bg-gray-800"></div>
+                  </div>
+                </div>
+
+                <!-- Save button skeleton -->
+                <div class="flex justify-end pt-4">
+                  <div class="h-10 w-36 rounded-lg bg-gray-800"></div>
+                </div>
+              </div>
+            </div>
           </template>
 
           <template v-else-if="error">
@@ -307,15 +346,16 @@
                   </div>
                   <p v-else class="text-xs text-gray-500">No hay jornadas creadas.</p>
                   <p v-if="scheduleSelectionError" class="mt-3 text-xs text-red-400">{{ scheduleSelectionError }}</p>
-                </div>
-
-                <div class="flex justify-end">
-                  <button :disabled="savingProfile" class="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50">
-                    {{ savingProfile ? 'Guardando...' : 'Guardar cambios' }}
-                  </button>
-                </div>
-              </form>
-            </section>
+                </div>              <div v-if="canEditEmployee" class="flex justify-end">
+                <button :disabled="savingProfile" class="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50">
+                  {{ savingProfile ? 'Guardando...' : 'Guardar cambios' }}
+                </button>
+              </div>
+              <div v-else class="flex justify-end">
+                <span class="text-xs text-gray-400">No tienes permisos para editar este empleado.</span>
+              </div>
+            </form>
+          </section>
 
             <section v-else class="rounded-2xl border border-gray-800 bg-gray-900 p-5">
               <h2 class="text-white font-semibold mb-4">Documentos del empleado</h2>
@@ -357,7 +397,6 @@
       </main>
     </div>
 
-    <AppToast :show="toast.show" :message="toast.message" :type="toast.type" @close="toast.show = false" />
   </div>
 </template>
 
@@ -368,7 +407,8 @@ import { useAuth } from '../../composables/useAuth'
 import AppSidebar from '../../components/AppSidebar.vue'
 import AttendanceButton from '../../components/AttendanceButton.vue'
 import UserMenu from '../../components/UserMenu.vue'
-import AppToast from '../../components/AppToast.vue'
+
+const { $swal } = useNuxtApp()
 
 declare const process: any
 declare const $fetch: any
@@ -429,9 +469,6 @@ const form = ref<any>({
   photo: null,
 })
 
-const toast = ref<{ show: boolean; type: 'success' | 'error'; message: string }>({ show: false, type: 'success', message: '' })
-let toastTimer: any = null
-
 const employeeId = computed(() => Number(route.params.id))
 const monthLabel = computed(() => {
   const [y, m] = selectedMonth.value.split('-').map(Number)
@@ -452,13 +489,18 @@ const workedDaysPercent = computed(() => {
 })
 const canViewEmployeeDetails = computed(() => {
   const currentUser: any = user.value || {}
-  if (currentUser?.is_admin || Number(currentUser?.user_type_id || 0) === 1) return true
   if (currentUser?.can_view_employee_details) return true
   const permissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : []
   return permissions.includes('employees.view_details')
 })
+const canEditEmployee = computed(() => {
+  const currentUser: any = user.value || {}
+  if (currentUser?.can_edit_employee) return true
+  const permissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : []
+  return permissions.includes('employees.edit')
+})
 const canViewWorkDays = computed(() => {
-  return canViewEmployeeDetails.value
+  return canEditEmployee.value || canViewEmployeeDetails.value
 })
 const selectedTemplates = computed(() => {
   const ids = new Set<number>(selectedScheduleTemplateIds.value)
@@ -484,12 +526,6 @@ const dailyBars = computed(() => {
     percent: Math.max(6, Math.round((row.minutes / max) * 100)),
   }))
 })
-
-function showToast(type: 'success' | 'error', message: string) {
-  toast.value = { show: true, type, message }
-  if (toastTimer) clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => (toast.value.show = false), 2800)
-}
 
 function openSidebar() {
   if (sidebar.value) sidebar.value.open = true
@@ -660,7 +696,7 @@ async function loadDocuments() {
 async function saveProfile() {
   if (!token.value || !employeeId.value) return
   if (scheduleSelectionError.value) {
-    showToast('error', scheduleSelectionError.value)
+    $swal.toast('error', scheduleSelectionError.value)
     return
   }
   savingProfile.value = true
@@ -698,11 +734,11 @@ async function saveProfile() {
 
     form.value.password = ''
     form.value.password_confirmation = ''
-    showToast('success', 'Empleado actualizado correctamente')
+    $swal.toast('success', 'Empleado actualizado correctamente')
     await loadEmployee()
   } catch (e: any) {
     console.error('employee save failed', e)
-    showToast('error', e?.data?.message || 'No se pudo guardar el empleado')
+    $swal.toast('error', e?.data?.message || 'No se pudo guardar el empleado')
   } finally {
     savingProfile.value = false
   }
@@ -726,10 +762,10 @@ async function downloadEmployeeDocument(d: any) {
     a.click()
     a.remove()
     URL.revokeObjectURL(url)
-    showToast('success', 'Descarga iniciada')
+    $swal.toast('success', 'Descarga iniciada')
   } catch (e) {
     console.error('employee doc download failed', e)
-    showToast('error', 'No se pudo descargar el documento')
+    $swal.toast('error', 'No se pudo descargar el documento')
   } finally {
     downloadingDocId.value = null
   }
@@ -776,12 +812,13 @@ onBeforeMount(async () => {
   }
 
   await loadEmployee()
+  if (!canEditEmployee.value) {
+    activeTab.value = 'fichajes'
+  }
   await loadAttendance()
   await loadDocuments()
 })
 
-onBeforeUnmount(() => {
-  if (toastTimer) clearTimeout(toastTimer)
-})
+
 </script>
 

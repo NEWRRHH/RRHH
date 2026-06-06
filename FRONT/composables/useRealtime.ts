@@ -21,7 +21,7 @@ if (process.client && typeof window !== 'undefined') {
 // compatible with the regular Pusher client (no extra package required).  socket.io is not required.
 // previously the comment mentioned `reverb-js` which doesn't exist on npm.
 
-let echo: Echo | null = null;
+let echo: Echo<'reverb'> | null = null;
 // Track which user channels already have listeners to prevent duplicates.
 const subscribedChannels = new Set<string>();
 
@@ -43,7 +43,7 @@ export function useRealtime() {
     }
 
     const opts = {
-      broadcaster: 'reverb',
+      broadcaster: 'reverb' as const,
       key: config.key,
       appId: config.appId,
       wsHost: config.host,
@@ -65,11 +65,34 @@ export function useRealtime() {
       },
     };
 
-    console.log('useRealtime.connect options', opts);
+    echo = new Echo<'reverb'>(opts);
 
-    echo = new Echo(opts);
+    // Track real-time connection state via Echo/Pusher events.
+    try {
+      const pusher = (echo as any).connector?.pusher;
+      if (pusher?.connection) {
+        pusher.connection.bind('connected', () => {
+          connected.value = true;
+        });
+        pusher.connection.bind('disconnected', () => {
+          connected.value = false;
+        });
+        pusher.connection.bind('error', () => {
+          connected.value = false;
+        });
+        // If already connected by the time we bind, set immediately.
+        if (pusher.connection.state === 'connected') {
+          connected.value = true;
+        }
+      } else {
+        // Fallback: optimistically assume connected.
+        connected.value = true;
+      }
+    } catch (_e) {
+      // Fallback: ignore errors and optimistically assume connected.
+      connected.value = true;
+    }
 
-    connected.value = true;
     return echo;
   }
 

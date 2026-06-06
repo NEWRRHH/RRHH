@@ -16,12 +16,24 @@
   >
     <!-- Header -->
     <div class="h-16 shrink-0 flex items-center gap-2 px-4 border-b border-gray-800 overflow-hidden">
-      <div class="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center shrink-0">
+      <div class="relative w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center shrink-0">
         <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
         </svg>
+        <!-- Connection status dot for collapsed mode -->
+        <span
+          v-if="collapsed"
+          :class="['absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-gray-900', realtimeConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500']"
+          :title="realtimeConnected ? 'WebSocket conectado' : 'WebSocket desconectado'"
+        />
       </div>
-      <span v-if="!collapsed" class="text-white font-bold text-base tracking-tight truncate">RRHH</span>
+      <div v-if="!collapsed" class="flex items-center gap-2 min-w-0">
+        <span class="text-white font-bold text-base tracking-tight truncate">RRHH</span>
+        <span
+          :class="['inline-block w-2 h-2 rounded-full shrink-0', realtimeConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500']"
+          :title="realtimeConnected ? 'WebSocket conectado' : 'WebSocket desconectado'"
+        />
+      </div>
     </div>
 
     <!-- Collapse toggle (local) -->
@@ -123,7 +135,7 @@ onMounted(async () => {
 
 const route = useRoute()
 const router = useRouter()
-const { fetchUser, unreadNotifications, fetchUnread, user, token, apiBase, realtimeInstance } = useAuth()
+const { fetchUser, unreadNotifications, fetchUnread, user, token, apiBase, realtimeInstance, realtimeConnected } = useAuth()
 
 const unreadCount = computed(() => unreadNotifications.value || 0)
 const userInitial = computed(() => String((user.value as any)?.name || '?').charAt(0).toUpperCase())
@@ -131,8 +143,30 @@ const requestsCount = ref(0)
 const isHrTeam = computed(() => Boolean((user.value as any)?.is_hr_team))
 const isAdmin = computed(() => Boolean((user.value as any)?.is_admin) || Number((user.value as any)?.user_type_id || 0) === 1)
 const canAccessSettings = computed(() => Boolean((user.value as any)?.can_access_settings) || isAdmin.value || isHrTeam.value)
-const canSeeEmployees = computed(() => isHrTeam.value || isAdmin.value)
-const canSeeAnnouncements = computed(() => isHrTeam.value || isAdmin.value)
+const canSeeEmployees = computed(() => {
+  const u: any = user.value || {}
+  return isHrTeam.value || Boolean(u?.can_view_employee_details) || (Array.isArray(u?.permissions) && u.permissions.includes('employees.view_details'))
+})
+const canSeeAnnouncements = computed(() => {
+  const u: any = user.value || {}
+  return isHrTeam.value || Boolean(u?.can_access_announcements) || Boolean(u?.can_manage_announcements) || (Array.isArray(u?.permissions) && u.permissions.includes('announcements.manage'))
+})
+const canSeeVacations = computed(() => {
+  const u: any = user.value || {}
+  return Boolean(u?.can_view_vacations) || (Array.isArray(u?.permissions) && u.permissions.includes('vacations.view'))
+})
+const canSeeRequests = computed(() => {
+  const u: any = user.value || {}
+  return Boolean(u?.can_view_requests) || (Array.isArray(u?.permissions) && u.permissions.includes('requests.view'))
+})
+const canSeeDocuments = computed(() => {
+  const u: any = user.value || {}
+  return Boolean(u?.can_view_documents) || (Array.isArray(u?.permissions) && u.permissions.includes('documents.view'))
+})
+const canSeeReports = computed(() => {
+  const u: any = user.value || {}
+  return Boolean(u?.can_view_reports) || (Array.isArray(u?.permissions) && u.permissions.includes('reports.view'))
+})
 let requestsTimer: ReturnType<typeof setInterval> | null = null
 let reviewerRealtimeChannel: any = null
 let userRealtimeChannel: any = null
@@ -219,15 +253,15 @@ const navItems = computed(() => [
       <path stroke-linecap="round" stroke-linejoin="round" d="M7 8h10M7 12h7m-7 4h5M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H9l-6 0V5a2 2 0 012-2z"/>
     </svg>`
   }] : []),
-  {
+  ...(canSeeVacations.value ? [{
     label: 'Vacaciones',
     to: '/vacaciones',
     active: route.path.startsWith('/vacaciones'),
     icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3M4 11h16M6 5h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2z"/>
     </svg>`
-  },
-  {
+  }] : []),
+  ...(canSeeRequests.value ? [{
     label: 'Solicitudes',
     to: '/solicitudes',
     active: route.path.startsWith('/solicitudes'),
@@ -235,15 +269,23 @@ const navItems = computed(() => [
       <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6M9 8h6M7 4h10a2 2 0 012 2v12a2 2 0 01-2 2H7a2 2 0 01-2-2V6a2 2 0 012-2z"/>
     </svg>`,
     badge: requestsCount
-  },
-  {
+  }] : []),
+  ...(canSeeDocuments.value ? [{
     label: 'Documentos',
     to: '/documentos',
     active: route.path.startsWith('/documentos'),
     icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" d="M7 7V3h10v4m-9 4h8m-8 4h8m-9 6h10a2 2 0 002-2V7H5v12a2 2 0 002 2z"/>
     </svg>`
-  },
+  }] : []),
+  ...(canSeeReports.value ? [{
+    label: 'Reportes',
+    to: '/reportes',
+    active: route.path.startsWith('/reportes'),
+    icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+    </svg>`
+  }] : []),
   ...(canSeeEmployees.value ? [{
     label: 'Empleados',
     to: '/empleados',
@@ -252,14 +294,6 @@ const navItems = computed(() => [
       <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
     </svg>`
   }] : []),
-  {
-    label: 'Reportes',
-    to: '/reportes',
-    active: route.path.startsWith('/reportes'),
-    icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-    </svg>`
-  },
   ...(canAccessSettings.value ? [{
     label: 'Configuracion',
     to: '/configuracion',

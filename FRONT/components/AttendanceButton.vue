@@ -5,30 +5,30 @@
       v-if="!started"
       @click="handleStart"
       :disabled="loading"
-      class="flex items-center gap-2 bg-green-600 text-white text-xs px-3 py-1 rounded hover:bg-green-700 transition disabled:opacity-50"
+      class="flex items-center gap-1 sm:gap-2 bg-green-600 text-white text-[10px] sm:text-xs px-2 sm:px-3 py-1 rounded hover:bg-green-700 transition disabled:opacity-50"
     >
       <span>{{ elapsedText }}</span>
-      <span class="text-green-200">/ {{ targetText }}</span>
-      <span class="ml-2 font-semibold">fichar</span>
+      <span class="text-green-200 hidden sm:inline">/ {{ targetText }}</span>
+      <span class="sm:ml-2 font-semibold">fichar</span>
     </button>
 
     <!-- clocked in state -->
-    <div v-else class="flex items-center gap-2 text-white text-xs">
-      <div class="flex items-center gap-1 bg-gray-800 px-2 py-1 rounded">
+    <div v-else class="flex items-center gap-1 sm:gap-2 text-white text-[10px] sm:text-xs">
+      <div class="flex items-center gap-1 bg-gray-800 px-1.5 sm:px-2 py-1 rounded">
         <span>{{ elapsedText }}</span>
-        <span class="text-gray-400">/ {{ targetText }}</span>
+        <span class="text-gray-400 hidden sm:inline">/ {{ targetText }}</span>
       </div>
       <button
         @click="togglePause"
         :disabled="loading"
-        class="px-2 py-1 rounded text-black bg-yellow-400 hover:bg-yellow-500 transition text-[10px] disabled:opacity-50"
+        class="px-1.5 sm:px-2 py-1 rounded text-black bg-yellow-400 hover:bg-yellow-500 transition text-[9px] sm:text-[10px] disabled:opacity-50"
       >
         {{ paused ? 'Resume' : 'Pause' }}
       </button>
       <button
         @click="handleStop"
         :disabled="loading"
-        class="px-2 py-1 rounded text-white bg-red-500 hover:bg-red-600 transition text-[10px]"
+        class="px-1.5 sm:px-2 py-1 rounded text-white bg-red-500 hover:bg-red-600 transition text-[9px] sm:text-[10px]"
       >
         salida
       </button>
@@ -52,7 +52,7 @@ const paused = ref(false)
 const attendance = ref<any>(null)
 const schedule = ref<any>(null)
 const elapsed = ref(0) // minutes
-let timer: number | null = null
+let timer: ReturnType<typeof setInterval> | null = null
 
 const userInitial = computed(() => {
   const name = user.value?.name || ''

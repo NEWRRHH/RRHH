@@ -24,10 +24,9 @@ export const useAuth = () => {
   // Read-receipt events for sent messages (used to render WhatsApp-like checks).
   const lastReadReceipt = useState<any>('last_read_receipt', () => null)
 
-  const { connect: connectRealtime, disconnect: disconnectRealtime, instance: realtimeInstance, subscribedChannels } = useRealtime();
+  const { connect: connectRealtime, disconnect: disconnectRealtime, connected: realtimeConnected, instance: realtimeInstance, subscribedChannels } = useRealtime();
 
   const setToken = (t: string | null) => {
-    console.log('useAuth.setToken', t)
     token.value = t
     if (process.client) {
       if (t) localStorage.setItem('rrhh_token', t)
@@ -38,14 +37,12 @@ export const useAuth = () => {
   const fetchUser = async () => {
     if (!token.value) return null
     try {
-      console.log('fetchUser: requesting /api/user with token', token.value)
       const u = await $fetch(`${apiBase}/api/user`, {
         headers: {
           Authorization: `Bearer ${token.value}`,
           Accept: 'application/json',
         },
       })
-      console.log('fetchUser: got user', u)
       user.value = u
 
       // Connect Echo client as soon as we have a valid user + token.
@@ -166,6 +163,6 @@ export const useAuth = () => {
   }
 
   // expose realtime helpers so pages/components can reuse the same echo instance
-  return { apiBase, token, user, login, register, logout, fetchUser, setToken, unreadNotifications, fetchUnread, realtimeInstance, connectRealtime, disconnectRealtime, lastReceivedMessage, lastReadReceipt }
+  return { apiBase, token, user, login, register, logout, fetchUser, setToken, unreadNotifications, fetchUnread, realtimeInstance, connectRealtime, disconnectRealtime, realtimeConnected, lastReceivedMessage, lastReadReceipt }
 }
 

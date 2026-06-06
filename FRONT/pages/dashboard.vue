@@ -7,7 +7,7 @@
     <AppSidebar ref="sidebar" @logout="onLogout" />
 
     <div class="flex-1 flex flex-col min-w-0 relative z-10">
-      <header class="relative z-40 h-16 shrink-0 flex items-center gap-4 px-6 border-b border-gray-800 bg-gray-900/60 backdrop-blur">
+      <header class="relative z-40 h-16 shrink-0 flex items-center gap-2 sm:gap-4 px-3 sm:px-6 border-b border-gray-800 bg-gray-900/60 backdrop-blur overflow-x-auto">
         <button
           class="lg:hidden flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition"
           @click="openSidebar"
@@ -17,7 +17,7 @@
           </svg>
         </button>
 
-        <h1 class="text-base font-semibold text-white">Dashboard</h1>
+        <h1 class="text-base font-semibold text-white hidden sm:block">Dashboard</h1>
 
         <div class="ml-auto flex items-center gap-3">
           <AttendanceButton class="!text-[11px]" @changed="handleAttendanceChanged" />
@@ -108,7 +108,6 @@
       </main>
     </div>
 
-    <AppToast :show="toast.show" :message="toast.message" :type="toast.type" @close="toast.show = false" />
   </div>
 </template>
 
@@ -132,7 +131,7 @@ import AnnouncementsCard from '../components/AnnouncementsCard.vue'
 import DocumentsSummaryCard from '../components/DocumentsSummaryCard.vue'
 import AttendanceButton from '../components/AttendanceButton.vue'
 import UserMenu from '../components/UserMenu.vue'
-import AppToast from '../components/AppToast.vue'
+
 
 const { token, user, fetchUser, logout, apiBase, setToken, fetchUnread, unreadNotifications, lastReceivedMessage } = useAuth()
 
@@ -191,20 +190,7 @@ const welcomeSettings = ref<{ title: string; subtitle: string; show_date: boolea
   subtitle: 'Aqui tenes un resumen de la actividad del sistema.',
   show_date: true,
 })
-const toast = ref<{ show: boolean; type: 'success' | 'error'; message: string }>({
-  show: false,
-  type: 'success',
-  message: '',
-})
-let toastTimer: any = null
-
-function showToast(type: 'success' | 'error', message: string) {
-  toast.value = { show: true, type, message }
-  if (toastTimer) clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => {
-    toast.value.show = false
-  }, 2800)
-}
+const { $swal } = useNuxtApp()
 
 const cardComponent = (key: CardKey | null) => {
   if (key === 'birthdays') return BirthdayCard
@@ -335,10 +321,10 @@ async function saveDashboardLayout() {
       headers: { Authorization: `Bearer ${token.value}` },
       body: { slots: boardLayout.value },
     })
-    showToast('success', 'Dashboard guardado correctamente')
+    $swal.toast('success', 'Dashboard guardado correctamente')
   } catch (e) {
     console.error('dashboard layout save failed', e)
-    showToast('error', 'No se pudo guardar el dashboard')
+    $swal.toast('error', 'No se pudo guardar el dashboard')
   } finally {
     savingLayout.value = false
   }
@@ -509,7 +495,6 @@ const stopUnreadWatch = watch(unreadNotifications, (count) => {
 onBeforeUnmount(() => {
   stopRealtimeWatch()
   stopUnreadWatch()
-  if (toastTimer) clearTimeout(toastTimer)
 })
 
 const onLogout = async () => {

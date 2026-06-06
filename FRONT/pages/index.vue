@@ -5,6 +5,8 @@
 </template>
 
 <script setup lang="ts">
+declare const process: any
+
 const { token, setToken } = useAuth()
 
 onMounted(async () => {

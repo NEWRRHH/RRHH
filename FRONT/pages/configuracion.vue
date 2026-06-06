@@ -3,7 +3,7 @@
     <AppSidebar ref="sidebar" @logout="onLogout" />
 
     <div class="flex-1 h-screen flex flex-col min-w-0 relative z-10 overflow-hidden">
-      <header class="relative z-40 h-16 shrink-0 flex items-center gap-4 px-6 border-b border-gray-800 bg-gray-900/60 backdrop-blur">
+      <header class="relative z-40 h-16 shrink-0 flex items-center gap-2 sm:gap-4 px-3 sm:px-6 border-b border-gray-800 bg-gray-900/60 backdrop-blur overflow-x-auto">
         <button
           class="lg:hidden flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition"
           @click="openSidebar"
@@ -12,8 +12,8 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
           </svg>
         </button>
-        <h1 class="text-base font-semibold text-white">Administración de Permisos</h1>
-        <div class="relative flex items-center ml-8">
+        <h1 class="text-base font-semibold text-white hidden sm:block">Administración de Permisos</h1>
+        <div class="relative flex items-center ml-2 sm:ml-8 max-w-[120px] sm:max-w-none">
           <input
             v-model="searchQuery"
             type="search"
@@ -45,14 +45,17 @@
           </div>
 
           <section v-if="activeTab === 'dashboard'" class="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-4">
-            <div class="flex items-center justify-between gap-3">
-              <h2 class="text-white font-semibold">{{ isAdminUser ? 'Widgets del Dashboard' : 'Mensaje de bienvenida' }}</h2>
+            <div class="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <h2 class="text-white font-semibold">{{ isAdminUser ? 'Personalizar Dashboard' : 'Mensaje de bienvenida' }}</h2>
+                <p class="text-sm text-gray-400 mt-1">{{ isAdminUser ? 'Activa, desactiva y reordena las cards del dashboard.' : 'Actualiza el mensaje de bienvenida.' }}</p>
+              </div>
               <div class="flex gap-2">
-                <button v-if="isAdminUser" class="px-3 py-2 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800" @click="resetDefaults">
+                <button v-if="isAdminUser" class="px-3 py-2 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800 text-xs transition" @click="resetDefaults">
                   Restablecer
                 </button>
                 <button
-                  class="px-3 py-2 rounded-lg bg-blue-600 text-white disabled:opacity-50"
+                  class="px-4 py-2 rounded-lg bg-blue-600 text-white text-xs font-medium disabled:opacity-50 hover:bg-blue-500 transition"
                   :disabled="saving"
                   @click="saveLayout"
                 >
@@ -61,60 +64,163 @@
               </div>
             </div>
 
-            <p class="text-sm text-gray-400">{{ isAdminUser ? 'Activa/desactiva cards y elige su posicion. Los cambios se reflejan en el dashboard para este usuario.' : 'Actualiza el mensaje de bienvenida del dashboard.' }}</p>
-
-            <div class="rounded-xl border border-gray-800 bg-gray-950 p-4 space-y-3">
-              <h3 class="text-sm font-semibold text-white">Mensaje de bienvenida</h3>
-              <div>
-                <label class="block text-xs text-gray-400 mb-1">Titulo</label>
-                <input v-model="welcomeSettings.title" class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white" maxlength="80" />
+            <!-- Welcome message card -->
+            <div class="rounded-xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/5 to-sky-500/5 p-4 space-y-3">
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                  <svg class="w-4 h-4 text-cyan-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                  </svg>
+                </div>
+                <h3 class="text-sm font-semibold text-white">Mensaje de bienvenida</h3>
               </div>
-              <div>
-                <label class="block text-xs text-gray-400 mb-1">Descripcion</label>
-                <textarea v-model="welcomeSettings.subtitle" class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white min-h-20" maxlength="180" />
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs text-gray-400 mb-1">Título</label>
+                  <input v-model="welcomeSettings.title" class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500" maxlength="80" />
+                </div>
+                <div>
+                  <label class="block text-xs text-gray-400 mb-1">Descripción</label>
+                  <textarea v-model="welcomeSettings.subtitle" class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white text-sm min-h-20 focus:outline-none focus:ring-2 focus:ring-cyan-500" maxlength="180" />
+                </div>
               </div>
-              <label class="inline-flex items-center gap-2 text-sm text-gray-200">
-                <input v-model="welcomeSettings.show_date" type="checkbox" class="accent-blue-600" />
+              <label class="inline-flex items-center gap-2 text-sm text-gray-200 cursor-pointer hover:text-white transition">
+                <input v-model="welcomeSettings.show_date" type="checkbox" class="accent-cyan-500 w-4 h-4" />
                 Mostrar fecha en bienvenida
               </label>
             </div>
 
-            <div v-if="loading" class="text-gray-400">Cargando configuracion...</div>
-
-            <div v-else-if="isAdminUser" class="space-y-3">
-              <div
-                v-for="w in widgets"
-                :key="w.key"
-                class="rounded-xl border border-gray-800 bg-gray-950 p-3 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_180px] gap-3 items-start lg:items-center"
-              >
-                <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 min-w-0">
-                  <label class="inline-flex items-center gap-2 text-gray-200">
-                    <input v-model="visibility[w.key]" type="checkbox" class="accent-blue-600" />
-                    <span class="font-medium">{{ w.name }}</span>
-                  </label>
-                  <span class="text-xs text-gray-500 break-all">{{ w.key }}</span>
+            <div v-if="loading" class="space-y-3">
+              <div class="rounded-xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/5 to-sky-500/5 p-4 space-y-3">
+                <div class="flex items-center gap-2">
+                  <div class="w-8 h-8 rounded-lg bg-gray-800 animate-pulse"></div>
+                  <div class="h-4 w-40 rounded bg-gray-800 animate-pulse"></div>
                 </div>
-
-                <div>
-                  <label class="block text-xs text-gray-400 mb-1">Posicion</label>
-                  <select
-                    :value="widgetSlot(w.key)"
-                    class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white"
-                    :disabled="!visibility[w.key]"
-                    @change="onSlotChange(w.key, $event)"
-                  >
-                    <option :value="-1">Sin asignar</option>
-                    <option v-for="i in 9" :key="i" :value="i - 1">Slot {{ i }}</option>
-                  </select>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div class="space-y-2">
+                    <div class="h-3 w-12 rounded bg-gray-800 animate-pulse"></div>
+                    <div class="h-10 w-full rounded-lg bg-gray-800 animate-pulse"></div>
+                  </div>
+                  <div class="space-y-2">
+                    <div class="h-3 w-16 rounded bg-gray-800 animate-pulse"></div>
+                    <div class="h-20 w-full rounded-lg bg-gray-800 animate-pulse"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="rounded-xl border border-gray-800 bg-gray-950/60 p-4 space-y-3">
+                <div class="h-4 w-36 rounded bg-gray-800 animate-pulse"></div>
+                <div class="grid grid-cols-3 gap-2">
+                  <div v-for="i in 9" :key="'sk-slot-' + i" class="h-16 rounded-lg border-2 border-dashed border-gray-700/50 bg-gray-900/40 animate-pulse"></div>
+                </div>
+              </div>
+              <div class="space-y-2">
+                <div class="h-4 w-32 rounded bg-gray-800 animate-pulse"></div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  <div v-for="i in 9" :key="'sk-wid-' + i" class="h-24 rounded-xl border border-gray-800 bg-gray-950/60 animate-pulse"></div>
                 </div>
               </div>
             </div>
+
+            <!-- Visual slots grid (only for admin) -->
+            <div v-else-if="isAdminUser" class="space-y-4">
+              <div class="rounded-xl border border-gray-800 bg-gray-950/60 p-4">
+                <h3 class="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                  <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                  </svg>
+                  Vista previa del layout
+                  <span class="text-xs text-gray-500 font-normal">(3 columnas × 3 filas)</span>
+                </h3>
+
+                <div class="grid grid-cols-3 gap-2 mb-4">
+                  <div
+                    v-for="(slotKey, idx) in slots"
+                    :key="idx"
+                    class="min-h-[60px] rounded-lg border-2 border-dashed p-2 text-xs flex flex-col items-center justify-center gap-1 transition-all duration-200"
+                    :class="slotKey
+                      ? 'border-blue-500/40 bg-blue-500/10'
+                      : 'border-gray-700/50 bg-gray-900/40 text-gray-500 hover:border-gray-600'
+                    "
+                  >
+                    <template v-if="slotKey">
+                      <div class="w-5 h-5 rounded bg-blue-500/30 flex items-center justify-center">
+                        <svg class="w-3 h-3 text-blue-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                        </svg>
+                      </div>
+                      <span class="text-[10px] text-blue-300 font-medium truncate max-w-full">{{ getWidgetName(slotKey) }}</span>
+                    </template>
+                    <template v-else>
+                      <span class="text-[10px]">Slot {{ idx + 1 }}</span>
+                      <span class="text-[9px] text-gray-600">Vacío</span>
+                    </template>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Widget list -->
+              <div class="space-y-2">
+                <h3 class="text-sm font-semibold text-white flex items-center gap-2">
+                  <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  </svg>
+                  Widgets disponibles
+                </h3>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  <div
+                    v-for="w in widgets"
+                    :key="w.key"
+                    class="rounded-xl border p-3 transition-all duration-200"
+                    :class="visibility[w.key]
+                      ? 'border-blue-500/30 bg-blue-500/5'
+                      : 'border-gray-800 bg-gray-950/60 opacity-60 hover:opacity-80'
+                    "
+                  >
+                    <div class="flex items-center justify-between gap-2 mb-2">
+                      <label class="flex items-center gap-2 cursor-pointer min-w-0">
+                        <input v-model="visibility[w.key]" type="checkbox" class="accent-blue-500 w-4 h-4 shrink-0" />
+                        <span class="text-sm font-medium text-gray-200 truncate">{{ w.name }}</span>
+                      </label>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span class="text-[10px] text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded font-mono shrink-0">{{ w.key }}</span>
+                      <select
+                        :value="widgetSlot(w.key)"
+                        class="flex-1 min-w-0 rounded-lg bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        :disabled="!visibility[w.key]"
+                        @change="onSlotChange(w.key, $event)"
+                      >
+                        <option :value="-1">Sin slot</option>
+                        <option v-for="i in 9" :key="i" :value="i - 1">Slot {{ i }}</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Non-admin sees only welcome message -->
+            <p v-else class="text-sm text-gray-400 text-center py-4">
+              Solo los administradores pueden gestionar los widgets del dashboard.
+            </p>
           </section>
 
           <section v-else-if="activeTab === 'permissions'" class="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-4">
             <h2 class="text-white font-semibold">Permisos por Equipo</h2>
 
-            <div v-if="permissionsLoading" class="text-sm text-gray-400">Cargando permisos...</div>
+            <div v-if="permissionsLoading" class="space-y-3">
+              <div v-for="i in 4" :key="'sk-perm-' + i" class="rounded-xl border border-gray-800 bg-gray-950 overflow-hidden">
+                <div class="flex items-center justify-between px-5 py-4">
+                  <div class="flex items-center gap-3">
+                    <div class="h-5 w-32 rounded bg-gray-800 animate-pulse"></div>
+                    <div class="h-5 w-20 rounded-full bg-gray-800 animate-pulse"></div>
+                  </div>
+                  <div class="w-4 h-4 rounded bg-gray-800 animate-pulse"></div>
+                </div>
+              </div>
+            </div>
 
             <div v-else-if="!canManagePermissions" class="text-sm text-gray-400">No tienes permisos para gestionar esta seccion.</div>
 
@@ -132,8 +238,12 @@
                   >
                     <div class="flex items-center gap-3">
                       <span class="font-medium text-white">{{ team.name }}</span>
-                      <span class="text-xs px-2 py-0.5 rounded-full bg-blue-600/20 text-blue-400 font-medium">
+                      <span class="text-xs px-2 py-0.5 rounded-full bg-blue-600/20 text-blue-400 font-medium relative">
                         {{ (localTeamPermissions[team.id] || []).length }} / {{ permissionsCatalog.length }}
+                        <span
+                          v-if="hasChangedTeam(team.id)"
+                          class="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full"
+                        ></span>
                       </span>
                     </div>
                     <svg
@@ -146,10 +256,68 @@
                   </button>
 
                   <!-- Accordion body -->
-                  <div v-if="expandedTeams.includes(team.id)" class="border-t border-gray-800 px-5 py-4 space-y-5">
-                    <div v-for="group in permissionGroups" :key="group.prefix" class="space-y-2">
-                      <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-400 pb-1 border-b border-gray-800">{{ group.label }}</h4>
-                      <div class="space-y-1.5">
+                  <div v-if="expandedTeams.includes(team.id)" class="border-t border-gray-800 px-5 py-4 space-y-3">
+                    <!-- Search -->
+                    <div class="relative">
+                      <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                      </svg>
+                      <input
+                        :value="permissionSearchQuery[team.id] || ''"
+                        @input="onPermissionSearch(team.id, ($event.target as HTMLInputElement).value)"
+                        type="search"
+                        placeholder="Buscar permiso por nombre o código..."
+                        class="w-full pl-10 pr-4 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-500 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <button
+                        v-if="permissionSearchQuery[team.id]"
+                        class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                        @click="clearPermissionSearch(team.id)"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <!-- Bulk actions -->
+                    <div class="flex items-center gap-2">
+                      <button
+                        class="px-3 py-1.5 rounded-lg bg-green-600/20 border border-green-700/30 text-green-300 text-xs font-medium hover:bg-green-600/30 transition"
+                        @click="selectAllPermissions(team.id)"
+                      >
+                        ✓ Seleccionar todos
+                      </button>
+                      <button
+                        class="px-3 py-1.5 rounded-lg bg-red-600/20 border border-red-700/30 text-red-300 text-xs font-medium hover:bg-red-600/30 transition"
+                        @click="deselectAllPermissions(team.id)"
+                      >
+                        ✕ Quitar todos
+                      </button>
+                    </div>
+
+                    <div v-for="group in getFilteredGroups(team.id)" :key="group.prefix" class="rounded-xl border border-gray-800 bg-gray-950 overflow-hidden">
+                      <!-- Group accordion header -->
+                      <button
+                        type="button"
+                        class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-800/40 transition"
+                        @click="togglePermissionGroup(group.prefix)"
+                      >
+                        <div class="flex items-center gap-3">
+                          <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-400">{{ group.label }}</h4>
+                          <span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">
+                            {{ group.permissions.length }} permiso(s)
+                          </span>
+                        </div>
+                        <svg
+                          class="w-4 h-4 text-gray-400 transition-transform duration-200"
+                          :class="expandedPermissionGroups.includes(group.prefix) ? 'rotate-180' : ''"
+                          fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"
+                        >
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+
+                      <!-- Group accordion body (collapsed by default) -->
+                      <div v-if="expandedPermissionGroups.includes(group.prefix)" class="border-t border-gray-800 px-4 py-3 space-y-1.5">
                         <div
                           v-for="p in group.permissions"
                           :key="p.code"
@@ -177,11 +345,15 @@
 
               <div class="flex justify-end pt-2">
                 <button
-                  class="px-3 py-2 rounded-lg bg-blue-600 text-white disabled:opacity-50"
-                  :disabled="permissionSaving || !canManagePermissions"
+                  class="px-3 py-2 rounded-lg bg-blue-600 text-white disabled:opacity-50 relative"
+                  :disabled="permissionSaving || !canManagePermissions || !hasPermissionChanges"
                   @click="saveAllPermissions"
                 >
                   {{ permissionSaving ? 'Guardando...' : 'Guardar cambios' }}
+                  <span
+                    v-if="hasPermissionChanges && !permissionSaving"
+                    class="absolute -top-1.5 -right-1.5 w-3 h-3 bg-yellow-400 rounded-full border-2 border-gray-900"
+                  ></span>
                 </button>
               </div>
             </div>
@@ -232,7 +404,16 @@
 
             <div class="rounded-xl border border-gray-800 bg-gray-950 overflow-hidden">
               <div class="px-4 py-3 border-b border-gray-800 text-sm text-gray-200">Jornadas existentes</div>
-              <div v-if="schedulesLoading" class="px-4 py-4 text-sm text-gray-400">Cargando jornadas...</div>
+              <div v-if="schedulesLoading" class="px-4 py-4 space-y-2">
+                <div v-for="i in 4" :key="'sk-sched-' + i" class="grid grid-cols-[1fr_1fr_120px] gap-4 items-center">
+                  <div class="h-4 w-24 rounded bg-gray-800 animate-pulse"></div>
+                  <div class="h-4 w-40 rounded bg-gray-800 animate-pulse"></div>
+                  <div class="flex gap-2 justify-end">
+                    <div class="h-7 w-16 rounded bg-gray-800 animate-pulse"></div>
+                    <div class="h-7 w-16 rounded bg-gray-800 animate-pulse"></div>
+                  </div>
+                </div>
+              </div>
               <div v-else-if="!scheduleTemplates.length" class="px-4 py-4 text-sm text-gray-500">No hay jornadas cargadas.</div>
               <table v-else class="min-w-full text-sm">
                 <thead class="bg-gray-800/60 text-gray-300">
@@ -274,7 +455,6 @@
       </main>
     </div>
 
-    <AppToast :show="toast.show" :message="toast.message" :type="toast.type" @close="toast.show = false" />
   </div>
 </template>
 
@@ -285,7 +465,6 @@ import { useAuth } from '../composables/useAuth'
 import AppSidebar from '../components/AppSidebar.vue'
 import AttendanceButton from '../components/AttendanceButton.vue'
 import UserMenu from '../components/UserMenu.vue'
-import AppToast from '../components/AppToast.vue'
 
 definePageMeta({ auth: true })
 declare const process: any
@@ -305,6 +484,13 @@ const isHrTeamUser = computed(() => {
   return Boolean(currentUser?.is_hr_team)
 })
 
+const canManageSchedules = computed(() => {
+  const currentUser: any = user.value || {}
+  if (currentUser?.can_manage_schedules) return true
+  const permissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : []
+  return permissions.includes('schedules.manage')
+})
+
 const tabs = computed(() => {
   if (isAdminUser.value) {
     return [
@@ -314,7 +500,7 @@ const tabs = computed(() => {
     ]
   }
 
-  if (isHrTeamUser.value) {
+  if (isHrTeamUser.value || canManageSchedules.value) {
     return [
       { id: 'dashboard', label: 'Bienvenida' },
       { id: 'schedules', label: 'Jornadas laborales' },
@@ -327,13 +513,6 @@ const tabs = computed(() => {
 const activeTab = ref('dashboard')
 const loading = ref(true)
 const saving = ref(false)
-const toast = ref<{ show: boolean; type: 'success' | 'error'; message: string }>({
-  show: false,
-  type: 'success',
-  message: '',
-})
-let toastTimer: any = null
-
 const widgets = ref<Array<{ key: string; name: string }>>([])
 const slots = ref<Array<string | null>>([null, null, null, null, null, null, null, null, null])
 const visibility = ref<Record<string, boolean>>({})
@@ -351,11 +530,31 @@ const selectedPermissionTeamId = ref<number | null>(null)
 const selectedPermissionCodes = ref<string[]>([])
 const searchQuery = ref('')
 const localTeamPermissions = ref<Record<number, string[]>>({})
+const savedTeamPermissionsSnapshot = ref<Record<number, string[]>>({})
 const expandedTeams = ref<number[]>([])
+
+const hasPermissionChanges = computed(() => {
+  const current = localTeamPermissions.value
+  const saved = savedTeamPermissionsSnapshot.value
+  const teamIds = new Set([...Object.keys(current), ...Object.keys(saved)])
+  for (const idStr of teamIds) {
+    const id = Number(idStr)
+    const curr = (current[id] || []).slice().sort()
+    const svd = (saved[id] || []).slice().sort()
+    if (curr.length !== svd.length || curr.some((c, i) => c !== svd[i])) {
+      return true
+    }
+  }
+  return false
+})
+const permissionSearchQuery = ref<Record<number, string>>({})
+const expandedPermissionGroups = ref<string[]>([])
 
 const GROUP_LABELS: Record<string, string> = {
   employees: 'Usuarios',
   requests: 'Solicitudes',
+  schedules: 'Jornadas',
+  announcements: 'Comunicados',
 }
 
 const permissionGroups = computed(() => {
@@ -374,10 +573,55 @@ const permissionGroups = computed(() => {
   return Object.values(groups)
 })
 
+function togglePermissionGroup(prefix: string) {
+  const idx = expandedPermissionGroups.value.indexOf(prefix)
+  if (idx >= 0) expandedPermissionGroups.value.splice(idx, 1)
+  else expandedPermissionGroups.value.push(prefix)
+}
+
 function toggleTeamExpanded(teamId: number) {
   const idx = expandedTeams.value.indexOf(teamId)
   if (idx >= 0) expandedTeams.value.splice(idx, 1)
   else expandedTeams.value.push(teamId)
+}
+
+function onPermissionSearch(teamId: number, value: string) {
+  permissionSearchQuery.value = { ...permissionSearchQuery.value, [teamId]: value }
+  // Auto-expand groups that match when searching
+  const q = value.toLowerCase().trim()
+  if (q) {
+    for (const group of permissionGroups.value) {
+      const hasMatch = group.permissions.some(
+        (p) => p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q)
+      )
+      if (hasMatch && !expandedPermissionGroups.value.includes(group.prefix)) {
+        expandedPermissionGroups.value.push(group.prefix)
+      }
+    }
+  }
+}
+
+function clearPermissionSearch(teamId: number) {
+  const next = { ...permissionSearchQuery.value }
+  delete next[teamId]
+  permissionSearchQuery.value = next
+}
+
+function getFilteredGroups(teamId: number) {
+  const q = (permissionSearchQuery.value[teamId] || '').toLowerCase().trim()
+  if (!q) return permissionGroups.value
+
+  return permissionGroups.value
+    .map((group) => ({
+      ...group,
+      permissions: group.permissions.filter(
+        (p) =>
+          p.code.toLowerCase().includes(q) ||
+          p.name.toLowerCase().includes(q) ||
+          (p.description || '').toLowerCase().includes(q)
+      ),
+    }))
+    .filter((group) => group.permissions.length > 0)
 }
 
 const dayOptions = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
@@ -392,13 +636,7 @@ const scheduleForm = ref<{ start_time: string; end_time: string; days: string[] 
   days: ['L', 'M', 'X', 'J', 'V'],
 })
 
-function showToast(type: 'success' | 'error', message: string) {
-  toast.value = { show: true, type, message }
-  if (toastTimer) clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => {
-    toast.value.show = false
-  }, 2800)
-}
+const { $swal } = useNuxtApp()
 
 function openSidebar() {
   if (sidebar.value) sidebar.value.open = true
@@ -407,6 +645,11 @@ function openSidebar() {
 const onLogout = async () => {
   await logout()
   router.push('/login')
+}
+
+function getWidgetName(key: string): string {
+  const w = widgets.value.find((w) => w.key === key)
+  return w?.name || key
 }
 
 function widgetSlot(key: string): number {
@@ -498,10 +741,10 @@ async function saveLayout() {
         },
       },
     })
-    showToast('success', 'Configuracion guardada correctamente')
+    $swal.toast('success', 'Configuracion guardada correctamente')
   } catch (e) {
     console.error('layout save failed', e)
-    showToast('error', 'No se pudo guardar la configuracion')
+    $swal.toast('error', 'No se pudo guardar la configuracion')
   } finally {
     saving.value = false
   }
@@ -547,6 +790,7 @@ async function loadPermissions() {
       map[t.id] = Array.isArray(t.permission_codes) ? [...t.permission_codes] : []
     }
     localTeamPermissions.value = map
+    savedTeamPermissionsSnapshot.value = JSON.parse(JSON.stringify(map))
     if (!selectedPermissionTeamId.value && permissionTeams.value.length) {
       selectPermissionTeam(permissionTeams.value[0].id)
     }
@@ -570,6 +814,23 @@ function toggleTeamPermission(teamId: number, code: string, e: Event) {
   localTeamPermissions.value[teamId] = Array.from(set)
 }
 
+function hasChangedTeam(teamId: number): boolean {
+  const curr = (localTeamPermissions.value[teamId] || []).slice().sort()
+  const svd = (savedTeamPermissionsSnapshot.value[teamId] || []).slice().sort()
+  return curr.length !== svd.length || curr.some((c, i) => c !== svd[i])
+}
+
+function selectAllPermissions(teamId: number) {
+  const allCodes = permissionsCatalog.value.map((p) => p.code)
+  localTeamPermissions.value[teamId] = [...allCodes]
+}
+
+async function deselectAllPermissions(teamId: number) {
+  const ok = await $swal.confirm('Quitar todos los permisos', '¿Estás seguro de quitar todos los permisos de este equipo? Los cambios son locales hasta que guardes.', 'Sí, quitar todos', 'Cancelar')
+  if (!ok) return
+  localTeamPermissions.value[teamId] = []
+}
+
 async function saveAllPermissions() {
   if (!token.value || !canManagePermissions.value) return
   permissionSaving.value = true
@@ -583,9 +844,10 @@ async function saveAllPermissions() {
       })
       team.permission_codes = [...codes]
     }
-    showToast('success', 'Permisos actualizados')
+    savedTeamPermissionsSnapshot.value = JSON.parse(JSON.stringify(localTeamPermissions.value))
+    $swal.toast('success', 'Permisos actualizados')
   } catch (e) {
-    showToast('error', 'No se pudieron guardar los permisos')
+    $swal.toast('error', 'No se pudieron guardar los permisos')
   } finally {
     permissionSaving.value = false
   }
@@ -601,7 +863,7 @@ async function loadScheduleTemplates() {
     scheduleTemplates.value = Array.isArray(res?.schedules) ? res.schedules : []
   } catch (e: any) {
     if (!(e?.status === 403 || e?.data?.message === 'Forbidden')) {
-      showToast('error', 'No se pudieron cargar las jornadas')
+      $swal.toast('error', 'No se pudieron cargar las jornadas')
     }
     scheduleTemplates.value = []
   } finally {
@@ -627,12 +889,12 @@ async function saveScheduleTemplate() {
         days: scheduleForm.value.days,
       },
     })
-    showToast('success', editingScheduleId.value ? 'Jornada actualizada' : 'Jornada guardada')
+    $swal.toast('success', editingScheduleId.value ? 'Jornada actualizada' : 'Jornada guardada')
     editingScheduleId.value = null
     scheduleForm.value = { start_time: '09:00', end_time: '18:00', days: ['L', 'M', 'X', 'J', 'V'] }
     await loadScheduleTemplates()
   } catch (e: any) {
-    showToast('error', e?.data?.message || 'No se pudo guardar la jornada')
+    $swal.toast('error', e?.data?.message || 'No se pudo guardar la jornada')
   } finally {
     scheduleSaving.value = false
   }
@@ -653,10 +915,8 @@ function cancelEditScheduleTemplate() {
 }
 
 async function deleteScheduleTemplate(id: number) {
-  if (!token.value) return
-  const ok = confirm('¿Eliminar esta jornada laboral?')
+  const ok = await $swal.confirm('Confirmar eliminación', '¿Estás seguro de eliminar esta jornada laboral? Esta acción no se puede deshacer.', 'Eliminar', 'Cancelar')
   if (!ok) return
-
   scheduleDeletingId.value = id
   try {
     await $fetch(`${apiBase || 'http://localhost:8000'}/api/settings/schedules/${id}`, {
@@ -666,10 +926,10 @@ async function deleteScheduleTemplate(id: number) {
     if (editingScheduleId.value === id) {
       cancelEditScheduleTemplate()
     }
-    showToast('success', 'Jornada eliminada')
+    $swal.toast('success', 'Jornada eliminada')
     await loadScheduleTemplates()
   } catch (e: any) {
-    showToast('error', e?.data?.message || 'No se pudo eliminar la jornada')
+    $swal.toast('error', e?.data?.message || 'No se pudo eliminar la jornada')
   } finally {
     scheduleDeletingId.value = null
   }
@@ -705,7 +965,7 @@ onBeforeMount(async () => {
     await fetchUser()
   }
 
-  const canAccessSettings = Boolean((user.value as any)?.can_access_settings) || Boolean((user.value as any)?.is_admin) || Boolean((user.value as any)?.is_hr_team) || Number((user.value as any)?.user_type_id || 0) === 1
+  const canAccessSettings = Boolean((user.value as any)?.can_access_settings)
   if (!canAccessSettings) {
     return router.push('/dashboard')
   }
@@ -715,7 +975,5 @@ onBeforeMount(async () => {
   await loadScheduleTemplates()
 })
 
-onBeforeUnmount(() => {
-  if (toastTimer) clearTimeout(toastTimer)
-})
+
 </script>

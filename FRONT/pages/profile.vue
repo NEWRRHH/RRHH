@@ -3,7 +3,7 @@
     <AppSidebar ref="sidebar" @logout="onLogout" />
 
     <div class="flex-1 flex flex-col min-w-0 relative z-10">
-      <header class="h-16 shrink-0 flex items-center gap-4 px-6 border-b border-gray-800 bg-gray-900/60 backdrop-blur">
+      <header class="h-16 shrink-0 flex items-center gap-2 sm:gap-4 px-3 sm:px-6 border-b border-gray-800 bg-gray-900/60 backdrop-blur overflow-x-auto">
         <button
           class="lg:hidden flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition"
           @click="openSidebar"
@@ -12,7 +12,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
           </svg>
         </button>
-        <h1 class="text-base font-semibold text-white">Perfil</h1>
+        <h1 class="text-base font-semibold text-white hidden sm:block">Perfil</h1>
         <div class="ml-auto flex items-center gap-3">
           <AttendanceButton />
           <UserMenu />
@@ -156,20 +156,23 @@
         </div>
       </main>
     </div>
+
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onBeforeMount, computed } from 'vue'
+import { ref, onBeforeMount, onBeforeUnmount, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import AppSidebar from '../components/AppSidebar.vue'
 import AttendanceButton from '../components/AttendanceButton.vue'
 import UserMenu from '../components/UserMenu.vue'
 
+
 declare const $fetch: any
 
 const { token, apiBase, user, fetchUser, logout } = useAuth()
+const { $swal } = useNuxtApp()
 const router = useRouter()
 const sidebar = ref<{ open: boolean } | null>(null)
 const form = ref<any>({
@@ -308,17 +311,15 @@ const save = async () => {
             password_confirmation: form.value.password_confirmation,
           },
         })
-        alert('Contraseña actualizada')
+        $swal.toast('success', 'Contraseña actualizada')
       } catch (err) {
-        console.error('password update failed', err)
-        alert('No se pudo cambiar la contraseña')
+        $swal.toast('error', 'No se pudo cambiar la contraseña')
       }
     }
 
-    alert('Perfil actualizado')
+    $swal.toast('success', 'Perfil actualizado')
   } catch (e) {
-    console.error('update profile failed', e)
-    alert('Error al guardar')
+    $swal.toast('error', 'Error al guardar')
   } finally {
     loading.value = false
   }
@@ -332,4 +333,6 @@ const onLogout = async () => {
 const openSidebar = () => {
   if (sidebar.value) sidebar.value.open = true
 }
+
+
 </script>

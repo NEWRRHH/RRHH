@@ -23,7 +23,18 @@ class AnnouncementController extends Controller
 
     private function canAccessAnnouncements(?object $user): bool
     {
-        return $this->isAdminUser($user) || $this->isHrTeam($user);
+        if (!$user) return false;
+        return $this->isAdminUser($user) || $this->isHrTeam($user) || $this->teamHasPermission((int) ($user->team_id ?? 0), 'announcements.manage');
+    }
+
+    private function teamHasPermission(?int $teamId, string $permissionCode): bool
+    {
+        if (!$teamId) return false;
+        return DB::table('team_permision')
+            ->join('permisions', 'team_permision.permision_id', '=', 'permisions.id')
+            ->where('team_permision.team_id', $teamId)
+            ->where('permisions.code', $permissionCode)
+            ->exists();
     }
 
     public function index(Request $request)

@@ -3,7 +3,7 @@
     <AppSidebar ref="sidebar" @logout="onLogout" />
 
     <div class="flex-1 h-screen flex flex-col min-w-0 relative z-10 overflow-hidden">
-      <header class="relative z-40 h-16 shrink-0 flex items-center gap-4 px-6 border-b border-gray-800 bg-gray-900/60 backdrop-blur">
+      <header class="relative z-40 h-16 shrink-0 flex items-center gap-2 sm:gap-4 px-3 sm:px-6 border-b border-gray-800 bg-gray-900/60 backdrop-blur overflow-x-auto">
         <button
           class="lg:hidden flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition"
           @click="openSidebar"
@@ -12,7 +12,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <h1 class="text-base font-semibold text-white">Solicitudes</h1>
+        <h1 class="text-base font-semibold text-white hidden sm:block">Solicitudes</h1>
         <div class="ml-auto flex items-center gap-3">
           <AttendanceButton class="!text-[11px]" />
           <UserMenu />
@@ -31,7 +31,29 @@
             {{ f.label }}
           </button>
         </div>
-        <div v-if="loading" class="text-gray-400">Cargando solicitudes...</div>
+        <div v-if="loading" class="space-y-4">
+          <div class="flex gap-4">
+            <div class="w-48 space-y-3" v-if="canReview">
+              <div v-for="i in 5" :key="'sldr-' + i" class="h-12 rounded-xl bg-gray-800 animate-pulse"></div>
+            </div>
+            <div class="flex-1 grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <div v-for="i in 4" :key="'slc-' + i" class="rounded-2xl border border-gray-800 bg-gray-900 p-4 space-y-3">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="flex-1 space-y-2">
+                    <div class="h-4 w-3/4 rounded bg-gray-800 animate-pulse"></div>
+                    <div class="h-3 w-1/2 rounded bg-gray-800 animate-pulse"></div>
+                  </div>
+                  <div class="h-5 w-20 rounded-full bg-gray-800 animate-pulse"></div>
+                </div>
+                <div class="h-3 w-full rounded bg-gray-800 animate-pulse"></div>
+                <div class="flex gap-2">
+                  <div class="h-8 w-20 rounded-lg bg-gray-800 animate-pulse"></div>
+                  <div class="h-8 w-24 rounded-lg bg-gray-800 animate-pulse"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
         <div v-if="actionError" class="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
           {{ actionError }}
         </div>
@@ -159,7 +181,7 @@ const selectedRequesterId = ref<number | null>(null)
 const realtimeRefreshing = ref(false)
 let realtimeRetryTimer: ReturnType<typeof setTimeout> | null = null
 let pollingTimer: ReturnType<typeof setInterval> | null = null
-const filters = [
+const filters: Array<{ id: 'pending' | 'approved' | 'rejected' | 'all'; label: string }> = [
   { id: 'pending', label: 'Pendientes' },
   { id: 'approved', label: 'Aprobadas' },
   { id: 'rejected', label: 'Rechazadas' },
@@ -338,6 +360,13 @@ onBeforeMount(async () => {
   }
 
   await fetchUser()
+
+  const currentUser: any = user.value || {}
+  const canView = Boolean(currentUser?.can_view_requests) || (Array.isArray(currentUser?.permissions) && currentUser.permissions.includes('requests.view'))
+  if (!canView) {
+    return router.push('/dashboard')
+  }
+
   if (!realtimeInstance?.() && token.value) {
     connectRealtime({
       host: config.public.reverbHost,
