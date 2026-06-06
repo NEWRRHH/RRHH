@@ -2,7 +2,7 @@
   <div class="flex h-screen overflow-hidden bg-gray-950">
     <AppSidebar ref="sidebar" @logout="onLogout" />
     <div class="flex-1 h-screen flex flex-col min-w-0 relative z-10 overflow-hidden">
-      <header class="relative z-40 h-16 shrink-0 flex items-center gap-4 px-6 border-b border-gray-800 bg-gray-900/60 backdrop-blur">
+      <header class="relative z-40 h-16 shrink-0 flex items-center gap-2 sm:gap-4 px-3 sm:px-6 border-b border-gray-800 bg-gray-900/60 backdrop-blur">
         <button
           class="lg:hidden flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition"
           @click="openSidebar"
@@ -11,7 +11,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <h1 class="text-base font-semibold text-white">Vacaciones y Ausencias</h1>
+        <h1 class="text-base font-semibold text-white hidden sm:block">Vacaciones y Ausencias</h1>
         <div class="ml-auto flex items-center gap-3">
           <AttendanceButton class="!text-[11px]" />
           <UserMenu />
@@ -54,7 +54,17 @@
           </div>
         </div>
 
-        <div v-if="loading" class="text-gray-400">Cargando calendario...</div>
+        <div v-if="loading" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div v-for="i in 12" :key="'skel-' + i" class="rounded-2xl border border-gray-800 bg-gray-900 p-3 space-y-2">
+            <div class="h-4 w-24 rounded bg-gray-800 animate-pulse"></div>
+            <div class="grid grid-cols-7 gap-1">
+              <div v-for="j in 7" :key="'skhd-' + j" class="h-3 rounded bg-gray-800 animate-pulse"></div>
+            </div>
+            <div class="grid grid-cols-7 gap-1">
+              <div v-for="j in 35" :key="'skc-' + j" class="h-8 rounded-md bg-gray-800 animate-pulse"></div>
+            </div>
+          </div>
+        </div>
 
         <div v-else-if="viewMode === 'year'" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           <div
@@ -225,18 +235,20 @@
 
         <div class="flex justify-end gap-2">
           <button class="px-3 py-2 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800" @click="closeModal">Cancelar</button>
-          <button
-            class="px-3 py-2 rounded-lg bg-blue-600 text-white disabled:opacity-50"
-            :disabled="saving || !canSave"
-            @click="saveEvent"
-          >
-            {{ saving ? 'Guardando...' : (isEditMode ? 'Guardar cambios' : 'Guardar evento') }}
-          </button>
+          <template v-if="isEditMode ? canEditEvents : canCreateEvents">
+            <button
+              class="px-3 py-2 rounded-lg bg-blue-600 text-white disabled:opacity-50"
+              :disabled="saving || !canSave"
+              @click="saveEvent"
+            >
+              {{ saving ? 'Guardando...' : (isEditMode ? 'Guardar cambios' : 'Guardar evento') }}
+            </button>
+          </template>
+          <span v-else class="text-xs text-gray-400 self-center">No tienes permisos para {{ isEditMode ? 'editar' : 'crear' }} eventos.</span>
         </div>
       </div>
     </div>
 
-    <AppToast :show="toast.show" :message="toast.message" :type="toast.type" @close="toast.show = false" />
   </div>
 </template>
 
@@ -247,7 +259,9 @@ import { useAuth } from '../composables/useAuth'
 import AttendanceButton from '../components/AttendanceButton.vue'
 import UserMenu from '../components/UserMenu.vue'
 import AppSidebar from '../components/AppSidebar.vue'
-import AppToast from '../components/AppToast.vue'
+
+const { $swal } = useNuxtApp()
+
 
 definePageMeta({ auth: true })
 declare const $fetch: any
@@ -272,18 +286,12 @@ type CalendarEvent = {
 }
 
 const router = useRouter()
-const { token, apiBase, fetchUser, logout } = useAuth()
+const { token, apiBase, fetchUser, logout, user } = useAuth()
 const sidebar = ref<{ open: boolean } | null>(null)
 
 const loading = ref(true)
 const saving = ref(false)
 const errorMessage = ref('')
-const toast = ref<{ show: boolean; type: 'success' | 'error'; message: string }>({
-  show: false,
-  type: 'success',
-  message: '',
-})
-let toastTimer: any = null
 const todayIso = toIsoDate(new Date())
 const selectedYear = ref(new Date().getFullYear())
 const selectedMonth = ref(new Date().getMonth())
@@ -460,6 +468,15 @@ const canSave = computed(() => {
 })
 const canChooseHours = computed(() => selectedTotalDays.value === 1 && !!scheduleStartTime.value && !!scheduleEndTime.value)
 
+const canCreateEvents = computed(() => {
+  const currentUser: any = user.value || {}
+  return Boolean(currentUser?.can_create_vacations) || (Array.isArray(currentUser?.permissions) && currentUser.permissions.includes('vacations.create'))
+})
+const canEditEvents = computed(() => {
+  const currentUser: any = user.value || {}
+  return Boolean(currentUser?.can_edit_vacations) || (Array.isArray(currentUser?.permissions) && currentUser.permissions.includes('vacations.edit'))
+})
+
 const scheduleDaysText = computed(() => (scheduleDays.value.length ? scheduleDays.value.join(', ') : 'Sin definir'))
 const isEditMode = computed(() => editingEventId.value !== null)
 const recentRequests = computed(() => {
@@ -467,14 +484,6 @@ const recentRequests = computed(() => {
     .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
     .slice(0, 8)
 })
-
-function showToast(type: 'success' | 'error', message: string) {
-  toast.value = { show: true, type, message }
-  if (toastTimer) clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => {
-    toast.value.show = false
-  }, 2800)
-}
 
 function statusShort(status: string): string {
   if (status === 'approved') return 'ok'
@@ -682,10 +691,10 @@ async function saveEvent() {
     })
     closeModal()
     await loadCalendar()
-    showToast('success', wasEdit ? 'Solicitud actualizada y enviada a RRHH' : 'Solicitud enviada a RRHH')
+    $swal.toast('success', wasEdit ? 'Solicitud actualizada y enviada a RRHH' : 'Solicitud enviada a RRHH')
   } catch (e: any) {
     errorMessage.value = e?.data?.message || 'No se pudo guardar el evento'
-    showToast('error', errorMessage.value)
+    $swal.toast('error', errorMessage.value)
   } finally {
     saving.value = false
   }
@@ -693,6 +702,14 @@ async function saveEvent() {
 
 onMounted(async () => {
   await fetchUser()
+
+  const currentUser: any = user.value || {}
+  const canView = Boolean(currentUser?.can_view_vacations) || (Array.isArray(currentUser?.permissions) && currentUser.permissions.includes('vacations.view'))
+  if (!canView) {
+    router.push('/dashboard')
+    return
+  }
+
   await loadCalendar()
   window.addEventListener('pointerup', onGlobalPointerUp)
 })
@@ -716,6 +733,5 @@ watch(canChooseHours, (singleDay) => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('pointerup', onGlobalPointerUp)
-  if (toastTimer) clearTimeout(toastTimer)
 })
 </script>

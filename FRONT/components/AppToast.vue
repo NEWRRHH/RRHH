@@ -9,7 +9,7 @@
   >
     <div
       v-if="show && message"
-      class="fixed top-20 right-6 z-[90] min-w-[260px] max-w-[360px] rounded-xl border px-4 py-3 shadow-lg"
+      class="fixed top-20 right-4 sm:right-6 left-4 sm:left-auto z-[90] min-w-0 sm:min-w-[260px] max-w-[360px] rounded-xl border px-4 py-3 shadow-lg"
       :class="type === 'success'
         ? 'bg-green-900/90 border-green-500/50 text-green-100'
         : 'bg-red-900/90 border-red-500/50 text-red-100'"

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Traits\PermissionTrait;
 use App\Events\TimeOffRequestUpdated;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -10,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 
 class TimeOffController extends Controller
 {
+    use PermissionTrait;
     private function parseAttendanceRequestKindFromEvent(object $event): string
     {
         $description = strtolower(trim((string) ($event->description ?? '')));
@@ -193,20 +195,10 @@ class TimeOffController extends Controller
         return $set;
     }
 
-    private function teamHasPermission(?int $teamId, string $permissionCode): bool
-    {
-        if (!$teamId) return false;
-        return DB::table('team_permision')
-            ->join('permisions', 'team_permision.permision_id', '=', 'permisions.id')
-            ->where('team_permision.team_id', $teamId)
-            ->where('permisions.code', $permissionCode)
-            ->exists();
-    }
-
     private function canReviewRequests(?object $user): bool
     {
         if (!$user) return false;
-        return $this->teamHasPermission((int) ($user->team_id ?? 0), 'requests.review');
+        return $this->hasPermission($user, 'requests.review');
     }
 
     private function eventDisplayColor(?string $approvalStatus, ?string $selectedColor): string
@@ -324,6 +316,10 @@ class TimeOffController extends Controller
             return response()->json(['message' => 'Unauthenticated'], 401);
         }
 
+        if (!$this->canViewVacations($user)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
         $year = (int) ($request->query('year') ?: Carbon::today()->year);
         if ($year < 2000 || $year > 2100) {
             $year = Carbon::today()->year;
@@ -415,6 +411,10 @@ class TimeOffController extends Controller
         $user = $request->user();
         if (!$user) {
             return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        if (!$this->canCreateVacations($user)) {
+            return response()->json(['message' => 'Forbidden'], 403);
         }
 
         $data = $request->validate([
@@ -524,6 +524,10 @@ class TimeOffController extends Controller
         $user = $request->user();
         if (!$user) {
             return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        if (!$this->canEditVacations($user)) {
+            return response()->json(['message' => 'Forbidden'], 403);
         }
 
         $event = DB::table('events')
@@ -642,6 +646,11 @@ class TimeOffController extends Controller
     {
         $user = $request->user();
         if (!$user) return response()->json(['message' => 'Unauthenticated'], 401);
+
+        if (!$this->canViewRequests($user)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
         $canReview = $this->canReviewRequests($user);
 
         $statusFilter = strtolower(trim((string) $request->query('status', 'pending')));

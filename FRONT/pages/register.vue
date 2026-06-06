@@ -25,6 +25,14 @@
         <h2 class="text-xl font-semibold text-white mb-6">Crear cuenta</h2>
 
         <form @submit.prevent="onSubmit" class="space-y-5">
+          <!-- Error message -->
+          <div
+            v-if="errorMsg"
+            class="rounded-xl bg-red-900/30 border border-red-500/30 px-4 py-3 text-sm text-red-200"
+          >
+            {{ errorMsg }}
+          </div>
+
           <!-- Name -->
           <div>
             <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">Nombre</label>
@@ -104,9 +112,10 @@
           <!-- Submit -->
           <button
             type="submit"
-            class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 rounded-xl shadow-lg shadow-blue-600/30 transition-all duration-200 text-sm mt-2"
+            :disabled="submitting"
+            class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 rounded-xl shadow-lg shadow-blue-600/30 transition-all duration-200 text-sm mt-2 disabled:opacity-50"
           >
-            Crear cuenta
+            {{ submitting ? 'Creando cuenta...' : 'Crear cuenta' }}
           </button>
         </form>
 
@@ -124,13 +133,19 @@ import { ref } from 'vue'
 const { register } = useAuth()
 const router = useRouter()
 const form = ref({ name: '', email: '', password: '', password_confirmation: '' })
+const errorMsg = ref('')
+const submitting = ref(false)
 
 const onSubmit = async () => {
+  errorMsg.value = ''
+  submitting.value = true
   try {
     await register(form.value)
     await router.push('/dashboard')
   } catch (err: any) {
-    alert(err?.data?.message || 'Register failed')
+    errorMsg.value = err?.data?.message || 'Error al registrarse'
+  } finally {
+    submitting.value = false
   }
 }
 </script>

@@ -3,7 +3,7 @@
     <AppSidebar ref="sidebar" @logout="onLogout" />
 
     <div class="flex-1 flex flex-col min-w-0 relative z-10">
-      <header class="relative z-40 h-16 shrink-0 flex items-center gap-4 px-6 border-b border-gray-800 bg-gray-900/60 backdrop-blur">
+      <header class="relative z-40 h-16 shrink-0 flex items-center gap-2 sm:gap-4 px-3 sm:px-6 border-b border-gray-800 bg-gray-900/60 backdrop-blur">
         <button
           class="lg:hidden flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition"
           @click="openSidebar"
@@ -13,7 +13,7 @@
           </svg>
         </button>
 
-        <h1 class="text-base font-semibold text-white">Empleados</h1>
+        <h1 class="text-base font-semibold text-white hidden sm:block">Empleados</h1>
 
         <div class="ml-auto flex items-center gap-3">
           <AttendanceButton class="!text-[11px]" />
@@ -61,9 +61,34 @@
                 </tr>
               </thead>
               <tbody>
+                <!-- Skeleton rows while loading -->
+                <tr v-if="loadingEmployees" v-for="i in 5" :key="`skeleton-${i}`" class="border-t border-gray-800">
+                  <td class="px-4 py-3">
+                    <div class="flex items-center gap-3">
+                      <div class="w-9 h-9 rounded-full bg-gray-800 animate-pulse"></div>
+                      <div class="h-4 w-32 bg-gray-800 rounded animate-pulse"></div>
+                    </div>
+                  </td>
+                  <td class="px-4 py-3">
+                    <div class="h-4 w-44 bg-gray-800 rounded animate-pulse"></div>
+                  </td>
+                  <td class="px-4 py-3">
+                    <div class="h-4 w-20 bg-gray-800 rounded animate-pulse"></div>
+                  </td>
+                  <td class="px-4 py-3">
+                    <div class="flex gap-1.5">
+                      <div class="h-5 w-24 bg-gray-800 rounded-full animate-pulse"></div>
+                      <div class="h-5 w-20 bg-gray-800 rounded-full animate-pulse"></div>
+                    </div>
+                  </td>
+                  <td class="px-4 py-3 text-right">
+                    <div class="inline-block h-8 w-8 bg-gray-800 rounded-lg animate-pulse"></div>
+                  </td>
+                </tr>
+
                 <tr v-for="employee in filteredEmployees" :key="employee.id" class="border-t border-gray-800 text-gray-200 hover:bg-gray-800/40">
                   <td class="px-4 py-3">
-                    <button class="flex items-center gap-3 w-full text-left" :disabled="!canViewEmployeeDetails" @click="goToEdit(employee)">
+                    <button class="flex items-center gap-3 w-full text-left" :disabled="!canEditEmployee" @click="goToEdit(employee)">
                       <div class="w-9 h-9 rounded-full overflow-hidden bg-blue-600 flex items-center justify-center font-semibold">
                         <img v-if="employee.photo || employee.profile_photo_path" :src="resolvePhotoUrl(employee.photo || employee.profile_photo_path)" class="w-full h-full object-cover" />
                         <span v-else>{{ (employee.name || '?').charAt(0).toUpperCase() }}</span>
@@ -97,7 +122,7 @@
                         v-if="openMenuId === employee.id"
                         class="absolute right-0 mt-1 w-40 bg-white text-gray-800 rounded-lg shadow-xl overflow-hidden divide-y divide-gray-200 z-[70]"
                       >
-                        <button v-if="canViewEmployeeDetails" @click="goToEdit(employee)" class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2">
+                        <button v-if="canEditEmployee" @click="goToEdit(employee)" class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2">
                           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M11 5h2m-1-1v2m-7 8l9-9 3 3-9 9H5v-3z"/>
                           </svg>
@@ -290,6 +315,7 @@ import { useAuth } from '../../composables/useAuth'
 import AppSidebar from '../../components/AppSidebar.vue'
 import AttendanceButton from '../../components/AttendanceButton.vue'
 import UserMenu from '../../components/UserMenu.vue'
+const { $swal } = useNuxtApp()
 
 declare const process: any
 declare const $fetch: any
@@ -298,6 +324,7 @@ const { token, fetchUser, logout, apiBase, setToken, user } = useAuth()
 const router = useRouter()
 const sidebar = ref<{ open: boolean } | null>(null)
 
+const loadingEmployees = ref(true)
 const employees = ref<any[]>([])
 const teams = ref<any[]>([])
 const userTypes = ref<any[]>([])
@@ -361,21 +388,24 @@ const filteredEmployees = computed(() => {
 })
 const canViewEmployeeDetails = computed(() => {
   const currentUser: any = user.value || {}
-  if (currentUser?.is_admin || Number(currentUser?.user_type_id || 0) === 1) return true
   if (currentUser?.can_view_employee_details) return true
   const permissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : []
   return permissions.includes('employees.view_details')
 })
 const canDeleteEmployee = computed(() => {
   const currentUser: any = user.value || {}
-  if (currentUser?.is_admin || Number(currentUser?.user_type_id || 0) === 1) return true
   if (currentUser?.can_delete_employee) return true
   const permissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : []
   return permissions.includes('employees.delete')
 })
+const canEditEmployee = computed(() => {
+  const currentUser: any = user.value || {}
+  if (currentUser?.can_edit_employee) return true
+  const permissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : []
+  return permissions.includes('employees.edit')
+})
 const canCreateEmployee = computed(() => {
   const currentUser: any = user.value || {}
-  if (currentUser?.is_admin || Number(currentUser?.user_type_id || 0) === 1) return true
   if (currentUser?.can_create_employee) return true
   const permissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : []
   return permissions.includes('employees.create')
@@ -402,9 +432,8 @@ function toggleMenu(id: number) {
 }
 
 function goToEdit(employee: any) {
-  if (!canViewEmployeeDetails.value) return
+  if (!canEditEmployee.value) return
   openMenuId.value = null
-  console.log('navigating to edit', employee.id)
   router.push(`/empleados/${employee.id}`)
 }
 
@@ -494,7 +523,7 @@ function isValidYmdDate(value: string) {
 async function removeEmployee(employee: any) {
   if (!canDeleteEmployee.value) return
   openMenuId.value = null
-  const ok = confirm(`¿Eliminar a ${employee.name}?`)
+  const ok = await $swal.confirm('Confirmar eliminación', `¿Estás seguro de eliminar a <strong>${employee.name}</strong>? Esta acción no se puede deshacer.`, 'Eliminar', 'Cancelar')
   if (!ok) return
   await $fetch(`${apiBase || 'http://localhost:8000'}/api/employees/${employee.id}`, {
     method: 'DELETE',
@@ -504,6 +533,7 @@ async function removeEmployee(employee: any) {
 }
 
 async function loadEmployees() {
+  loadingEmployees.value = true
   try {
     const res = await $fetch(`${apiBase || 'http://localhost:8000'}/api/employees`, {
       headers: { Authorization: `Bearer ${token.value}` },
@@ -521,6 +551,8 @@ async function loadEmployees() {
     teams.value = []
     userTypes.value = []
     scheduleTemplates.value = []
+  } finally {
+    loadingEmployees.value = false
   }
 }
 
@@ -630,7 +662,8 @@ onBeforeMount(async () => {
   } else {
     await fetchUser()
   }
-  const canViewEmployees = Boolean((user.value as any)?.is_hr_team) || Boolean((user.value as any)?.is_admin) || Number((user.value as any)?.user_type_id || 0) === 1
+  const currentUser: any = user.value || {}
+  const canViewEmployees = Boolean(currentUser?.is_hr_team) || Boolean(currentUser?.can_view_employee_details) || (Array.isArray(currentUser?.permissions) && currentUser.permissions.includes('employees.view_details'))
   if (!canViewEmployees) {
     return router.push('/dashboard')
   }

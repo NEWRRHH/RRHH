@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Traits\PermissionTrait;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -10,6 +11,7 @@ use Illuminate\Support\Str;
 
 class DocumentController extends Controller
 {
+    use PermissionTrait;
     private function allowedCategories(): array
     {
         return ['medical', 'receipt', 'payroll'];
@@ -19,6 +21,10 @@ class DocumentController extends Controller
     {
         $user = $request->user();
         if (!$user) return response()->json(['message' => 'Unauthenticated'], 401);
+
+        if (!$this->hasPermission($user, 'documents.view')) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
 
         $category = (string) $request->query('category', '');
         $query = DB::table('documents')
@@ -49,8 +55,12 @@ class DocumentController extends Controller
         $user = $request->user();
         if (!$user) return response()->json(['message' => 'Unauthenticated'], 401);
 
+        if (!$this->hasPermission($user, 'documents.upload')) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
         $data = $request->validate([
-            'file' => 'required|file|max:10240',
+            'file' => 'required|file|max:10240|mimes:pdf,jpeg,jpg,png,gif,doc,docx,xls,xlsx',
             'category' => 'required|string|in:medical,receipt,payroll',
             'description' => 'nullable|string|max:400',
         ]);
@@ -80,6 +90,10 @@ class DocumentController extends Controller
     {
         $user = $request->user();
         if (!$user) return response()->json(['message' => 'Unauthenticated'], 401);
+
+        if (!$this->hasPermission($user, 'documents.view')) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
 
         $doc = DB::table('documents')
             ->where('id', $id)

@@ -25,6 +25,14 @@
         <h2 class="text-xl font-semibold text-white mb-6">Iniciar sesión</h2>
 
         <form @submit.prevent="onSubmit" class="space-y-5">
+          <!-- Error message -->
+          <div
+            v-if="errorMsg"
+            class="rounded-xl bg-red-900/30 border border-red-500/30 px-4 py-3 text-sm text-red-200"
+          >
+            {{ errorMsg }}
+          </div>
+
           <!-- Email -->
           <div>
             <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">Correo electrónico</label>
@@ -66,9 +74,10 @@
           <!-- Submit -->
           <button
             type="submit"
-            class="w-full bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold py-2.5 rounded-xl shadow-lg shadow-blue-600/30 transition-all duration-200 mt-2"
+            :disabled="submitting"
+            class="w-full bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold py-2.5 rounded-xl shadow-lg shadow-blue-600/30 transition-all duration-200 mt-2 disabled:opacity-50"
           >
-            Ingresar
+            {{ submitting ? 'Ingresando...' : 'Ingresar' }}
           </button>
         </form>
 
@@ -90,17 +99,19 @@ import { useRouter } from 'vue-router'
 const { login } = useAuth()
 const router = useRouter()
 const form = ref({ email: '', password: '' })
+const errorMsg = ref('')
+const submitting = ref(false)
 
 const onSubmit = async () => {
+  errorMsg.value = ''
+  submitting.value = true
   try {
-    console.log('submitting', form.value)
     await login(form.value)
-    console.log('login successful, pushing')
     await router.push('/dashboard')
-    console.log('current route', router.currentRoute.value)
   } catch (err: any) {
-    console.error('login error', err)
-    alert(err?.data?.message || 'Login failed')
+    errorMsg.value = err?.data?.message || 'Credenciales inválidas'
+  } finally {
+    submitting.value = false
   }
 }
 </script>

@@ -3,13 +3,13 @@
     <AppSidebar ref="sidebar" @logout="onLogout" />
 
     <div class="flex-1 h-screen flex flex-col min-w-0 relative z-10 overflow-hidden">
-      <header class="relative z-40 h-16 shrink-0 flex items-center gap-4 px-6 border-b border-gray-800 bg-gray-900/60 backdrop-blur">
+      <header class="relative z-40 h-16 shrink-0 flex items-center gap-2 sm:gap-4 px-3 sm:px-6 border-b border-gray-800 bg-gray-900/60 backdrop-blur">
         <button class="lg:hidden flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition" @click="openSidebar">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
           </svg>
         </button>
-        <h1 class="text-base font-semibold text-white">Documentos</h1>
+        <h1 class="text-base font-semibold text-white hidden sm:block">Documentos</h1>
         <div class="ml-auto flex items-center gap-3">
           <AttendanceButton class="!text-[11px]" />
           <UserMenu />
@@ -26,10 +26,39 @@
             </button>
           </div>
 
-          <section class="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-4">
+          <div v-if="loading" class="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-4">
+            <div class="h-5 w-48 rounded bg-gray-800 animate-pulse"></div>
+            <div class="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
+              <div class="space-y-2">
+                <div class="h-3 w-20 rounded bg-gray-800 animate-pulse"></div>
+                <div class="h-10 w-full rounded-lg bg-gray-800 animate-pulse"></div>
+              </div>
+              <div class="flex gap-2">
+                <div class="h-10 w-36 rounded-lg bg-gray-800 animate-pulse"></div>
+                <div class="h-10 w-20 rounded-lg bg-gray-800 animate-pulse"></div>
+              </div>
+            </div>
+            <div class="rounded-xl border border-gray-800 overflow-hidden">
+              <div class="grid grid-cols-[70px_1fr_110px_80px_100px] sm:grid-cols-[70px_1fr_130px_90px_110px] px-3 py-2 bg-gray-800/60 border-b border-gray-800">
+                <div v-for="i in 5" :key="'th-' + i" class="h-3 rounded bg-gray-700 animate-pulse"></div>
+              </div>
+              <div v-for="i in 5" :key="'dr-' + i" class="grid grid-cols-[70px_1fr_110px_80px_100px] sm:grid-cols-[70px_1fr_130px_90px_110px] px-3 py-3 border-b border-gray-800 items-center gap-2">
+                <div class="w-12 h-12 rounded-lg bg-gray-800 animate-pulse"></div>
+                <div class="space-y-1.5">
+                  <div class="h-3 w-3/4 rounded bg-gray-800 animate-pulse"></div>
+                  <div class="h-2.5 w-1/2 rounded bg-gray-800 animate-pulse"></div>
+                </div>
+                <div class="h-3 w-20 rounded bg-gray-800 animate-pulse"></div>
+                <div class="h-3 w-16 rounded bg-gray-800 animate-pulse"></div>
+                <div class="h-8 w-20 rounded-lg bg-gray-800 animate-pulse"></div>
+              </div>
+            </div>
+          </div>
+
+          <section v-else class="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-4">
             <h2 class="text-white font-semibold">{{ currentTabTitle }}</h2>
             <form
-              v-if="canUploadInTab"
+              v-if="canUploadInTab && canUploadDocs"
               class="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end"
               @submit.prevent="uploadDocument"
             >
@@ -48,11 +77,12 @@
               </div>
             </form>
             <div v-else class="rounded-xl border border-amber-600/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
-              En la pestaña Nominas no se permite subir archivos. Las nominas se cargan externamente.
+              {{ !canUploadDocs ? 'No tienes permisos para subir documentos.' : 'En la pestaña Nominas no se permite subir archivos. Las nominas se cargan externamente.' }}
             </div>
 
-            <div class="rounded-xl border border-gray-800 overflow-hidden">
-              <div class="grid grid-cols-[70px_1fr_130px_90px_110px] px-3 py-2 text-xs text-gray-400 bg-gray-800/60 border-b border-gray-800">
+            <div class="rounded-xl border border-gray-800 overflow-hidden overflow-x-auto min-w-0">
+              <div class="min-w-[540px] sm:min-w-0">
+              <div class="grid grid-cols-[70px_1fr_110px_80px_100px] sm:grid-cols-[70px_1fr_130px_90px_110px] px-3 py-2 text-xs text-gray-400 bg-gray-800/60 border-b border-gray-800">
                 <div>Preview</div>
                 <div>Documento</div>
                 <div>Fecha</div>
@@ -62,7 +92,7 @@
               <div
                 v-for="d in documents"
                 :key="d.id"
-                class="grid grid-cols-[70px_1fr_130px_90px_110px] px-3 py-2 text-sm text-gray-200 border-b border-gray-800 items-center gap-2"
+                class="grid grid-cols-[70px_1fr_110px_80px_100px] sm:grid-cols-[70px_1fr_130px_90px_110px] px-3 py-2 text-sm text-gray-200 border-b border-gray-800 items-center gap-2"
               >
                 <div
                   class="w-12 h-12 rounded-lg border border-gray-700 bg-gray-800/80 flex items-center justify-center"
@@ -99,13 +129,13 @@
                 </div>
               </div>
               <div v-if="!documents.length" class="px-3 py-8 text-center text-gray-500 text-sm">No hay documentos en esta categoria.</div>
+              </div>
             </div>
           </section>
         </div>
       </main>
     </div>
 
-    <AppToast :show="toast.show" :message="toast.message" :type="toast.type" @close="toast.show = false" />
   </div>
 </template>
 
@@ -116,18 +146,19 @@ import { useAuth } from '../composables/useAuth'
 import AppSidebar from '../components/AppSidebar.vue'
 import AttendanceButton from '../components/AttendanceButton.vue'
 import UserMenu from '../components/UserMenu.vue'
-import AppToast from '../components/AppToast.vue'
+
 
 definePageMeta({ auth: true })
 declare const $fetch: any
 declare const process: any
 
-const { token, fetchUser, logout, apiBase, setToken } = useAuth()
+const { token, fetchUser, logout, apiBase, setToken, user } = useAuth()
 const router = useRouter()
 const sidebar = ref<{ open: boolean } | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 
-const tabs = [
+const loading = ref(true)
+const tabs: Array<{ id: 'medical' | 'receipt' | 'payroll'; label: string }> = [
   { id: 'medical', label: 'Certificados medicos' },
   { id: 'receipt', label: 'Comprobantes' },
   { id: 'payroll', label: 'Nominas' },
@@ -139,17 +170,13 @@ const description = ref('')
 const selectedFile = ref<File | null>(null)
 const uploading = ref(false)
 
-const toast = ref<{ show: boolean; type: 'success' | 'error'; message: string }>({ show: false, type: 'success', message: '' })
-let toastTimer: any = null
-
+const { $swal } = useNuxtApp()
 const currentTabTitle = computed(() => tabs.find((t) => t.id === activeTab.value)?.label || '')
 const canUploadInTab = computed(() => activeTab.value !== 'payroll')
-
-function showToast(type: 'success' | 'error', message: string) {
-  toast.value = { show: true, type, message }
-  if (toastTimer) clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => (toast.value.show = false), 2800)
-}
+const canUploadDocs = computed(() => {
+  const currentUser: any = user.value || {}
+  return Boolean(currentUser?.can_upload_documents) || (Array.isArray(currentUser?.permissions) && currentUser.permissions.includes('documents.upload'))
+})
 
 function openSidebar() {
   if (sidebar.value) sidebar.value.open = true
@@ -179,6 +206,7 @@ function onFileSelected(e: Event) {
 
 async function loadDocuments() {
   if (!token.value) return
+  loading.value = true
   try {
     const res: any = await $fetch(`${apiBase || 'http://localhost:8000'}/api/documents?category=${activeTab.value}`, {
       headers: { Authorization: `Bearer ${token.value}` },
@@ -187,6 +215,8 @@ async function loadDocuments() {
   } catch (e) {
     console.error('documents load failed', e)
     documents.value = []
+  } finally {
+    loading.value = false
   }
 }
 
@@ -208,10 +238,10 @@ async function uploadDocument() {
     selectedFile.value = null
     if (fileInput.value) fileInput.value.value = ''
     await loadDocuments()
-    showToast('success', 'Documento cargado correctamente')
+    $swal.toast('success', 'Documento cargado correctamente')
   } catch (e: any) {
     console.error('documents upload failed', e)
-    showToast('error', e?.data?.message || 'No se pudo cargar el documento')
+    $swal.toast('error', e?.data?.message || 'No se pudo cargar el documento')
   } finally {
     uploading.value = false
   }
@@ -261,10 +291,10 @@ async function downloadDocument(d: any) {
     a.click()
     a.remove()
     URL.revokeObjectURL(url)
-    showToast('success', 'Descarga iniciada')
+    $swal.toast('success', 'Descarga iniciada')
   } catch (e) {
     console.error('documents download failed', e)
-    showToast('error', 'No se pudo descargar el documento')
+    $swal.toast('error', 'No se pudo descargar el documento')
   } finally {
     downloadingId.value = null
   }
@@ -300,10 +330,15 @@ onBeforeMount(async () => {
   } else {
     await fetchUser()
   }
+
+  const currentUser: any = user.value || {}
+  const canView = Boolean(currentUser?.can_view_documents) || (Array.isArray(currentUser?.permissions) && currentUser.permissions.includes('documents.view'))
+  if (!canView) {
+    return router.push('/dashboard')
+  }
+
   await loadDocuments()
 })
 
-onBeforeUnmount(() => {
-  if (toastTimer) clearTimeout(toastTimer)
-})
+
 </script>

@@ -3,7 +3,7 @@
     <AppSidebar ref="sidebar" @logout="onLogout" />
 
     <div class="flex-1 h-screen flex flex-col min-w-0 relative z-10 overflow-hidden">
-      <header class="relative z-40 h-16 shrink-0 flex items-center gap-4 px-6 border-b border-gray-800 bg-gray-900/60 backdrop-blur">
+      <header class="relative z-40 h-16 shrink-0 flex items-center gap-2 sm:gap-4 px-3 sm:px-6 border-b border-gray-800 bg-gray-900/60 backdrop-blur">
         <button
           class="lg:hidden flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition"
           @click="openSidebar"
@@ -13,7 +13,7 @@
           </svg>
         </button>
 
-        <h1 class="text-base font-semibold text-white">Fichajes</h1>
+        <h1 class="text-base font-semibold text-white hidden sm:block">Fichajes</h1>
 
         <div class="ml-auto flex items-center gap-3">
           <AttendanceButton class="!text-[11px]" @changed="handleAttendanceChanged" />
@@ -21,7 +21,7 @@
         </div>
       </header>
 
-      <main class="relative z-10 flex-1 min-h-0 p-3 sm:p-4 lg:p-6 overflow-hidden">
+      <main class="relative z-10 flex-1 min-h-0 p-3 sm:p-4 lg:p-6 overflow-auto">
         <div class="h-full flex flex-col gap-4">
           <div class="max-w-full">
             <div class="flex flex-wrap rounded-xl border border-gray-700 p-1 bg-gray-900 gap-1">
@@ -809,6 +809,12 @@ onBeforeMount(async () => {
     }
   } else {
     await fetchUser()
+  }
+
+  const currentUser: any = user.value || {}
+  const canView = Boolean(currentUser?.can_view_reports) || (Array.isArray(currentUser?.permissions) && currentUser.permissions.includes('reports.view'))
+  if (!canView) {
+    return router.push('/dashboard')
   }
 
   await loadMonthData()

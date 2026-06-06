@@ -3,13 +3,13 @@
     <AppSidebar ref="sidebar" @logout="onLogout" />
 
     <div class="flex-1 h-screen flex flex-col min-w-0 relative z-10 overflow-hidden">
-      <header class="relative z-40 h-16 shrink-0 flex items-center gap-4 px-6 border-b border-gray-800 bg-gray-900/60 backdrop-blur">
+      <header class="relative z-40 h-16 shrink-0 flex items-center gap-2 sm:gap-4 px-3 sm:px-6 border-b border-gray-800 bg-gray-900/60 backdrop-blur">
         <button class="lg:hidden flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition" @click="openSidebar">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <h1 class="text-base font-semibold text-white">Comunicados</h1>
+        <h1 class="text-base font-semibold text-white hidden sm:block">Comunicados</h1>
         <div class="ml-auto flex items-center gap-3">
           <AttendanceButton class="!text-[11px]" />
           <UserMenu />
@@ -115,7 +115,6 @@
       </main>
     </div>
 
-    <AppToast :show="toast.show" :message="toast.message" :type="toast.type" @close="toast.show = false" />
   </div>
 </template>
 
@@ -126,7 +125,7 @@ import { useAuth } from '../composables/useAuth'
 import AppSidebar from '../components/AppSidebar.vue'
 import AttendanceButton from '../components/AttendanceButton.vue'
 import UserMenu from '../components/UserMenu.vue'
-import AppToast from '../components/AppToast.vue'
+
 
 definePageMeta({ auth: true })
 
@@ -147,14 +146,7 @@ const form = ref<{ title: string; body: string; scope: 'all' | 'team'; team_id: 
   scope: 'all',
   team_id: '',
 })
-const toast = ref<{ show: boolean; type: 'success' | 'error'; message: string }>({ show: false, type: 'success', message: '' })
-let toastTimer: any = null
-
-function showToast(type: 'success' | 'error', message: string) {
-  toast.value = { show: true, type, message }
-  if (toastTimer) clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => (toast.value.show = false), 2800)
-}
+const { $swal } = useNuxtApp()
 
 function openSidebar() {
   if (sidebar.value) sidebar.value.open = true
@@ -187,7 +179,7 @@ async function loadAnnouncements() {
   } catch (e) {
     console.error('announcements load failed', e)
     announcements.value = []
-    showToast('error', 'No se pudieron cargar los comunicados')
+    $swal.toast('error', 'No se pudieron cargar los comunicados')
   } finally {
     loading.value = false
   }
@@ -196,11 +188,11 @@ async function loadAnnouncements() {
 async function createAnnouncement() {
   if (!token.value) return
   if (!form.value.title.trim() || !form.value.body.trim()) {
-    showToast('error', 'Completa titulo y mensaje')
+    $swal.toast('error', 'Completa titulo y mensaje')
     return
   }
   if (form.value.scope === 'team' && !form.value.team_id) {
-    showToast('error', 'Selecciona un equipo')
+    $swal.toast('error', 'Selecciona un equipo')
     return
   }
 
@@ -217,11 +209,11 @@ async function createAnnouncement() {
       },
     })
     form.value = { title: '', body: '', scope: 'all', team_id: '' }
-    showToast('success', 'Comunicado enviado')
+    $swal.toast('success', 'Comunicado enviado')
     await loadAnnouncements()
   } catch (e: any) {
     console.error('announcement create failed', e)
-    showToast('error', e?.data?.message || 'No se pudo enviar el comunicado')
+    $swal.toast('error', e?.data?.message || 'No se pudo enviar el comunicado')
   } finally {
     saving.value = false
   }
@@ -253,7 +245,7 @@ onBeforeMount(async () => {
     await fetchUser()
   }
 
-  const canAccess = Boolean((user.value as any)?.can_access_announcements) || Boolean((user.value as any)?.is_hr_team) || Boolean((user.value as any)?.is_admin) || Number((user.value as any)?.user_type_id || 0) === 1
+  const canAccess = Boolean((user.value as any)?.can_access_announcements) || Boolean((user.value as any)?.can_manage_announcements) || (Array.isArray((user.value as any)?.permissions) && (user.value as any).permissions.includes('announcements.manage'))
   if (!canAccess) {
     return router.push('/dashboard')
   }
@@ -262,7 +254,5 @@ onBeforeMount(async () => {
   await loadAnnouncements()
 })
 
-onBeforeUnmount(() => {
-  if (toastTimer) clearTimeout(toastTimer)
-})
+
 </script>

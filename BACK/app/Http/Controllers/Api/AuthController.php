@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Traits\PermissionTrait;
 use App\Events\TimeOffRequestUpdated;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -17,6 +18,7 @@ use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
+    use PermissionTrait;
     private function attendanceRequestEventTypeId(): int
     {
         $existing = DB::table('event_types')
@@ -35,43 +37,9 @@ class AuthController extends Controller
         ]);
     }
 
-    private function isAdminUser(?object $user): bool
-    {
-        return (int) ($user->user_type_id ?? 0) === 1;
-    }
-
-    private function isHrTeam(?object $user): bool
-    {
-        if (!$user || empty($user->team_id)) return false;
-        $team = DB::table('teams')->where('id', (int) $user->team_id)->first(['name']);
-        if (!$team || empty($team->name)) return false;
-        $name = strtolower(trim((string) $team->name));
-        return str_contains($name, 'rrhh')
-            || str_contains($name, 'rr.hh')
-            || str_contains($name, 'recursos humanos')
-            || $name === 'rh';
-    }
-
     private function canManageEmployees(?object $user): bool
     {
-        return $this->isHrTeam($user) || $this->isAdminUser($user);
-    }
-
-    private function teamHasPermission(?int $teamId, string $permissionCode): bool
-    {
-        if (!$teamId) return false;
-        return DB::table('team_permision')
-            ->join('permisions', 'team_permision.permision_id', '=', 'permisions.id')
-            ->where('team_permision.team_id', $teamId)
-            ->where('permisions.code', $permissionCode)
-            ->exists();
-    }
-
-    private function hasPermission(?object $user, string $permissionCode): bool
-    {
-        if (!$user) return false;
-        if ($this->isAdminUser($user)) return true;
-        return $this->teamHasPermission((int) ($user->team_id ?? 0), $permissionCode);
+        return $this->isHrTeam($user) || $this->hasPermission($user, 'employees.view_details');
     }
 
     private function canViewEmployeeDetails(?object $user): bool
@@ -87,6 +55,16 @@ class AuthController extends Controller
     private function canCreateEmployeeUsers(?object $user): bool
     {
         return $this->hasPermission($user, 'employees.create');
+    }
+
+    private function canEditEmployeeUsers(?object $user): bool
+    {
+        return $this->hasPermission($user, 'employees.edit');
+    }
+
+    private function canManageSchedules(?object $user): bool
+    {
+        return $this->hasPermission($user, 'schedules.manage');
     }
 
     /**
@@ -310,20 +288,25 @@ class AuthController extends Controller
         $payload['can_view_employee_details'] = $this->canViewEmployeeDetails($user);
         $payload['can_delete_employee'] = $this->canDeleteEmployeeUsers($user);
         $payload['can_create_employee'] = $this->canCreateEmployeeUsers($user);
-        $payload['can_access_announcements'] = $this->isHrTeam($user) || $this->isAdminUser($user);
+        $payload['can_edit_employee'] = $this->canEditEmployeeUsers($user);
+        $payload['can_manage_schedules'] = $this->canManageSchedules($user);
+        $payload['can_access_announcements'] = $this->isHrTeam($user) || $this->isAdminUser($user) || $this->hasPermission($user, 'announcements.manage');
+        $payload['can_manage_announcements'] = $this->hasPermission($user, 'announcements.manage');
         $payload['can_access_settings'] = $this->isAdminUser($user) || $this->isHrTeam($user);
+        $payload['can_view_vacations'] = $this->hasPermission($user, 'vacations.view');
+        $payload['can_create_vacations'] = $this->hasPermission($user, 'vacations.create');
+        $payload['can_edit_vacations'] = $this->hasPermission($user, 'vacations.edit');
+        $payload['can_view_requests'] = $this->hasPermission($user, 'requests.view');
+        $payload['can_view_documents'] = $this->hasPermission($user, 'documents.view');
+        $payload['can_upload_documents'] = $this->hasPermission($user, 'documents.upload');
+        $payload['can_view_reports'] = $this->hasPermission($user, 'reports.view');
 
         return response()->json($payload)->header('Access-Control-Allow-Origin', '*');
     }
 
-    private function canManagePermissions(?object $user): bool
-    {
-        return $this->isAdminUser($user);
-    }
-
     private function canManageScheduleTemplates(?object $user): bool
     {
-        return $this->isAdminUser($user) || $this->isHrTeam($user);
+        return $this->isAdminUser($user) || $this->canManageSchedules($user);
     }
 
     private function formatScheduleTemplate(object $schedule): array
@@ -2155,7 +2138,7 @@ class AuthController extends Controller
     public function updateEmployee(Request $request, int $id)
     {
         $user = $request->user();
-        if (!$this->canViewEmployeeDetails($user)) {
+        if (!$this->canEditEmployeeUsers($user)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
@@ -2206,7 +2189,7 @@ class AuthController extends Controller
         }
         $employee->save();
 
-        if ($this->canViewEmployeeDetails($user)) {
+        if ($this->canEditEmployeeUsers($user)) {
             $days = array_values(array_unique($this->normalizeScheduleDays($data['days'] ?? null)));
             $startTime = $data['start_time'] ?? null;
             $endTime = $data['end_time'] ?? null;
