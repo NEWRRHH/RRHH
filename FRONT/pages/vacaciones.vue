@@ -658,6 +658,7 @@ async function loadCalendar() {
     }
   } catch (e) {
     console.error('calendar load failed', e)
+    $swal.toast('error', 'Error al cargar el calendario')
   } finally {
     loading.value = false
   }

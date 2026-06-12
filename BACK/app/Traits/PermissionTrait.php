@@ -58,4 +58,36 @@ trait PermissionTrait
     {
         return $this->isAdminUser($user);
     }
+
+    /**
+     * Check if user can view vacations.
+     */
+    private function canViewVacations(?object $user): bool
+    {
+        return $user && $this->hasPermission($user, 'vacations.view');
+    }
+
+    /**
+     * Check if user can create vacations.
+     */
+    private function canCreateVacations(?object $user): bool
+    {
+        return $user && $this->hasPermission($user, 'vacations.create');
+    }
+
+    /**
+     * Check if user can edit vacations.
+     */
+    private function canEditVacations(?object $user): bool
+    {
+        return $user && $this->hasPermission($user, 'vacations.edit');
+    }
+
+    /**
+     * Check if user can view requests.
+     */
+    private function canViewRequests(?object $user): bool
+    {
+        return $user && $this->hasPermission($user, 'requests.view');
+    }
 }
