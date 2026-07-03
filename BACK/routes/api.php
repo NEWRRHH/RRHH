@@ -41,6 +41,11 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::post('/settings/schedules', [AuthController::class, 'createScheduleTemplate']);
     Route::put('/settings/schedules/{id}', [AuthController::class, 'updateScheduleTemplate']);
     Route::delete('/settings/schedules/{id}', [AuthController::class, 'deleteScheduleTemplate']);
+    // Teams CRUD
+    Route::get('/settings/teams', [AuthController::class, 'listTeams']);
+    Route::post('/settings/teams', [AuthController::class, 'createTeam']);
+    Route::put('/settings/teams/{id}', [AuthController::class, 'updateTeam']);
+    Route::delete('/settings/teams/{id}', [AuthController::class, 'deleteTeam']);
 
     // attendance control
     Route::post('/attendance/start', [AuthController::class, 'startAttendance']);
