@@ -12,8 +12,8 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
           </svg>
         </button>
-        <h1 class="text-base font-semibold text-white hidden sm:block">Administración de Permisos</h1>
-        <div class="relative flex items-center ml-2 sm:ml-8 max-w-[120px] sm:max-w-none">
+        <h1 class="text-base font-semibold text-white hidden sm:block">{{ tabs.find(t => t.id === activeTab)?.label || 'Configuración' }}</h1>
+        <div v-if="activeTab === 'permissions'" class="relative flex items-center ml-2 sm:ml-8 max-w-[120px] sm:max-w-none">
           <input
             v-model="searchQuery"
             type="search"
@@ -36,7 +36,7 @@
             <button
               v-for="tab in tabs"
               :key="tab.id"
-              class="px-4 py-2 rounded-lg text-sm transition whitespace-nowrap"
+              class="mx-0.5 px-4 py-2 rounded-lg text-sm transition whitespace-nowrap"
               :class="activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
               @click="activeTab = tab.id"
             >
@@ -74,14 +74,14 @@
                 </div>
                 <h3 class="text-sm font-semibold text-white">Mensaje de bienvenida</h3>
               </div>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div class="flex flex-col gap-3">
                 <div>
                   <label class="block text-xs text-gray-400 mb-1">Título</label>
                   <input v-model="welcomeSettings.title" class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500" maxlength="80" />
                 </div>
                 <div>
                   <label class="block text-xs text-gray-400 mb-1">Descripción</label>
-                  <textarea v-model="welcomeSettings.subtitle" class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white text-sm min-h-20 focus:outline-none focus:ring-2 focus:ring-cyan-500" maxlength="180" />
+                  <textarea v-model="welcomeSettings.subtitle" rows="3" class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 resize-none" maxlength="180" />
                 </div>
               </div>
               <label class="inline-flex items-center gap-2 text-sm text-gray-200 cursor-pointer hover:text-white transition">
@@ -96,7 +96,7 @@
                   <div class="w-8 h-8 rounded-lg bg-gray-800 animate-pulse"></div>
                   <div class="h-4 w-40 rounded bg-gray-800 animate-pulse"></div>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div class="flex flex-col gap-3">
                   <div class="space-y-2">
                     <div class="h-3 w-12 rounded bg-gray-800 animate-pulse"></div>
                     <div class="h-10 w-full rounded-lg bg-gray-800 animate-pulse"></div>
@@ -136,7 +136,7 @@
                   <div
                     v-for="(slotKey, idx) in slots"
                     :key="idx"
-                    class="min-h-[60px] rounded-lg border-2 border-dashed p-2 text-xs flex flex-col items-center justify-center gap-1 transition-all duration-200"
+                    class="min-w-0 min-h-[70px] rounded-lg border-2 border-dashed p-2 text-xs flex flex-col items-center justify-center gap-1 transition-all duration-200"
                     :class="slotKey
                       ? 'border-blue-500/40 bg-blue-500/10'
                       : 'border-gray-700/50 bg-gray-900/40 text-gray-500 hover:border-gray-600'
@@ -148,7 +148,7 @@
                           <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                         </svg>
                       </div>
-                      <span class="text-[10px] text-blue-300 font-medium truncate max-w-full">{{ getWidgetName(slotKey) }}</span>
+                      <span class="text-[10px] text-blue-300 font-medium truncate w-full text-center px-1">{{ getWidgetName(slotKey) }}</span>
                     </template>
                     <template v-else>
                       <span class="text-[10px]">Slot {{ idx + 1 }}</span>
@@ -451,6 +451,106 @@
           </section>
 
 
+          <section v-else-if="activeTab === 'equipos'" class="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-4">
+            <div class="flex items-center justify-between gap-3">
+              <h2 class="text-white font-semibold">Gestion de Equipos</h2>
+              <div class="flex items-center gap-2">
+                <button
+                  v-if="editingTeamId"
+                  class="px-3 py-2 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800 text-xs transition"
+                  @click="cancelEditTeam"
+                >
+                  Cancelar edicion
+                </button>
+                <button
+                  class="px-4 py-2 rounded-lg bg-blue-600 text-white text-xs font-medium disabled:opacity-50 hover:bg-blue-500 transition"
+                  :disabled="teamSaving || !teamForm.name.trim()"
+                  @click="saveTeam"
+                >
+                  {{ teamSaving ? 'Guardando...' : (editingTeamId ? 'Guardar cambios' : 'Agregar equipo') }}
+                </button>
+              </div>
+            </div>
+
+            <p class="text-sm text-gray-400">Crea y administra los equipos de trabajo. Los equipos se usan para agrupar empleados y asignar permisos.</p>
+
+            <!-- Form -->
+            <div class="rounded-xl border border-gray-800 bg-gray-950 p-4 space-y-3">
+              <h3 class="text-sm text-white font-semibold">{{ editingTeamId ? 'Editar equipo' : 'Nuevo equipo' }}</h3>
+              <div class="flex flex-col sm:flex-row gap-3">
+                <input
+                  v-model="teamForm.name"
+                  type="text"
+                  placeholder="Nombre del equipo"
+                  maxlength="100"
+                  class="flex-1 rounded-lg bg-gray-800 border border-gray-700 px-4 py-2.5 text-white placeholder-gray-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  @keyup.enter="saveTeam()"
+                />
+              </div>
+            </div>
+
+            <!-- Teams list -->
+            <div class="rounded-xl border border-gray-800 bg-gray-950 overflow-hidden">
+              <div class="px-4 py-3 border-b border-gray-800 text-sm text-gray-200 flex items-center gap-2">
+                Equipos existentes
+                <span class="text-xs text-gray-500">({{ teams.length }})</span>
+              </div>
+
+              <div v-if="teamsLoading" class="px-4 py-4 space-y-2">
+                <div v-for="i in 4" :key="'sk-team-' + i" class="grid grid-cols-[1fr_80px_120px] gap-4 items-center">
+                  <div class="h-4 w-32 rounded bg-gray-800 animate-pulse"></div>
+                  <div class="h-4 w-12 rounded bg-gray-800 animate-pulse"></div>
+                  <div class="flex gap-2 justify-end">
+                    <div class="h-7 w-16 rounded bg-gray-800 animate-pulse"></div>
+                    <div class="h-7 w-16 rounded bg-gray-800 animate-pulse"></div>
+                  </div>
+                </div>
+              </div>
+
+              <div v-else-if="!teams.length" class="px-4 py-6 text-sm text-gray-500 text-center">
+                No hay equipos registrados. Crea el primero usando el formulario de arriba.
+              </div>
+
+              <table v-else class="min-w-full text-sm">
+                <thead class="bg-gray-800/60 text-gray-300">
+                  <tr>
+                    <th class="text-left px-4 py-2">Nombre</th>
+                    <th class="text-center px-4 py-2">Miembros</th>
+                    <th class="text-right px-4 py-2">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="t in teams" :key="t.id" class="border-t border-gray-800 text-gray-200 hover:bg-gray-800/30 transition">
+                    <td class="px-4 py-3 font-medium">{{ t.name }}</td>
+                    <td class="px-4 py-3 text-center">
+                      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs" :class="t.members_count > 0 ? 'bg-blue-600/20 text-blue-400' : 'bg-gray-800 text-gray-500'">
+                        {{ t.members_count }}
+                      </span>
+                    </td>
+                    <td class="px-4 py-3 text-right">
+                      <div class="inline-flex items-center gap-2">
+                        <button
+                          class="px-2 py-1 rounded border border-gray-700 text-xs text-gray-200 hover:bg-gray-800 transition"
+                          @click="editTeam(t)"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          class="px-2 py-1 rounded border border-red-700 text-xs text-red-300 hover:bg-red-900/20 disabled:opacity-50 transition"
+                          :disabled="teamDeletingId === t.id"
+                          @click="deleteTeam(t.id)"
+                        >
+                          {{ teamDeletingId === t.id ? 'Eliminando...' : 'Eliminar' }}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+
         </div>
       </main>
     </div>
@@ -497,6 +597,7 @@ const tabs = computed(() => {
       { id: 'dashboard', label: 'Dashboard' },
       { id: 'permissions', label: 'Permisos' },
       { id: 'schedules', label: 'Jornadas laborales' },
+      { id: 'equipos', label: 'Equipos' },
     ]
   }
 
@@ -635,6 +736,14 @@ const scheduleForm = ref<{ start_time: string; end_time: string; days: string[] 
   end_time: '18:00',
   days: ['L', 'M', 'X', 'J', 'V'],
 })
+
+// Teams management
+const teams = ref<Array<{ id: number; name: string; members_count: number; created_at: string }>>([])
+const teamsLoading = ref(false)
+const teamSaving = ref(false)
+const teamDeletingId = ref<number | null>(null)
+const editingTeamId = ref<number | null>(null)
+const teamForm = ref<{ name: string }>({ name: '' })
 
 const { $swal } = useNuxtApp()
 
@@ -935,9 +1044,88 @@ async function deleteScheduleTemplate(id: number) {
   }
 }
 
+// ── Teams management ──
+
+async function loadTeams() {
+  if (!token.value) return
+  teamsLoading.value = true
+  try {
+    const res: any = await $fetch(`${apiBase || 'http://localhost:8000'}/api/settings/teams`, {
+      headers: { Authorization: `Bearer ${token.value}` },
+    })
+    teams.value = Array.isArray(res?.teams) ? res.teams : []
+  } catch (e: any) {
+    $swal.toast('error', 'No se pudieron cargar los equipos')
+    teams.value = []
+  } finally {
+    teamsLoading.value = false
+  }
+}
+
+async function saveTeam() {
+  if (!token.value || !teamForm.value.name.trim()) return
+  teamSaving.value = true
+  try {
+    const method = editingTeamId.value ? 'PUT' : 'POST'
+    const endpoint = editingTeamId.value
+      ? `${apiBase || 'http://localhost:8000'}/api/settings/teams/${editingTeamId.value}`
+      : `${apiBase || 'http://localhost:8000'}/api/settings/teams`
+
+    await $fetch(endpoint, {
+      method,
+      headers: { Authorization: `Bearer ${token.value}` },
+      body: { name: teamForm.value.name.trim() },
+    })
+    $swal.toast('success', editingTeamId.value ? 'Equipo actualizado' : 'Equipo creado')
+    editingTeamId.value = null
+    teamForm.value = { name: '' }
+    await loadTeams()
+  } catch (e: any) {
+    $swal.toast('error', e?.data?.message || 'No se pudo guardar el equipo')
+  } finally {
+    teamSaving.value = false
+  }
+}
+
+function editTeam(team: { id: number; name: string }) {
+  editingTeamId.value = team.id
+  teamForm.value = { name: team.name }
+}
+
+function cancelEditTeam() {
+  editingTeamId.value = null
+  teamForm.value = { name: '' }
+}
+
+async function deleteTeam(id: number) {
+  const ok = await $swal.confirm('Confirmar eliminación', '¿Estás seguro de eliminar este equipo? Solo se pueden eliminar equipos sin miembros.', 'Eliminar', 'Cancelar')
+  if (!ok) return
+  teamDeletingId.value = id
+  try {
+    await $fetch(`${apiBase || 'http://localhost:8000'}/api/settings/teams/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token.value}` },
+    })
+    if (editingTeamId.value === id) {
+      cancelEditTeam()
+    }
+    $swal.toast('success', 'Equipo eliminado')
+    await loadTeams()
+  } catch (e: any) {
+    $swal.toast('error', e?.data?.message || 'No se pudo eliminar el equipo')
+  } finally {
+    teamDeletingId.value = null
+  }
+}
+
+// ── End teams management ──
+
 watch(activeTab, async (tab) => {
   if (tab === 'schedules' && !scheduleTemplates.value.length && !schedulesLoading.value) {
     await loadScheduleTemplates()
+  }
+  if (tab === 'equipos' && !teams.value.length && !teamsLoading.value) {
+    await loadTeams()
   }
 })
 
