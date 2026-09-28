@@ -47,6 +47,11 @@ RUN mkdir -p /var/www/html/storage /var/www/html/bootstrap/cache \
 # expose php-fpm port
 EXPOSE 9000
 
+# php-fpm must listen on 0.0.0.0 (not the default 127.0.0.1) so other
+# containers on the docker network (back_nginx) can connect to it.
+# The default 127.0.0.1:9000 only works for in-container healthchecks.
+RUN sed -i 's|^listen = .*|listen = 0.0.0.0:9000|' /usr/local/etc/php-fpm.d/www.conf
+
 # copy runtime entrypoint (fix perms, install composer deps if missing)
 COPY docker/entrypoint.sh /usr/local/bin/docker-start.sh
 RUN chmod +x /usr/local/bin/docker-start.sh
