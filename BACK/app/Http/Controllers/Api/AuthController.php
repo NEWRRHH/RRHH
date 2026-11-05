@@ -1535,7 +1535,15 @@ class AuthController extends Controller
 
         $data = $request->validate([
             'date' => 'required|date_format:Y-m-d',
+            'entry_time' => 'nullable|date_format:H:i',
+            'exit_time' => 'nullable|date_format:H:i',
         ]);
+
+        $entryTime = !empty($data['entry_time']) ? $data['entry_time'] : null;
+        $exitTime = !empty($data['exit_time']) ? $data['exit_time'] : null;
+        if ($entryTime && $exitTime && strcmp($exitTime, $entryTime) <= 0) {
+            return response()->json(['message' => 'La hora de salida debe ser posterior a la hora de entrada'], 422);
+        }
 
         $targetDate = Carbon::createFromFormat('Y-m-d', $data['date'])->startOfDay();
         $today = Carbon::today();
@@ -1588,25 +1596,24 @@ class AuthController extends Controller
         $startAt = $targetDate->copy();
         $endAt = $targetDate->copy();
         if ($requestKind === 'entry_exit') {
-            [$sh, $sm] = array_map('intval', explode(':', $scheduleStart));
-            [$eh, $em] = array_map('intval', explode(':', $scheduleEnd));
-            $startAt->setTime($sh, $sm, 0);
-            $endAt->setTime($eh, $em, 0);
+            $entrySource = $entryTime ?: $scheduleStart;
+            $exitSource = $exitTime ?: $scheduleEnd;
         } elseif ($requestKind === 'exit') {
             $existingStart = !empty($attendance->start_time) ? substr((string) $attendance->start_time, 0, 5) : $scheduleStart;
-            [$sh, $sm] = array_map('intval', explode(':', $existingStart));
-            [$eh, $em] = array_map('intval', explode(':', $scheduleEnd));
-            $startAt->setTime($sh, $sm, 0);
-            $endAt->setTime($eh, $em, 0);
+            $entrySource = $existingStart;
+            $exitSource = $exitTime ?: $scheduleEnd;
         } else {
             $existingEnd = !empty($attendance->end_time) ? substr((string) $attendance->end_time, 0, 5) : $scheduleEnd;
-            [$sh, $sm] = array_map('intval', explode(':', $scheduleStart));
-            [$eh, $em] = array_map('intval', explode(':', $existingEnd));
-            $startAt->setTime($sh, $sm, 0);
-            $endAt->setTime($eh, $em, 0);
+            $entrySource = $entryTime ?: $scheduleStart;
+            $exitSource = $existingEnd;
         }
 
-        if ($endAt->lte($startAt)) {
+        [$sh, $sm] = array_map('intval', explode(':', $entrySource));
+        [$eh, $em] = array_map('intval', explode(':', $exitSource));
+        $startAt->setTime($sh, $sm, 0);
+        $endAt->setTime($eh, $em, 0);
+
+        if (empty($exitTime) && $endAt->lte($startAt)) {
             $endAt = $startAt->copy()->addHours(8);
         }
 
@@ -1617,10 +1624,18 @@ class AuthController extends Controller
         ];
 
         $description = sprintf(
-            'Regularizacion de fichaje del %s. Tipo: %s.',
-            $targetDate->format('Y-m-d'),
-            $requestKind
+            'Regularizacion de fichaje del %s.',
+            $targetDate->format('d/m/Y')
         );
+
+        $requestedTimes = array_filter(['entrada' => $entryTime, 'salida' => $exitTime]);
+        if ($requestedTimes) {
+            $timeParts = [];
+            foreach ($requestedTimes as $timeLabel => $timeValue) {
+                $timeParts[] = $timeLabel . ' ' . $timeValue;
+            }
+            $description .= ' Horas solicitadas: ' . implode(', ', $timeParts) . '.';
+        }
 
         $eventId = DB::table('events')->insertGetId([
             'title' => $titleByKind[$requestKind] ?? 'Solicitud de fichaje',
@@ -1646,6 +1661,8 @@ class AuthController extends Controller
             'request_id' => (int) $eventId,
             'request_kind' => $requestKind,
             'date' => $targetDate->toDateString(),
+            'entry_time' => $entryTime,
+            'exit_time' => $exitTime,
         ])->header('Access-Control-Allow-Origin', '*');
     }
 

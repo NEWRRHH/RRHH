@@ -2,6 +2,16 @@ export default defineNuxtConfig({
   ssr: true,
   modules: ['@nuxtjs/tailwindcss'],
   css: ['~/assets/css/main.css'],
+  // En Docker sobre Windows los bind mounts no disparan inotify:
+  // con polling el hot-reload vuelve a funcionar sin reiniciar el contenedor.
+  vite: {
+    server: {
+      watch: {
+        usePolling: true,
+        interval: 1000,
+      },
+    },
+  },
   app: {
     head: {
       title: 'RRHH - Front (Nuxt)'

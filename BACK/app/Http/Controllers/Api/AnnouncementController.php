@@ -41,20 +41,29 @@ class AnnouncementController extends Controller
     {
         $user = $request->user();
         if (!$user) return response()->json(['message' => 'Unauthenticated'], 401);
-        if (!$this->canAccessAnnouncements($user)) return response()->json(['message' => 'Forbidden'], 403);
 
         $limit = max(1, min(100, (int) $request->query('limit', 20)));
+        $canSeeAll = $this->canAccessAnnouncements($user);
 
-        $rows = DB::table('posts')
+        $query = DB::table('posts')
             ->join('users', 'posts.user_id', '=', 'users.id')
             ->leftJoin('teams', 'posts.team_id', '=', 'teams.id')
-            ->where(function ($q) use ($user) {
+            ->leftJoin('post_reads', function ($join) use ($user) {
+                $join->on('post_reads.post_id', '=', 'posts.id')
+                     ->where('post_reads.user_id', '=', $user->id);
+            });
+
+        if (!$canSeeAll) {
+            $query->where(function ($q) use ($user) {
                 $q->where('posts.audience_scope', 'all')
                   ->orWhere(function ($q2) use ($user) {
                       $q2->where('posts.audience_scope', 'team')
                          ->where('posts.team_id', $user->team_id);
                   });
-            })
+            });
+        }
+
+        $rows = $query
             ->orderBy('posts.created_at', 'desc')
             ->limit($limit)
             ->get([
@@ -68,6 +77,7 @@ class AnnouncementController extends Controller
                 'users.first_name',
                 'users.last_name',
                 'users.name as user_name',
+                'post_reads.read_at',
             ])
             ->map(function ($p) {
                 $author = trim(($p->first_name ?? $p->user_name ?? '') . ' ' . ($p->last_name ?? ''));
@@ -80,6 +90,7 @@ class AnnouncementController extends Controller
                     'scope' => $p->audience_scope ?? 'all',
                     'team_id' => $p->team_id,
                     'team_name' => $p->team_name,
+                    'is_read' => !is_null($p->read_at),
                 ];
             })
             ->values();
@@ -131,5 +142,24 @@ class AnnouncementController extends Controller
         ]);
 
         return response()->json(['status' => 'ok', 'id' => $id])->header('Access-Control-Allow-Origin', '*');
+    }
+
+    public function markRead(Request $request, int $id)
+    {
+        $user = $request->user();
+        if (!$user) return response()->json(['message' => 'Unauthenticated'], 401);
+
+        $exists = DB::table('posts')->where('id', $id)->exists();
+        if (!$exists) return response()->json(['message' => 'No encontrado'], 404);
+
+        DB::table('post_reads')->insertOrIgnore([
+            'user_id' => $user->id,
+            'post_id' => $id,
+            'read_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['status' => 'ok']);
     }
 }

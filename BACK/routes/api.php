@@ -72,6 +72,7 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::get('/announcements', [AnnouncementController::class, 'index']);
     Route::get('/announcements/teams', [AnnouncementController::class, 'teams']);
     Route::post('/announcements', [AnnouncementController::class, 'store']);
+    Route::post('/announcements/{id}/read', [AnnouncementController::class, 'markRead']);
     Route::get('/documents/summary', [DashboardController::class, 'documentsSummary']);
     // vacation info for the logged-in user
     Route::get('/vacations/me', [DashboardController::class, 'vacationsMe']);

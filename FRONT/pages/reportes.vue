@@ -417,16 +417,45 @@
       <div v-if="requestModal.open" class="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center" @click.self="closeRequestModal">
         <div class="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-4 space-y-4">
           <h2 class="text-white font-semibold">Solicitar fichaje</h2>
-          <p class="text-xs text-gray-400">Selecciona la fecha para pedir regularizacion de entrada/salida.</p>
+          <p class="text-xs text-gray-400">Selecciona la fecha y, si queres, la hora de entrada y de salida.</p>
           <p v-if="!isOwnSelectedUser" class="text-xs text-amber-300">
             Debes seleccionar tu usuario para solicitar fichajes.
           </p>
-          <input
-            v-model="requestModal.date"
-            type="date"
-            class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white"
-            :max="todayIso"
-          />
+          <div>
+            <label class="block text-xs text-gray-400 mb-1">Fecha</label>
+            <input
+              v-model="requestModal.date"
+              type="date"
+              class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white"
+              :max="todayIso"
+            />
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs text-gray-400 mb-1">Hora de entrada</label>
+              <input
+                v-model="requestModal.entry_time"
+                type="time"
+                :disabled="requestMissingKind === 'exit'"
+                class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-400 mb-1">Hora de salida</label>
+              <input
+                v-model="requestModal.exit_time"
+                type="time"
+                :disabled="requestMissingKind === 'entry'"
+                class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+            </div>
+          </div>
+          <p class="text-xs text-gray-500">
+            {{ requestMissingKindHint || 'Deja las horas en blanco para usar el horario habitual.' }}
+          </p>
+          <p v-if="requestModal.error" class="text-xs text-red-300 border border-red-500/30 bg-red-500/10 rounded-lg px-3 py-2">
+            {{ requestModal.error }}
+          </p>
           <div class="flex justify-end gap-2">
             <button class="px-3 py-2 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800" @click="closeRequestModal">
               Cancelar
@@ -514,7 +543,28 @@ const monthLabel = computed(() => {
 const currentUserId = computed(() => Number((user.value as any)?.id || 0))
 const todayIso = computed(() => new Date().toISOString().slice(0, 10))
 const isOwnSelectedUser = computed(() => Number(selectedUserId.value || 0) === currentUserId.value)
-const requestModal = ref<{ open: boolean; date: string }>({ open: false, date: '' })
+const requestModal = ref<{ open: boolean; date: string; entry_time: string; exit_time: string; error: string }>({
+  open: false,
+  date: '',
+  entry_time: '',
+  exit_time: '',
+  error: '',
+})
+
+const requestMissingKind = computed(() => {
+  const date = requestModal.value.date
+  if (!date || !requestModal.value.open) return null
+  const row = monthRows.value.find((r: any) => String(r?.date || '') === date)
+  return row ? missingAttendanceKind(row) : null
+})
+
+const requestMissingKindHint = computed(() => {
+  const kind = requestMissingKind.value
+  if (kind === 'entry_exit') return 'Falta fichar la entrada y la salida.'
+  if (kind === 'entry') return 'Falta fichar la entrada.'
+  if (kind === 'exit') return 'Falta fichar la salida.'
+  return ''
+})
 
 function openSidebar() {
   if (sidebar.value) sidebar.value.open = true
@@ -659,14 +709,17 @@ function openRequestModal() {
   requestModal.value = {
     open: true,
     date: todayIso.value,
+    entry_time: '',
+    exit_time: '',
+    error: '',
   }
 }
 
 function closeRequestModal() {
-  requestModal.value = { open: false, date: '' }
+  requestModal.value = { open: false, date: '', entry_time: '', exit_time: '', error: '' }
 }
 
-async function requestAttendanceByDate(date: string) {
+async function requestAttendanceByDate(date: string, entryTime = '', exitTime = '') {
   if (!token.value || !date || requestingAttendance.value) return
   requestingAttendance.value = true
   requestNotice.value = { type: 'success', text: '' }
@@ -674,39 +727,46 @@ async function requestAttendanceByDate(date: string) {
     const res: any = await $fetch(`${apiBase || 'http://localhost:8000'}/api/attendance/requests`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token.value}` },
-      body: { date },
+      body: { date, entry_time: entryTime || null, exit_time: exitTime || null },
     })
     const kind = String(res?.request_kind || '')
     const kindLabel = kind === 'entry_exit' ? 'entrada y salida' : kind === 'entry' ? 'entrada' : kind === 'exit' ? 'salida' : 'fichaje'
-    requestNotice.value = { type: 'success', text: `Solicitud enviada a RRHH para ${date} (${kindLabel}).` }
+    const timesLabel = [entryTime ? `entrada ${entryTime}` : '', exitTime ? `salida ${exitTime}` : ''].filter(Boolean).join(', ')
+    requestNotice.value = { type: 'success', text: `Solicitud enviada a RRHH para ${date} (${kindLabel}${timesLabel ? ` - ${timesLabel}` : ''}).` }
     await loadMonthData()
     closeRequestModal()
   } catch (e: any) {
-    requestNotice.value = {
-      type: 'error',
-      text: e?.data?.message || 'No se pudo enviar la solicitud de fichaje.',
-    }
+    const message = e?.data?.message || 'No se pudo enviar la solicitud de fichaje.'
+    requestNotice.value = { type: 'error', text: message }
+    requestModal.value.error = message
   } finally {
     requestingAttendance.value = false
   }
 }
 
 async function confirmRequestModal() {
-  const date = requestModal.value.date
+  const { date, entry_time, exit_time } = requestModal.value
+  requestModal.value.error = ''
   if (!date) {
-    requestNotice.value = { type: 'error', text: 'Debes seleccionar una fecha.' }
+    requestModal.value.error = 'Debes seleccionar una fecha.'
     return
   }
   if (date > todayIso.value) {
-    requestNotice.value = { type: 'error', text: 'No puedes solicitar fichajes para fechas futuras.' }
+    requestModal.value.error = 'No puedes solicitar fichajes para fechas futuras.'
+    return
+  }
+  if (entry_time && exit_time && exit_time <= entry_time) {
+    requestModal.value.error = 'La hora de salida debe ser posterior a la hora de entrada.'
     return
   }
   const row = monthRows.value.find((r: any) => String(r?.date || '') === date)
   if (row && !canRequestAttendanceForRow(row)) {
-    requestNotice.value = { type: 'error', text: 'Ese dia no tiene fichaje faltante o ya posee solicitud pendiente.' }
+    requestModal.value.error = 'Ese dia no tiene fichaje faltante o ya posee solicitud pendiente.'
     return
   }
-  await requestAttendanceByDate(date)
+  const validEntry = requestMissingKind.value === 'exit' ? '' : entry_time
+  const validExit = requestMissingKind.value === 'entry' ? '' : exit_time
+  await requestAttendanceByDate(date, validEntry, validExit)
 }
 
 async function loadMonthData() {

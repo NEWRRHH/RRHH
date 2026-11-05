@@ -10,7 +10,7 @@ class PostsSeeder extends Seeder
     public function run(): void
     {
         DB::table('posts')->insert([
-            ['title' => 'Welcome to the API dashboard', 'body' => '{"users_count": 3}', 'user_id' => 1, 'status' => 'published', 'created_at' => now()],
+            ['title' => 'Welcome to the API dashboard', 'body' => '3 usuarios avisados', 'user_id' => 1, 'status' => 'published', 'created_at' => now()],
         ]);
     }
 }

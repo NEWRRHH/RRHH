@@ -139,6 +139,9 @@ services:
       - NODE_ENV=development
       - HOST=0.0.0.0
       - PORT=3000
+      # bind mounts en Windows no emiten eventos inotify -> forzar polling
+      # para que nuxi/vite recarguen al editar archivos sin reiniciar el contenedor
+      - CHOKIDAR_USEPOLLING=true
       # apiBase apunta al host donde corre nginx; el navegador lo llama
       # directamente (CORS * está habilitado en el backend).
       - NUXT_PUBLIC_API_BASE=http://localhost:8000
