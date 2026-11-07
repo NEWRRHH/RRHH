@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Attendance;
 use App\Models\User;
 use App\Services\AttendanceService;
+use App\Services\CompanyProvisioner;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -20,19 +21,26 @@ class AuthController extends Controller
     {
     }
 
-    public function register(Request $request)
+    /**
+     * Public sign-up = create a company. The person signing up becomes the
+     * company Admin and can then create the rest of the users.
+     */
+    public function register(Request $request, CompanyProvisioner $provisioner)
     {
         $data = $request->validate([
+            'company_name' => 'required|string|min:2|max:150',
             'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email',
+            'email' => 'required|email|max:255|unique:users,email',
             'password' => ['required', 'confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
         ]);
 
-        $user = User::create([
+        ['admin' => $user] = $provisioner->provision($data['company_name'], [
             'name' => $data['name'],
             'email' => $data['email'],
-            'password' => Hash::make($data['password']),
+            'password' => $data['password'],
         ]);
+
+        $user->load(['role:id,name,is_admin', 'company:id,name,slug,status']);
 
         $token = $user->createToken('api-token')->plainTextToken;
 

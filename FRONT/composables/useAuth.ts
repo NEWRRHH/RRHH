@@ -105,7 +105,7 @@ export const useAuth = () => {
     return u
   }
 
-  const register = async (payload: { name: string; email: string; password: string; password_confirmation: string }) => {
+  const register = async (payload: { company_name: string; name: string; email: string; password: string; password_confirmation: string }) => {
     await $fetch('/api/auth/register', {
       method: 'POST',
       body: payload,

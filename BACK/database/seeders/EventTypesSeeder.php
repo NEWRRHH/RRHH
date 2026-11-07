@@ -2,7 +2,7 @@
 
 namespace Database\Seeders;
 
-use App\Models\EventType;
+use App\Services\CompanyProvisioner;
 use Database\Seeders\Concerns\UsesDemoCompany;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
@@ -15,15 +15,7 @@ class EventTypesSeeder extends Seeder
     {
         $companyId = $this->demoCompanyId();
         $now = now();
-        $types = [
-            ['name' => 'General', 'code' => null],
-            ['name' => 'Vacaciones', 'code' => EventType::VACATION],
-            ['name' => 'Permiso', 'code' => null],
-            ['name' => 'Fichaje', 'code' => EventType::ATTENDANCE_REQUEST],
-            ['name' => 'Reunión', 'code' => null],
-        ];
-
-        foreach ($types as $type) {
+        foreach (CompanyProvisioner::DEFAULT_EVENT_TYPES as $type) {
             $exists = DB::table('event_types')->where('company_id', $companyId)->where('name', $type['name'])->exists();
             if (! $exists) {
                 DB::table('event_types')->insert($type + [

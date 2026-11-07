@@ -22,7 +22,7 @@
 
       <!-- Card -->
       <div class="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl shadow-black/60 p-8">
-        <h2 class="text-xl font-semibold text-white mb-6">Crear cuenta</h2>
+        <h2 class="text-xl font-semibold text-white mb-6">Registrar empresa</h2>
 
         <form @submit.prevent="onSubmit" class="space-y-5">
           <!-- Error message -->
@@ -33,9 +33,31 @@
             {{ errorMsg }}
           </div>
 
+          <!-- Company -->
+          <div>
+            <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">Empresa</label>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m-1 4h1m-1 4h1m4-8h1m-1 4h1m-1 4h1"/>
+                </svg>
+              </span>
+              <input
+                v-model="form.company_name"
+                type="text"
+                required
+                minlength="2"
+                maxlength="150"
+                placeholder="Nombre de tu empresa"
+                class="w-full bg-gray-800 border border-gray-700 text-white placeholder-gray-500 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+              />
+            </div>
+            <p class="mt-1 text-xs text-gray-500">Serás el administrador de la empresa y podrás crear los demás usuarios.</p>
+          </div>
+
           <!-- Name -->
           <div>
-            <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">Nombre</label>
+            <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">Tu nombre</label>
             <div class="relative">
               <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -134,7 +156,7 @@ definePageMeta({ auth: false })
 import { ref } from 'vue'
 const { register } = useAuth()
 const router = useRouter()
-const form = ref({ name: '', email: '', password: '', password_confirmation: '' })
+const form = ref({ company_name: '', name: '', email: '', password: '', password_confirmation: '' })
 const errorMsg = ref('')
 const submitting = ref(false)
 
