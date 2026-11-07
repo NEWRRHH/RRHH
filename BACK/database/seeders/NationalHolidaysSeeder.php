@@ -3,11 +3,13 @@
 namespace Database\Seeders;
 
 use App\Models\NationalHoliday;
+use App\Support\Easter;
 use Illuminate\Database\Seeder;
 
 /**
  * Starting catalog: national public holidays of Spain. Fixed-date ones are
- * recurring; Good Friday moves every year, so it is listed per year.
+ * recurring; Good Friday moves with Easter, so it is generated for the
+ * previous year and the next five (extend with `php artisan holidays:good-friday`).
  * The super admin maintains the catalog from the panel (or CSV).
  */
 class NationalHolidaysSeeder extends Seeder
@@ -32,10 +34,11 @@ class NationalHolidaysSeeder extends Seeder
             );
         }
 
-        foreach ([['2026-04-03', 'Viernes Santo'], ['2027-03-26', 'Viernes Santo']] as [$date, $name]) {
+        $thisYear = now()->year;
+        foreach (range($thisYear - 1, $thisYear + 5) as $year) {
             NationalHoliday::firstOrCreate(
-                ['country_code' => 'ES', 'date' => $date],
-                ['name' => $name, 'type' => 'national', 'recurring' => false],
+                ['country_code' => 'ES', 'date' => Easter::goodFriday($year)->toDateString()],
+                ['name' => 'Viernes Santo', 'type' => 'national', 'recurring' => false],
             );
         }
     }
