@@ -152,7 +152,7 @@ definePageMeta({ auth: true })
 declare const $fetch: any
 declare const process: any
 
-const { token, fetchUser, logout, apiBase, setToken, user } = useAuth()
+const { authenticated, fetchUser, logout, apiBase, user } = useAuth()
 const router = useRouter()
 const sidebar = ref<{ open: boolean } | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -205,11 +205,10 @@ function onFileSelected(e: Event) {
 }
 
 async function loadDocuments() {
-  if (!token.value) return
+  if (!authenticated.value) return
   loading.value = true
   try {
-    const res: any = await $fetch(`${apiBase || 'http://localhost:8000'}/api/documents?category=${activeTab.value}`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res: any = await $fetch(`/api/documents?category=${activeTab.value}`, {
     })
     documents.value = res?.documents || []
   } catch (e) {
@@ -221,7 +220,7 @@ async function loadDocuments() {
 }
 
 async function uploadDocument() {
-  if (!token.value || !selectedFile.value || !canUploadInTab.value) return
+  if (!authenticated.value || !selectedFile.value || !canUploadInTab.value) return
   uploading.value = true
   try {
     const body = new FormData()
@@ -229,9 +228,8 @@ async function uploadDocument() {
     body.append('category', activeTab.value)
     body.append('description', description.value || '')
 
-    await $fetch(`${apiBase || 'http://localhost:8000'}/api/documents/upload`, {
+    await $fetch(`/api/documents/upload`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token.value}` },
       body,
     })
     description.value = ''
@@ -273,11 +271,10 @@ function fileTypeLabel(d: any) {
 }
 
 async function downloadDocument(d: any) {
-  if (!token.value || !d?.id) return
+  if (!authenticated.value || !d?.id) return
   downloadingId.value = Number(d.id)
   try {
-    const res = await fetch(`${apiBase || 'http://localhost:8000'}/api/documents/${d.id}/download`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res = await fetch(`/api/documents/${d.id}/download`, {
     })
     if (!res.ok) {
       throw new Error('download_failed')
@@ -317,19 +314,7 @@ function formatSize(size?: number) {
 }
 
 onBeforeMount(async () => {
-  if (!token.value) {
-    if (process.client) {
-      const saved = localStorage.getItem('rrhh_token')
-      if (saved) {
-        setToken(saved)
-        await fetchUser()
-      } else {
-        return router.push('/login')
-      }
-    }
-  } else {
-    await fetchUser()
-  }
+  await fetchUser()
 
   const currentUser: any = user.value || {}
   const canView = Boolean(currentUser?.can_view_documents) || (Array.isArray(currentUser?.permissions) && currentUser.permissions.includes('documents.view'))

@@ -320,7 +320,7 @@ const { $swal } = useNuxtApp()
 declare const process: any
 declare const $fetch: any
 
-const { token, fetchUser, logout, apiBase, setToken, user } = useAuth()
+const { authenticated, fetchUser, logout, apiBase, user } = useAuth()
 const router = useRouter()
 const sidebar = ref<{ open: boolean } | null>(null)
 
@@ -525,9 +525,8 @@ async function removeEmployee(employee: any) {
   openMenuId.value = null
   const ok = await $swal.confirm('Confirmar eliminación', `¿Estás seguro de eliminar a <strong>${employee.name}</strong>? Esta acción no se puede deshacer.`, 'Eliminar', 'Cancelar')
   if (!ok) return
-  await $fetch(`${apiBase || 'http://localhost:8000'}/api/employees/${employee.id}`, {
+  await $fetch(`/api/employees/${employee.id}`, {
     method: 'DELETE',
-    headers: { Authorization: `Bearer ${token.value}` },
   })
   await loadEmployees()
 }
@@ -535,8 +534,7 @@ async function removeEmployee(employee: any) {
 async function loadEmployees() {
   loadingEmployees.value = true
   try {
-    const res = await $fetch(`${apiBase || 'http://localhost:8000'}/api/employees`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res = await $fetch(`/api/employees`, {
     })
     employees.value = res?.employees || []
     teams.value = res?.teams || []
@@ -557,7 +555,7 @@ async function loadEmployees() {
 }
 
 async function submitCreateEmployee() {
-  if (!canCreateEmployee.value || !token.value) return
+  if (!canCreateEmployee.value || !authenticated.value) return
 
   creatingEmployee.value = true
   createError.value = ''
@@ -611,9 +609,8 @@ async function submitCreateEmployee() {
       data.append('photo', createForm.value.photo)
     }
 
-    await $fetch(`${apiBase || 'http://localhost:8000'}/api/employees`, {
+    await $fetch(`/api/employees`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token.value}` },
       body: data,
     })
 
@@ -647,21 +644,7 @@ onMounted(() => {
 })
 
 onBeforeMount(async () => {
-  if (!token.value) {
-    if (process.client) {
-      const saved = localStorage.getItem('rrhh_token')
-      if (saved) {
-        setToken(saved)
-        await fetchUser()
-      } else {
-        return router.push('/login')
-      }
-    } else {
-      return
-    }
-  } else {
-    await fetchUser()
-  }
+  await fetchUser()
   const currentUser: any = user.value || {}
   const canViewEmployees = Boolean(currentUser?.is_hr_team) || Boolean(currentUser?.can_view_employee_details) || (Array.isArray(currentUser?.permissions) && currentUser.permissions.includes('employees.view_details'))
   if (!canViewEmployees) {

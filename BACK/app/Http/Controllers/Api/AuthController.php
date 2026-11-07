@@ -180,7 +180,7 @@ class AuthController extends Controller
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
-            'password' => ['required','confirmed', Password::defaults()],
+            'password' => ['required', 'confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
         ]);
 
         $user = User::create([
@@ -203,9 +203,6 @@ class AuthController extends Controller
     {
         // force JSON response format (protect against missing Accept header from client)
         $request->headers->set('Accept', 'application/json');
-
-        // debugging: log raw body and headers
-        logger('login raw content', ['content' => $request->getContent(), 'headers' => $request->headers->all()]);
 
         $data = $request->validate([
             'email' => 'required|email',
@@ -1818,6 +1815,20 @@ class AuthController extends Controller
             'schedule_template_ids' => 'nullable|array',
             'schedule_template_ids.*' => 'integer|exists:schedules,id',
         ]);
+
+        // Privilege escalation guard: only a real admin may grant the "admin"
+        // user type (or any role) when creating an account. Otherwise a user
+        // holding only the "employees.create" permission could mint admins.
+        $isCallerAdmin = $this->isAdminUser($user);
+        if (isset($data['user_type_id'])) {
+            $typeName = DB::table('user_types')->where('id', (int) $data['user_type_id'])->value('name');
+            if (strtolower((string) $typeName) === 'admin' && ! $isCallerAdmin) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+        }
+        if (! $isCallerAdmin) {
+            $data['role'] = null;
+        }
 
         $employee = new User();
         $employee->name = $data['name'];

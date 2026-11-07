@@ -401,6 +401,8 @@
 </template>
 
 <script setup lang="ts">
+definePageMeta({ auth: true })
+
 import { computed, ref, watch, onBeforeMount, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuth } from '../../composables/useAuth'
@@ -422,7 +424,7 @@ const tabs: Array<{ id: TabId; label: string }> = [
   { id: 'documentos', label: 'Documentos' },
 ]
 
-const { token, fetchUser, logout, apiBase, setToken, user } = useAuth()
+const { authenticated, fetchUser, logout, apiBase, user } = useAuth()
 const router = useRouter()
 const route = useRoute()
 const sidebar = ref<{ open: boolean } | null>(null)
@@ -629,8 +631,7 @@ async function loadEmployee() {
   error.value = null
   loadingEmployee.value = true
   try {
-    const res = await $fetch(`${apiBase || 'http://localhost:8000'}/api/employees/${employeeId.value}`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res = await $fetch(`/api/employees/${employeeId.value}`, {
     })
 
     const employee = res?.employee || {}
@@ -667,10 +668,9 @@ async function loadEmployee() {
 }
 
 async function loadAttendance() {
-  if (!token.value || !employeeId.value) return
+  if (!authenticated.value || !employeeId.value) return
   try {
-    const res = await $fetch(`${apiBase || 'http://localhost:8000'}/api/employees/${employeeId.value}/attendance-month?month=${selectedMonth.value}`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res = await $fetch(`/api/employees/${employeeId.value}/attendance-month?month=${selectedMonth.value}`, {
     })
     attendanceRows.value = res?.rows || []
     attendanceSummary.value = res?.summary || attendanceSummary.value
@@ -681,10 +681,9 @@ async function loadAttendance() {
 }
 
 async function loadDocuments() {
-  if (!token.value || !employeeId.value) return
+  if (!authenticated.value || !employeeId.value) return
   try {
-    const res = await $fetch(`${apiBase || 'http://localhost:8000'}/api/employees/${employeeId.value}/documents`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res = await $fetch(`/api/employees/${employeeId.value}/documents`, {
     })
     employeeDocuments.value = res?.documents || []
   } catch (e) {
@@ -694,7 +693,7 @@ async function loadDocuments() {
 }
 
 async function saveProfile() {
-  if (!token.value || !employeeId.value) return
+  if (!authenticated.value || !employeeId.value) return
   if (scheduleSelectionError.value) {
     $swal.toast('error', scheduleSelectionError.value)
     return
@@ -723,12 +722,8 @@ async function saveProfile() {
     }
     if (form.value.photo) data.append('photo', form.value.photo)
 
-    await $fetch(`${apiBase || 'http://localhost:8000'}/api/employees/${employeeId.value}`, {
+    await $fetch(`/api/employees/${employeeId.value}`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token.value}`,
-        Accept: 'application/json',
-      },
       body: data,
     })
 
@@ -745,11 +740,10 @@ async function saveProfile() {
 }
 
 async function downloadEmployeeDocument(d: any) {
-  if (!token.value || !employeeId.value || !d?.id) return
+  if (!authenticated.value || !employeeId.value || !d?.id) return
   downloadingDocId.value = Number(d.id)
   try {
-    const res = await fetch(`${apiBase || 'http://localhost:8000'}/api/employees/${employeeId.value}/documents/${d.id}/download`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res = await fetch(`/api/employees/${employeeId.value}/documents/${d.id}/download`, {
     })
     if (!res.ok) throw new Error('download_failed')
 
@@ -792,21 +786,7 @@ watch(activeTab, (tab) => {
 })
 
 onBeforeMount(async () => {
-  if (!token.value) {
-    if (process.client) {
-      const saved = localStorage.getItem('rrhh_token')
-      if (saved) {
-        setToken(saved)
-        await fetchUser()
-      } else {
-        return router.push('/login')
-      }
-    } else {
-      return
-    }
-  } else {
-    await fetchUser()
-  }
+  await fetchUser()
   if (!canViewEmployeeDetails.value) {
     return router.push('/dashboard')
   }

@@ -13,11 +13,18 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
         then: function () {
             // OPTIONS preflight for broadcasting/auth (no auth required).
-            \Illuminate\Support\Facades\Route::options('broadcasting/auth', function () {
-                return response('', 200)
-                    ->header('Access-Control-Allow-Origin', '*')
-                    ->header('Access-Control-Allow-Methods', 'POST, OPTIONS')
-                    ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept');
+            \Illuminate\Support\Facades\Route::options('broadcasting/auth', function (\Illuminate\Http\Request $request) {
+                $origin = \App\Http\Middleware\Cors::resolveOrigin($request);
+                $response = response('', 200)->header('Vary', 'Origin');
+                if ($origin !== null) {
+                    $response
+                        ->header('Access-Control-Allow-Origin', $origin)
+                        ->header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+                        ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept')
+                        ->header('Access-Control-Max-Age', '600');
+                }
+
+                return $response;
             });
             // Register broadcasting auth route with Sanctum so Bearer tokens
             // are accepted. Must be done here (not via the 'channels' shortcut)

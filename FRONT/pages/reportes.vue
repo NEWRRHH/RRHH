@@ -487,7 +487,7 @@ definePageMeta({ auth: true })
 declare const process: any
 declare const $fetch: any
 
-const { token, fetchUser, logout, apiBase, setToken, user } = useAuth()
+const { authenticated, fetchUser, logout, apiBase, user } = useAuth()
 const router = useRouter()
 const sidebar = ref<{ open: boolean } | null>(null)
 
@@ -720,13 +720,12 @@ function closeRequestModal() {
 }
 
 async function requestAttendanceByDate(date: string, entryTime = '', exitTime = '') {
-  if (!token.value || !date || requestingAttendance.value) return
+  if (!authenticated.value || !date || requestingAttendance.value) return
   requestingAttendance.value = true
   requestNotice.value = { type: 'success', text: '' }
   try {
-    const res: any = await $fetch(`${apiBase || 'http://localhost:8000'}/api/attendance/requests`, {
+    const res: any = await $fetch(`/api/attendance/requests`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token.value}` },
       body: { date, entry_time: entryTime || null, exit_time: exitTime || null },
     })
     const kind = String(res?.request_kind || '')
@@ -770,15 +769,14 @@ async function confirmRequestModal() {
 }
 
 async function loadMonthData() {
-  if (!token.value) return
+  if (!authenticated.value) return
   const params = new URLSearchParams()
   params.set('month', selectedMonth.value)
   if (teamFilter.value) params.set('team_id', teamFilter.value)
   if (selectedUserId.value) params.set('user_id', String(selectedUserId.value))
   params.set('include_non_working', includeNonWorkingDays.value ? '1' : '0')
 
-  const res: any = await $fetch(`${apiBase || 'http://localhost:8000'}/api/attendance/month?${params.toString()}`, {
-    headers: { Authorization: `Bearer ${token.value}` },
+  const res: any = await $fetch(`/api/attendance/month?${params.toString()}`, {
   })
 
   canViewAll.value = !!res?.can_view_all
@@ -794,14 +792,13 @@ async function loadMonthData() {
 }
 
 async function loadWhoIsInData() {
-  if (!token.value) return
+  if (!authenticated.value) return
   whoIsInLoading.value = true
   try {
     const params = new URLSearchParams()
     if (whoIsInTeamFilter.value) params.set('team_id', whoIsInTeamFilter.value)
     const qs = params.toString()
-    const res: any = await $fetch(`${apiBase || 'http://localhost:8000'}/api/attendance/who-is-in${qs ? `?${qs}` : ''}`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res: any = await $fetch(`/api/attendance/who-is-in${qs ? `?${qs}` : ''}`, {
     })
 
     canViewAllWhoIsIn.value = !!res?.can_view_all
@@ -855,21 +852,7 @@ watch(activeTab, async (tab) => {
 })
 
 onBeforeMount(async () => {
-  if (!token.value) {
-    if (process.client) {
-      const saved = localStorage.getItem('rrhh_token')
-      if (saved) {
-        setToken(saved)
-        await fetchUser()
-      } else {
-        return router.push('/login')
-      }
-    } else {
-      return
-    }
-  } else {
-    await fetchUser()
-  }
+  await fetchUser()
 
   const currentUser: any = user.value || {}
   const canView = Boolean(currentUser?.can_view_reports) || (Array.isArray(currentUser?.permissions) && currentUser.permissions.includes('reports.view'))

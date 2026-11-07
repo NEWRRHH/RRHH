@@ -65,17 +65,16 @@ defineProps({
   loading: { type: Boolean as PropType<boolean>, default: false },
 })
 
-const { token, apiBase } = useAuth()
+const { authenticated, apiBase } = useAuth()
 const selected = ref<Record<string, any> | null>(null)
 
 function openAnnouncement(a: Record<string, any>) {
   selected.value = a
   if (!a.is_read) {
     a.is_read = true
-    if (token.value) {
-      $fetch(`${apiBase || 'http://localhost:8000'}/api/announcements/${a.id}/read`, {
+    if (authenticated.value) {
+      $fetch(`/api/announcements/${a.id}/read`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token.value}` },
       }).catch((e: any) => console.error('announcement mark read failed', e))
     }
   }

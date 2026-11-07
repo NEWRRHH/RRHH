@@ -129,6 +129,8 @@
 </template>
 
 <script setup lang="ts">
+definePageMeta({ auth: false })
+
 import { ref } from 'vue'
 const { register } = useAuth()
 const router = useRouter()
@@ -143,7 +145,15 @@ const onSubmit = async () => {
     await register(form.value)
     await router.push('/dashboard')
   } catch (err: any) {
-    errorMsg.value = err?.data?.message || 'Error al registrarse'
+    const data = err?.data
+    const errors = data?.errors
+    // 422 (weak password, duplicate email, ...) returns field errors;
+    // 429 (rate limit) and the rest fall back to the generic message.
+    if (errors && typeof errors === 'object') {
+      errorMsg.value = Object.values(errors).flat().join(' ') || data?.message || 'Error al registrarse'
+    } else {
+      errorMsg.value = data?.message || 'Error al registrarse'
+    }
   } finally {
     submitting.value = false
   }

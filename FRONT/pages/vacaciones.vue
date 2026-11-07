@@ -311,7 +311,7 @@ type CalendarEvent = {
 }
 
 const router = useRouter()
-const { token, apiBase, fetchUser, logout, user } = useAuth()
+const { authenticated, apiBase, fetchUser, logout, user } = useAuth()
 const sidebar = ref<{ open: boolean } | null>(null)
 
 const loading = ref(true)
@@ -732,11 +732,10 @@ function changeMonth(delta: number) {
 }
 
 async function loadCalendar() {
-  if (!token.value) return
+  if (!authenticated.value) return
   loading.value = true
   try {
-    const res: any = await $fetch(`${apiBase}/api/timeoff/calendar?year=${selectedYear.value}`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res: any = await $fetch(`/api/timeoff/calendar?year=${selectedYear.value}`, {
     })
     scheduleDays.value = Array.isArray(res?.schedule_days) && res.schedule_days.length ? res.schedule_days : ['L', 'M', 'X', 'J', 'V']
     scheduleStartTime.value = res?.schedule?.start_time || null
@@ -755,19 +754,18 @@ async function loadCalendar() {
 }
 
 async function saveEvent() {
-  if (!canSave.value || !token.value) return
+  if (!canSave.value || !authenticated.value) return
   saving.value = true
   errorMessage.value = ''
   const wasEdit = isEditMode.value
   try {
     const method = wasEdit ? 'PUT' : 'POST'
     const url = wasEdit
-      ? `${apiBase}/api/timeoff/events/${editingEventId.value}`
-      : `${apiBase}/api/timeoff/events`
+      ? `/api/timeoff/events/${editingEventId.value}`
+      : `/api/timeoff/events`
 
     await $fetch(url, {
       method,
-      headers: { Authorization: `Bearer ${token.value}` },
       body: {
         title: form.value.title.trim(),
         description: form.value.description?.trim() || null,

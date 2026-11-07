@@ -16,11 +16,12 @@ use App\Http\Controllers\Api\AnnouncementController;
 
 Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
 
-    Route::post('/register', [AuthController::class, 'register']);
-    Route::post('/login', [AuthController::class, 'login']);
+    // brute-force protection (limiters defined in AppServiceProvider)
+    Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:register');
+    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
 
-    // protected routes
-    Route::middleware('auth:sanctum')->group(function () {
+    // protected routes (auth first so the api limiter can key by user id)
+    Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::get('/user', [AuthController::class, 'user']);
         Route::put('/user', [AuthController::class, 'updateProfile']);
@@ -107,10 +108,16 @@ Route::get('/health', function () {
 
 // simple OPTIONS catch-all for CORS preflight (dev convenience)
 // also ensure our Cors middleware runs so we don't rely solely on this
-// hard‑coded header list.
-Route::options('{any}', function () {
-    return response('', 200)
-        ->header('Access-Control-Allow-Origin', '*')
+// hard-coded header list.
+Route::options('{any}', function (Request $request) {
+    $response = response('', 200)->header('Vary', 'Origin');
+    $origin = \App\Http\Middleware\Cors::resolveOrigin($request);
+    if ($origin !== null) {
+        $response->header('Access-Control-Allow-Origin', $origin);
+    }
+
+    return $response
         ->header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
-        ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, X-Requested-With')
+        ->header('Access-Control-Max-Age', '600');
 })->where('any', '.*')->middleware(\App\Http\Middleware\Cors::class);

@@ -3,38 +3,18 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Traits\PermissionTrait;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class AnnouncementController extends Controller
 {
-    private function isAdminUser(?object $user): bool
-    {
-        return (int) ($user->user_type_id ?? 0) === 1;
-    }
-
-    private function isHrTeam(?object $user): bool
-    {
-        if (!$user || empty($user->team_id)) return false;
-        $team = DB::table('teams')->where('id', (int) $user->team_id)->first(['name']);
-        if (!$team || empty($team->name)) return false;
-        return str_contains(strtolower((string) $team->name), 'rrhh');
-    }
+    use PermissionTrait;
 
     private function canAccessAnnouncements(?object $user): bool
     {
         if (!$user) return false;
         return $this->isAdminUser($user) || $this->isHrTeam($user) || $this->teamHasPermission((int) ($user->team_id ?? 0), 'announcements.manage');
-    }
-
-    private function teamHasPermission(?int $teamId, string $permissionCode): bool
-    {
-        if (!$teamId) return false;
-        return DB::table('team_permision')
-            ->join('permisions', 'team_permision.permision_id', '=', 'permisions.id')
-            ->where('team_permision.team_id', $teamId)
-            ->where('permisions.code', $permissionCode)
-            ->exists();
     }
 
     public function index(Request $request)

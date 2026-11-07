@@ -133,7 +133,7 @@ import AttendanceButton from '../components/AttendanceButton.vue'
 import UserMenu from '../components/UserMenu.vue'
 
 
-const { token, user, fetchUser, logout, apiBase, setToken, fetchUnread, unreadNotifications, lastReceivedMessage } = useAuth()
+const { authenticated, user, fetchUser, logout, apiBase, fetchUnread, unreadNotifications, lastReceivedMessage } = useAuth()
 
 type CardKey = 'welcome' | 'birthdays' | 'team' | 'vacation' | 'notifications' | 'worked_hours' | 'holidays' | 'announcements' | 'documents'
 
@@ -290,10 +290,9 @@ function onSlotDrop(slotIndex: number) {
 }
 
 async function loadDashboardLayout() {
-  if (!token.value) return
+  if (!authenticated.value) return
   try {
-    const res: any = await $fetch(`${apiBase || 'http://localhost:8000'}/api/dashboard/layout`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res: any = await $fetch(`/api/dashboard/layout`, {
     })
     if (Array.isArray(res?.slots)) {
       const normalized = res.slots.slice(0, 9)
@@ -312,13 +311,12 @@ async function loadDashboardLayout() {
 }
 
 async function saveDashboardLayout() {
-  if (!token.value) return
+  if (!authenticated.value) return
   if (savingLayout.value) return
   savingLayout.value = true
   try {
-    await $fetch(`${apiBase || 'http://localhost:8000'}/api/dashboard/layout`, {
+    await $fetch(`/api/dashboard/layout`, {
       method: 'PUT',
-      headers: { Authorization: `Bearer ${token.value}` },
       body: { slots: boardLayout.value },
     })
     $swal.toast('success', 'Dashboard guardado correctamente')
@@ -331,27 +329,12 @@ async function saveDashboardLayout() {
 }
 
 onBeforeMount(async () => {
-  if (!token.value) {
-    if (process.client) {
-      const saved = localStorage.getItem('rrhh_token')
-      if (saved) {
-        setToken(saved)
-        await fetchUser()
-      } else {
-        return router.push('/login')
-      }
-    } else {
-      return
-    }
-  } else {
-    await fetchUser()
-  }
+  await fetchUser()
 
   await loadDashboardLayout()
 
   try {
-    data.value = await $fetch(`${apiBase || 'http://localhost:8000'}/api/dashboard`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    data.value = await $fetch(`/api/dashboard`, {
     })
   } catch (e) {
     console.error(e)
@@ -361,8 +344,7 @@ onBeforeMount(async () => {
 
   birthdaysLoading.value = true
   try {
-    const res = await $fetch(`${apiBase || 'http://localhost:8000'}/api/birthdays`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res = await $fetch(`/api/birthdays`, {
     })
     birthdays.value = res || []
   } catch (err) {
@@ -379,8 +361,7 @@ onBeforeMount(async () => {
 
   vacationLoading.value = true
   try {
-    const vac = await $fetch(`${apiBase || 'http://localhost:8000'}/api/vacations/me`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const vac = await $fetch(`/api/vacations/me`, {
     })
     vacationInfo.value = {
       daysUntilVacation: vac?.days_until_vacation != null ? Math.round(Number(vac.days_until_vacation)) : null,
@@ -398,8 +379,7 @@ onBeforeMount(async () => {
 async function refreshTeam() {
   teamLoading.value = true
   try {
-    const res = await $fetch(`${apiBase || 'http://localhost:8000'}/api/team/me`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res = await $fetch(`/api/team/me`, {
     })
     teamName.value = (typeof res?.team_name === 'string' && res.team_name.trim()) ? res.team_name.trim() : 'Sin equipo'
     teamMembers.value = Array.isArray(res?.members) ? res.members : []
@@ -415,8 +395,7 @@ async function refreshTeam() {
 async function handleAttendanceChanged() {
   await refreshTeam()
   try {
-    const fresh = await $fetch(`${apiBase || 'http://localhost:8000'}/api/dashboard`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const fresh = await $fetch(`/api/dashboard`, {
     })
     data.value.stats = fresh?.stats || data.value.stats
   } catch (e) {
@@ -427,8 +406,7 @@ async function handleAttendanceChanged() {
 async function refreshHolidays() {
   holidaysLoading.value = true
   try {
-    const res = await $fetch(`${apiBase || 'http://localhost:8000'}/api/holidays/upcoming`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res = await $fetch(`/api/holidays/upcoming`, {
     })
     holidays.value = res || []
   } catch (e) {
@@ -442,8 +420,7 @@ async function refreshHolidays() {
 async function refreshAnnouncements() {
   announcementsLoading.value = true
   try {
-    const res = await $fetch(`${apiBase || 'http://localhost:8000'}/api/announcements?limit=5`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res = await $fetch(`/api/announcements?limit=5`, {
     })
     announcements.value = res || []
   } catch (e) {
@@ -456,8 +433,7 @@ async function refreshAnnouncements() {
 
 async function refreshDocumentsSummary() {
   try {
-    const res = await $fetch(`${apiBase || 'http://localhost:8000'}/api/documents/summary`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res = await $fetch(`/api/documents/summary`, {
     })
     documentsSummary.value = {
       medical: Number(res?.medical || 0),
@@ -471,10 +447,9 @@ async function refreshDocumentsSummary() {
 }
 
 async function refreshDashboardNotifications() {
-  if (!token.value) return
+  if (!authenticated.value) return
   try {
-    const fresh = await $fetch(`${apiBase || 'http://localhost:8000'}/api/dashboard`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const fresh = await $fetch(`/api/dashboard`, {
     })
     data.value.notifications = fresh?.notifications || []
     data.value.unread_notifications = unreadNotifications.value || fresh?.unread_notifications || 0

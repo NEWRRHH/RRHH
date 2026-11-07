@@ -135,7 +135,7 @@ onMounted(async () => {
 
 const route = useRoute()
 const router = useRouter()
-const { fetchUser, unreadNotifications, fetchUnread, user, token, apiBase, realtimeInstance, realtimeConnected } = useAuth()
+const { fetchUser, unreadNotifications, fetchUnread, user, authenticated, apiBase, realtimeInstance, realtimeConnected } = useAuth()
 
 const unreadCount = computed(() => unreadNotifications.value || 0)
 const userInitial = computed(() => String((user.value as any)?.name || '?').charAt(0).toUpperCase())
@@ -172,10 +172,9 @@ let reviewerRealtimeChannel: any = null
 let userRealtimeChannel: any = null
 
 async function fetchRequestsBadge() {
-  if (!token.value) return
+  if (!authenticated.value) return
   try {
-    const res: any = await $fetch(`${apiBase || 'http://localhost:8000'}/api/timeoff/requests?status=pending`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res: any = await $fetch(`/api/timeoff/requests?status=pending`, {
     })
     requestsCount.value = Array.isArray(res?.requests) ? res.requests.length : 0
   } catch (_e) {

@@ -1,20 +1,23 @@
-// Ambient declarations to silence IDE/TS for Nuxt auto-imports used at runtime
-declare const $fetch: any
-declare const process: any
-declare function useRuntimeConfig(): any
-declare function useState<T>(key: string, factory?: () => T): any
-
-// useRuntimeConfig/useState are provided by Nuxt at runtime (we declared them above)
 import { useRealtime } from './useRealtime';
 
+type Fetcher = (url: string, opts?: Record<string, any>) => Promise<any>
+
+/**
+ * Auth state for the whole app.
+ *
+ * The API token never reaches JavaScript: it lives in an httpOnly cookie
+ * written by the Nitro routes in server/api/auth/* and is attached to every
+ * outgoing call by the proxy in server/api/[...path].ts. All calls are made
+ * against relative /api/* URLs (same origin), so there is no CORS surface
+ * and no token in localStorage for an XSS payload to steal.
+ */
 export const useAuth = () => {
   const config = useRuntimeConfig()
-  // SSR (Node inside Docker): use private config.apiBase = http://back_nginx
-  // Client (browser):         use public config.apiBase = http://localhost:8000
-  const apiBase: string = process.server
-    ? (config.apiBase as string || 'http://back_nginx')
-    : (config.public.apiBase as string || 'http://localhost:8000')
-  const token = useState<string | null>('auth_token', () => (process.client ? localStorage.getItem('rrhh_token') : null))
+
+  // Browser-facing base URL, only used for static assets (/storage/avatars...).
+  const apiBase: string = String(config.public.apiBase || 'http://localhost:8000')
+
+  const authenticated = useState<boolean>('auth_authenticated', () => false)
   const user = useState<any | null>('auth_user', () => null)
   const unreadNotifications = useState<number>('unread_notifications', () => 0)
   // Last MessageSent event received via WebSocket. Pages (e.g. notificaciones.vue)
@@ -26,42 +29,37 @@ export const useAuth = () => {
 
   const { connect: connectRealtime, disconnect: disconnectRealtime, connected: realtimeConnected, instance: realtimeInstance, subscribedChannels } = useRealtime();
 
-  const setToken = (t: string | null) => {
-    token.value = t
-    if (process.client) {
-      if (t) localStorage.setItem('rrhh_token', t)
-      else localStorage.removeItem('rrhh_token')
-    }
+  const resetSession = () => {
+    authenticated.value = false
+    user.value = null
+    unreadNotifications.value = 0
+    lastReceivedMessage.value = null
+    lastReadReceipt.value = null
+    disconnectRealtime()
   }
 
-  const fetchUser = async () => {
-    if (!token.value) return null
-    try {
-      const u = await $fetch(`${apiBase}/api/user`, {
-        headers: {
-          Authorization: `Bearer ${token.value}`,
-          Accept: 'application/json',
-        },
-      })
-      user.value = u
+  const fetchUser = async (fetcher?: Fetcher) => {
+    const doFetch: Fetcher = fetcher || ($fetch as unknown as Fetcher)
 
-      // Connect Echo client as soon as we have a valid user + token.
+    try {
+      const u = await doFetch('/api/auth/me')
+      user.value = u
+      authenticated.value = true
+
+      // Connect Echo as soon as we have a valid user.
       // Do NOT subscribe to channels here — pages register their own listeners.
-      // Subscribing here caused duplicate listeners on every fetchUser call
-      // (auth middleware calls fetchUser on every navigation).
-      if (user.value && token.value) {
+      if (user.value) {
         try {
           connectRealtime({
             host: config.public.reverbHost,
             port: config.public.reverbPort,
             appId: config.public.reverbAppId,
             key: config.public.reverbAppKey,
-            token: token.value,
-            authEndpoint: `${config.public.apiBase}/broadcasting/auth`,
+            // Same-origin endpoint: the proxy injects the Bearer token from
+            // the httpOnly cookie, the browser never sees it.
+            authEndpoint: '/api/broadcasting/auth',
           });
           // Subscribe to the global unread badge exactly ONCE per session.
-          // We use subscribedChannels (module-level Set) as the guard.
-          // Cleared on logout → fresh login will re-subscribe.
           const counterKey = `useAuth:unread:${user.value.id}`
           if (!subscribedChannels.has(counterKey)) {
             subscribedChannels.add(counterKey)
@@ -70,8 +68,6 @@ export const useAuth = () => {
               echoInst.private(`user.${user.value.id}`)
                 .listen('.MessageSent', (e: any) => {
                   unreadNotifications.value++
-                  // Publish the event to all interested pages via shared reactive state.
-                  // This avoids pages having to subscribe to Echo directly.
                   lastReceivedMessage.value = e
                 })
                 .listen('.MessageRead', (e: any) => {
@@ -86,76 +82,54 @@ export const useAuth = () => {
 
       return u
     } catch (e: any) {
-      console.error('fetchUser error', e)
-      // Only clear our token when the backend explicitly rejects authentication
-      // (e.g. 401).  Other errors such as coding mistakes or websocket
-      // initialization problems should not automatically log the user out.
-      const status = e?.response?.status || e?.status || null
+      const status = e?.status ?? e?.statusCode ?? e?.response?.status ?? null
+      // Backend explicitly rejected the session (expired/revoked token) —
+      // expected on public pages, so it is not logged as an error.
       if (status === 401) {
-        setToken(null)
-        user.value = null
+        resetSession()
+        return null
       }
+      // Other failures (network, websocket setup) must not wipe the state.
+      console.error('fetchUser error', e)
       return null
     }
   }
 
   const login = async (credentials: { email: string; password: string }) => {
-    const res: any = await $fetch(`${apiBase}/api/login`, {
+    await $fetch('/api/auth/login', {
       method: 'POST',
-      headers: { Accept: 'application/json' },
       body: credentials,
     })
-    setToken(res.token)
-    await fetchUser()  // also connects Echo
-    await fetchUnread()
-    return res
+    const u = await fetchUser()  // also connects Echo
+    if (u) await fetchUnread()
+    return u
   }
 
   const register = async (payload: { name: string; email: string; password: string; password_confirmation: string }) => {
-    const res: any = await $fetch(`${apiBase}/api/register`, {
+    await $fetch('/api/auth/register', {
       method: 'POST',
-      headers: { Accept: 'application/json' },
       body: payload,
     })
-    setToken(res.token)
-    await fetchUser()
-    return res
+    return await fetchUser()
   }
 
   const logout = async () => {
-    if (!token.value) return
-    await $fetch(`${apiBase}/api/logout`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token.value}`,
-        Accept: 'application/json',
-      },
-    })
-    setToken(null)
-    user.value = null
-    unreadNotifications.value = 0
-    lastReceivedMessage.value = null
-    lastReadReceipt.value = null
-  }
-
-  // hydrate token from localStorage on the client so full reloads keep session
-  if (process.client && !token.value) {
-    const saved = localStorage.getItem('rrhh_token')
-    if (saved) setToken(saved)
+    try {
+      await $fetch('/api/auth/logout', { method: 'POST' })
+    } catch (e) {
+      // The local cookie is cleared by the route even if the API is down.
+      console.error('logout failed', e)
+    }
+    resetSession()
   }
 
   /**
    * Fetch latest unread notifications count for current user.
    */
   const fetchUnread = async () => {
-    if (!token.value) return
+    if (!authenticated.value) return
     try {
-      const res: any = await $fetch(`${apiBase}/api/dashboard`, {
-        headers: {
-          Authorization: `Bearer ${token.value}`,
-          Accept: 'application/json',
-        },
-      })
+      const res: any = await $fetch('/api/dashboard')
       unreadNotifications.value = res.unread_notifications || 0
     } catch (e) {
       console.error('failed to refresh unread count', e)
@@ -163,6 +137,5 @@ export const useAuth = () => {
   }
 
   // expose realtime helpers so pages/components can reuse the same echo instance
-  return { apiBase, token, user, login, register, logout, fetchUser, setToken, unreadNotifications, fetchUnread, realtimeInstance, connectRealtime, disconnectRealtime, realtimeConnected, lastReceivedMessage, lastReadReceipt }
+  return { apiBase, authenticated, user, login, register, logout, fetchUser, unreadNotifications, fetchUnread, realtimeInstance, connectRealtime, disconnectRealtime, realtimeConnected, subscribedChannels, lastReceivedMessage, lastReadReceipt }
 }
-

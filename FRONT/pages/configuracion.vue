@@ -572,7 +572,7 @@ declare const $fetch: any
 
 const router = useRouter()
 const sidebar = ref<{ open: boolean } | null>(null)
-const { token, fetchUser, logout, apiBase, setToken, user } = useAuth()
+const { authenticated, fetchUser, logout, apiBase, user } = useAuth()
 
 const isAdminUser = computed(() => {
   const currentUser: any = user.value || {}
@@ -800,11 +800,10 @@ function resetDefaults() {
 }
 
 async function loadLayout() {
-  if (!token.value) return
+  if (!authenticated.value) return
   loading.value = true
   try {
-    const res: any = await $fetch(`${apiBase || 'http://localhost:8000'}/api/dashboard/layout`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res: any = await $fetch(`/api/dashboard/layout`, {
     })
 
     widgets.value = (res?.widgets || []).map((w: any) => ({ key: String(w.key), name: String(w.name) }))
@@ -831,7 +830,7 @@ async function loadLayout() {
 }
 
 async function saveLayout() {
-  if (!token.value) return
+  if (!authenticated.value) return
   saving.value = true
   try {
     const normalizedSlots = slots.value.map((k) => {
@@ -839,9 +838,8 @@ async function saveLayout() {
       return visibility.value[k] ? k : null
     })
 
-    await $fetch(`${apiBase || 'http://localhost:8000'}/api/dashboard/layout`, {
+    await $fetch(`/api/dashboard/layout`, {
       method: 'PUT',
-      headers: { Authorization: `Bearer ${token.value}` },
       body: {
         slots: normalizedSlots,
         visibility: visibility.value,
@@ -885,11 +883,10 @@ async function loadPermissions() {
     permissionTeams.value = []
     return
   }
-  if (!token.value) return
+  if (!authenticated.value) return
   permissionsLoading.value = true
   try {
-    const res: any = await $fetch(`${apiBase || 'http://localhost:8000'}/api/permissions/catalog`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res: any = await $fetch(`/api/permissions/catalog`, {
     })
     canManagePermissions.value = true
     permissionsCatalog.value = Array.isArray(res?.permissions) ? res.permissions : []
@@ -941,14 +938,13 @@ async function deselectAllPermissions(teamId: number) {
 }
 
 async function saveAllPermissions() {
-  if (!token.value || !canManagePermissions.value) return
+  if (!authenticated.value || !canManagePermissions.value) return
   permissionSaving.value = true
   try {
     for (const team of permissionTeams.value) {
       const codes = localTeamPermissions.value[team.id] || []
-      await $fetch(`${apiBase || 'http://localhost:8000'}/api/permissions/teams/${team.id}`, {
+      await $fetch(`/api/permissions/teams/${team.id}`, {
         method: 'PUT',
-        headers: { Authorization: `Bearer ${token.value}` },
         body: { permission_codes: codes },
       })
       team.permission_codes = [...codes]
@@ -963,11 +959,10 @@ async function saveAllPermissions() {
 }
 
 async function loadScheduleTemplates() {
-  if (!token.value) return
+  if (!authenticated.value) return
   schedulesLoading.value = true
   try {
-    const res: any = await $fetch(`${apiBase || 'http://localhost:8000'}/api/settings/schedules`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res: any = await $fetch(`/api/settings/schedules`, {
     })
     scheduleTemplates.value = Array.isArray(res?.schedules) ? res.schedules : []
   } catch (e: any) {
@@ -981,17 +976,16 @@ async function loadScheduleTemplates() {
 }
 
 async function saveScheduleTemplate() {
-  if (!token.value) return
+  if (!authenticated.value) return
   scheduleSaving.value = true
   try {
     const method = editingScheduleId.value ? 'PUT' : 'POST'
     const endpoint = editingScheduleId.value
-      ? `${apiBase || 'http://localhost:8000'}/api/settings/schedules/${editingScheduleId.value}`
-      : `${apiBase || 'http://localhost:8000'}/api/settings/schedules`
+      ? `/api/settings/schedules/${editingScheduleId.value}`
+      : `/api/settings/schedules`
 
     await $fetch(endpoint, {
       method,
-      headers: { Authorization: `Bearer ${token.value}` },
       body: {
         start_time: scheduleForm.value.start_time,
         end_time: scheduleForm.value.end_time,
@@ -1028,9 +1022,8 @@ async function deleteScheduleTemplate(id: number) {
   if (!ok) return
   scheduleDeletingId.value = id
   try {
-    await $fetch(`${apiBase || 'http://localhost:8000'}/api/settings/schedules/${id}`, {
+    await $fetch(`/api/settings/schedules/${id}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${token.value}` },
     })
     if (editingScheduleId.value === id) {
       cancelEditScheduleTemplate()
@@ -1047,11 +1040,10 @@ async function deleteScheduleTemplate(id: number) {
 // ── Teams management ──
 
 async function loadTeams() {
-  if (!token.value) return
+  if (!authenticated.value) return
   teamsLoading.value = true
   try {
-    const res: any = await $fetch(`${apiBase || 'http://localhost:8000'}/api/settings/teams`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res: any = await $fetch(`/api/settings/teams`, {
     })
     teams.value = Array.isArray(res?.teams) ? res.teams : []
   } catch (e: any) {
@@ -1063,17 +1055,16 @@ async function loadTeams() {
 }
 
 async function saveTeam() {
-  if (!token.value || !teamForm.value.name.trim()) return
+  if (!authenticated.value || !teamForm.value.name.trim()) return
   teamSaving.value = true
   try {
     const method = editingTeamId.value ? 'PUT' : 'POST'
     const endpoint = editingTeamId.value
-      ? `${apiBase || 'http://localhost:8000'}/api/settings/teams/${editingTeamId.value}`
-      : `${apiBase || 'http://localhost:8000'}/api/settings/teams`
+      ? `/api/settings/teams/${editingTeamId.value}`
+      : `/api/settings/teams`
 
     await $fetch(endpoint, {
       method,
-      headers: { Authorization: `Bearer ${token.value}` },
       body: { name: teamForm.value.name.trim() },
     })
     $swal.toast('success', editingTeamId.value ? 'Equipo actualizado' : 'Equipo creado')
@@ -1102,9 +1093,8 @@ async function deleteTeam(id: number) {
   if (!ok) return
   teamDeletingId.value = id
   try {
-    await $fetch(`${apiBase || 'http://localhost:8000'}/api/settings/teams/${id}`, {
+    await $fetch(`/api/settings/teams/${id}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${token.value}` },
     })
     if (editingTeamId.value === id) {
       cancelEditTeam()
@@ -1137,21 +1127,7 @@ watch(tabs, (nextTabs) => {
 })
 
 onBeforeMount(async () => {
-  if (!token.value) {
-    if (process.client) {
-      const saved = localStorage.getItem('rrhh_token')
-      if (saved) {
-        setToken(saved)
-        await fetchUser()
-      } else {
-        return router.push('/login')
-      }
-    } else {
-      return
-    }
-  } else {
-    await fetchUser()
-  }
+  await fetchUser()
 
   const canAccessSettings = Boolean((user.value as any)?.can_access_settings)
   if (!canAccessSettings) {
