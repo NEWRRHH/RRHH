@@ -9,10 +9,21 @@ export default defineEventHandler(async (event) => {
     return { message: 'Unauthenticated' }
   }
 
-  try {
-    const res = await fetch(`${apiBase()}/api/user`, {
-      headers: { accept: 'application/json', authorization: `Bearer ${token}` },
+  const fetchMe = (bearer: string) =>
+    fetch(`${apiBase()}/api/user`, {
+      headers: { accept: 'application/json', authorization: `Bearer ${bearer}` },
     })
+
+  try {
+    let res = await fetchMe(token)
+
+    // Support session expired (2h token): fall back to the super admin's own session.
+    const superToken = getSuperToken(event)
+    if (res.status === 401 && superToken) {
+      setTokenCookie(event, superToken)
+      clearSuperTokenCookie(event)
+      res = await fetchMe(superToken)
+    }
 
     const data = await res.json().catch(() => ({}))
 

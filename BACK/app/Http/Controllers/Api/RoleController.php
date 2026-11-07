@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Permission;
 use App\Models\Role;
+use App\Support\Audit;
 use App\Support\Tenancy\TenantRule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -65,6 +66,8 @@ class RoleController extends Controller
             return $role;
         });
 
+        Audit::log('role.created', $role, ['name' => $role->name, 'permissions' => $data['permission_codes'] ?? []]);
+
         return response()->json(['status' => 'ok', 'role' => $this->presentRole($role->fresh())], 201);
     }
 
@@ -84,10 +87,12 @@ class RoleController extends Controller
             'description' => 'nullable|string|max:255',
         ]);
 
+        $before = $role->name;
         $role->update([
             'name' => trim($data['name']),
             'description' => $data['description'] ?? $role->description,
         ]);
+        Audit::log('role.updated', $role, ['before' => $before, 'after' => $role->name]);
 
         return response()->json(['status' => 'ok', 'role' => $this->presentRole($role->fresh())]);
     }
@@ -112,6 +117,7 @@ class RoleController extends Controller
         }
 
         $role->delete();
+        Audit::log('role.deleted', $role, ['name' => $role->name]);
 
         return response()->json(['status' => 'ok']);
     }
@@ -140,7 +146,14 @@ class RoleController extends Controller
         ]);
 
         $ids = $this->permissionIds($data['permission_codes'] ?? []);
-        $role->permissions()->sync($ids);
+        $changes = $role->permissions()->sync($ids);
+        if ($changes['attached'] || $changes['detached']) {
+            Audit::log('role.permissions_changed', $role, [
+                'name' => $role->name,
+                'added' => Permission::whereIn('id', $changes['attached'])->pluck('code')->all(),
+                'removed' => Permission::whereIn('id', $changes['detached'])->pluck('code')->all(),
+            ]);
+        }
 
         return response()->json([
             'status' => 'ok',

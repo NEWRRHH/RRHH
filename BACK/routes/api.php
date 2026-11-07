@@ -3,6 +3,11 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
+use App\Http\Controllers\Admin\AuditLogController as AdminAudit;
+use App\Http\Controllers\Admin\CompanyController as AdminCompanies;
+use App\Http\Controllers\Admin\DashboardController as AdminDashboard;
+use App\Http\Controllers\Admin\ErrorLogController as AdminErrors;
+use App\Http\Controllers\Admin\UserController as AdminUsers;
 use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DashboardController;
@@ -30,6 +35,7 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     // then bind the request to the user's company (multi-tenant filter)
     Route::middleware(['auth:sanctum', \App\Http\Middleware\EnsureTenant::class, 'throttle:api'])->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
+        Route::post('/impersonation/stop', [AuthController::class, 'stopImpersonation']);
         Route::get('/user', [AuthController::class, 'user']);
         Route::put('/user', [AuthController::class, 'updateProfile']);
     Route::put('/user/password', [AuthController::class, 'updatePassword']);
@@ -110,6 +116,34 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::post('/documents/upload', [DocumentController::class, 'upload']);
     Route::get('/documents/{id}/download', [DocumentController::class, 'download']);
     });
+
+    // ---- super admin panel (platform owner only, no tenant filter) ----
+    Route::middleware(['auth:sanctum', \App\Http\Middleware\EnsureSuperAdmin::class, 'throttle:api'])
+        ->prefix('admin')
+        ->group(function () {
+            Route::get('/dashboard', [AdminDashboard::class, 'index']);
+
+            Route::get('/companies', [AdminCompanies::class, 'index']);
+            Route::post('/companies', [AdminCompanies::class, 'store']);
+            Route::get('/companies/{id}', [AdminCompanies::class, 'show']);
+            Route::put('/companies/{id}', [AdminCompanies::class, 'update']);
+            Route::post('/companies/{id}/suspend', [AdminCompanies::class, 'suspend']);
+            Route::post('/companies/{id}/reactivate', [AdminCompanies::class, 'reactivate']);
+            Route::delete('/companies/{id}', [AdminCompanies::class, 'destroy']);
+            Route::post('/companies/{id}/impersonate', [AdminCompanies::class, 'impersonate']);
+
+            Route::get('/users', [AdminUsers::class, 'index']);
+            Route::post('/users/{id}/reset-password', [AdminUsers::class, 'resetPassword']);
+            Route::post('/users/{id}/disable', [AdminUsers::class, 'disable']);
+            Route::post('/users/{id}/enable', [AdminUsers::class, 'enable']);
+
+            Route::get('/errors', [AdminErrors::class, 'index']);
+            Route::get('/errors/{id}', [AdminErrors::class, 'show']);
+            Route::post('/errors/{id}/resolve', [AdminErrors::class, 'resolve']);
+            Route::post('/errors/{id}/reopen', [AdminErrors::class, 'reopen']);
+
+            Route::get('/audit', [AdminAudit::class, 'index']);
+        });
 });
 
 // health endpoint (public) used by external checks

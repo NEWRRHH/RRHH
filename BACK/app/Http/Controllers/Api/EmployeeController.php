@@ -7,6 +7,7 @@ use App\Models\Attendance;
 use App\Models\Document;
 use App\Models\Event;
 use App\Models\Role;
+use App\Support\Audit;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\ScheduleService;
@@ -142,6 +143,7 @@ class EmployeeController extends Controller
         }
 
         $employee->save();
+        Audit::log('employee.created', $employee, ['email' => $employee->email, 'role_id' => $employee->role_id]);
 
         if ($user->can('employees.create')) {
             $days = array_values(array_unique($this->schedules->normalizeScheduleDays($data['days'] ?? null)));
@@ -506,6 +508,7 @@ class EmployeeController extends Controller
                 if ($user->cannot('assignRole', [User::class, $newRole])) {
                     return response()->json(['message' => 'Forbidden'], 403);
                 }
+                Audit::log('employee.role_changed', $employee, ['email' => $employee->email, 'from_role_id' => $employee->role_id, 'to_role_id' => $newRole?->id]);
                 $employee->role_id = $newRole?->id;
             }
         }
@@ -590,6 +593,7 @@ class EmployeeController extends Controller
         }
 
         $employee->delete();
+        Audit::log('employee.deleted', $employee, ['email' => $employee->email]);
         return response()->json(['status' => 'ok']);
     }
 

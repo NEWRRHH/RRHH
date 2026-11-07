@@ -1046,7 +1046,7 @@ async function saveRole() {
 }
 
 async function deleteRole(role: PermissionRole) {
-  const ok = await $swal.confirm('Eliminar rol', `¿Eliminar el rol <strong>${role.name}</strong>? Solo se pueden eliminar roles sin usuarios.`, 'Eliminar', 'Cancelar')
+  const ok = await $swal.confirm('Eliminar rol', `¿Eliminar el rol "${role.name}"? Solo se pueden eliminar roles sin usuarios.`, 'Eliminar', 'Cancelar')
   if (!ok) return
   roleDeletingId.value = role.id
   try {

@@ -30,6 +30,10 @@ class EnsureTenant
             return $next($request);
         }
 
+        if ($user->disabled_at) {
+            return response()->json(['message' => 'Tu cuenta esta desactivada. Contacta con el soporte.'], 403);
+        }
+
         if ($user->isSuperAdmin()) {
             if (! $request->isMethodSafe() && ! in_array($request->path(), self::SUPER_ADMIN_WRITABLE, true)) {
                 return response()->json([

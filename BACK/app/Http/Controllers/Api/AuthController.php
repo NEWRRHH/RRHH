@@ -7,16 +7,21 @@ use App\Models\Attendance;
 use App\Models\User;
 use App\Services\AttendanceService;
 use App\Services\CompanyProvisioner;
+use App\Support\Audit;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules\Password;
+use Laravel\Sanctum\PersonalAccessToken;
 
 /**
  * Authentication and the logged-in user's own profile.
  */
 class AuthController extends Controller
 {
+    /** Name of the temporary tokens issued by "entrar como empresa": "impersonation:<super admin id>". */
+    public const IMPERSONATION_TOKEN_PREFIX = 'impersonation:';
+
     public function __construct(private AttendanceService $attendance)
     {
     }
@@ -34,11 +39,13 @@ class AuthController extends Controller
             'password' => ['required', 'confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
         ]);
 
-        ['admin' => $user] = $provisioner->provision($data['company_name'], [
+        ['company' => $company, 'admin' => $user] = $provisioner->provision($data['company_name'], [
             'name' => $data['name'],
             'email' => $data['email'],
             'password' => $data['password'],
         ]);
+
+        Audit::log('company.registered', $company, actor: $user);
 
         $user->load(['role:id,name,is_admin', 'company:id,name,slug,status']);
 
@@ -67,6 +74,10 @@ class AuthController extends Controller
             return response()->json(['message' => 'Invalid credentials'], 401);
         }
 
+        if ($user->disabled_at) {
+            return response()->json(['message' => 'Tu cuenta esta desactivada. Contacta con el soporte.'], 403);
+        }
+
         // A regular user can only log in while their company is active.
         if (! $user->isSuperAdmin() && ! $user->company?->isActive()) {
             return response()->json(['message' => 'La empresa esta suspendida o no existe. Contacta con el soporte.'], 403);
@@ -76,7 +87,10 @@ class AuthController extends Controller
 
         // record session token hash on user (attendance start is manual now)
         $user->session_token = $this->attendance->sessionTokenHash($token);
+        $user->last_login_at = now();
         $user->save();
+
+        Audit::log('auth.login', $user, actor: $user, companyId: $user->company_id);
 
         return response()->json(['user' => $user, 'token' => $token]);
     }
@@ -133,6 +147,8 @@ class AuthController extends Controller
         $payload = $user->toArray();
         $payload['permissions'] = $user->permissionCodes();
         $payload['is_super_admin'] = $user->isSuperAdmin();
+        // Super admin browsing this company through "entrar como empresa".
+        $payload['impersonated_by'] = $this->impersonator($request);
         $payload['is_admin'] = $user->isAdmin();
         // legacy flag name kept for the frontend: "can see everybody's attendance"
         $payload['is_hr_team'] = $user->hasPermission('attendance.view_all');
@@ -156,6 +172,45 @@ class AuthController extends Controller
         $payload['can_view_reports'] = $user->hasPermission('reports.view');
 
         return response()->json($payload);
+    }
+
+    /**
+     * End a super admin impersonation session: revoke the temporary token.
+     * The Nuxt server then restores the super admin's own session cookie.
+     */
+    public function stopImpersonation(Request $request)
+    {
+        $token = $request->user()?->currentAccessToken();
+        $impersonator = $this->impersonator($request);
+        if (! $token || ! $impersonator) {
+            return response()->json(['message' => 'No hay una sesion de soporte activa'], 422);
+        }
+
+        Audit::log(
+            'company.impersonation_stopped',
+            $request->user()->company,
+            ['as_user_id' => $request->user()->id],
+            actor: User::withoutGlobalScopes()->find($impersonator['id']),
+        );
+        $token->delete();
+
+        return response()->json(['status' => 'ok', 'company_id' => $request->user()->company_id]);
+    }
+
+    /**
+     * @return array{id: int, name: string}|null
+     */
+    private function impersonator(Request $request): ?array
+    {
+        $token = $request->user()?->currentAccessToken();
+        $name = $token instanceof PersonalAccessToken ? (string) $token->name : '';
+        if (! str_starts_with($name, self::IMPERSONATION_TOKEN_PREFIX)) {
+            return null;
+        }
+
+        $super = User::withoutGlobalScopes()->find((int) substr($name, strlen(self::IMPERSONATION_TOKEN_PREFIX)));
+
+        return $super && $super->isSuperAdmin() ? ['id' => $super->id, 'name' => $super->name] : null;
     }
 
     /**

@@ -35,6 +35,32 @@ export function clearTokenCookie(event: any): void {
   deleteCookie(event, COOKIE_NAME, { path: '/' })
 }
 
+// While the super admin is "inside" a company (impersonation), rrhh_token
+// holds the temporary company token and the super admin's own token is
+// parked here, also httpOnly, until they leave.
+const SUPER_COOKIE_NAME = 'rrhh_super_token'
+
+/** Matches the 2h lifetime of impersonation tokens in the API. */
+export const IMPERSONATION_TTL_SECONDS = 2 * 60 * 60
+
+export function getSuperToken(event: any): string | undefined {
+  return getCookie(event, SUPER_COOKIE_NAME)
+}
+
+export function setSuperTokenCookie(event: any, token: string): void {
+  setCookie(event, SUPER_COOKIE_NAME, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: useRuntimeConfig().cookieSecure === true,
+    path: '/',
+    maxAge: TOKEN_TTL_SECONDS,
+  })
+}
+
+export function clearSuperTokenCookie(event: any): void {
+  deleteCookie(event, SUPER_COOKIE_NAME, { path: '/' })
+}
+
 /**
  * Forward the incoming request (method, body, content-type) to `target`,
  * authenticating with the token stored in the httpOnly cookie.

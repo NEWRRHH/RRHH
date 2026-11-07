@@ -37,5 +37,9 @@ return Application::configure(basePath: dirname(__DIR__))
         //
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        // Keep reported errors in the database for the super admin panel
+        // (the default file log keeps working as well).
+        $exceptions->report(function (\Throwable $e) {
+            \App\Support\ErrorLogRecorder::record($e);
+        });
     })->create();
