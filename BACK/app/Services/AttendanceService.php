@@ -64,17 +64,14 @@ class AttendanceService
 
     public function attendanceRequestEventTypeId(): int
     {
-        $existing = EventType::table()
-            ->whereRaw('LOWER(name) = ?', ['fichaje'])
-            ->whereNull('deleted_at')
-            ->first(['id']);
-
-        if ($existing && isset($existing->id)) {
-            return (int) $existing->id;
+        $existing = EventType::idFor(EventType::ATTENDANCE_REQUEST);
+        if ($existing) {
+            return $existing;
         }
 
         return (int) EventType::table()->insertGetId([
             'name' => 'Fichaje',
+            'code' => EventType::ATTENDANCE_REQUEST,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

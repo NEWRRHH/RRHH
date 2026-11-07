@@ -2,24 +2,28 @@
 
 namespace Database\Seeders;
 
+use Database\Seeders\Concerns\UsesDemoCompany;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
 class TeamsSeeder extends Seeder
 {
+    use UsesDemoCompany;
+
     public function run(): void
     {
+        $companyId = $this->demoCompanyId();
         $now = now();
-        $data = [
-            ['name' => 'Administración', 'created_at' => $now, 'updated_at' => $now],
-            ['name' => 'RRHH', 'created_at' => $now, 'updated_at' => $now],
-            ['name' => 'IT', 'created_at' => $now, 'updated_at' => $now],
-        ];
 
-        foreach ($data as $row) {
-            $exists = DB::table('teams')->where('name', $row['name'])->first();
+        foreach (['Administración', 'RRHH', 'IT'] as $name) {
+            $exists = DB::table('teams')->where('company_id', $companyId)->where('name', $name)->exists();
             if (! $exists) {
-                DB::table('teams')->insert($row);
+                DB::table('teams')->insert([
+                    'company_id' => $companyId,
+                    'name' => $name,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
             }
         }
     }

@@ -89,7 +89,22 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_super_admin' => 'boolean',
         ];
+    }
+
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(Company::class);
+    }
+
+    /**
+     * Platform owner: belongs to no company and can see every company.
+     * Never mass assignable; only set from seeders / console.
+     */
+    public function isSuperAdmin(): bool
+    {
+        return (bool) $this->is_super_admin;
     }
 
     public function role(): BelongsTo
@@ -108,7 +123,7 @@ class User extends Authenticatable
      */
     public function isAdmin(): bool
     {
-        return (bool) $this->role?->is_admin;
+        return $this->isSuperAdmin() || (bool) $this->role?->is_admin;
     }
 
     /**

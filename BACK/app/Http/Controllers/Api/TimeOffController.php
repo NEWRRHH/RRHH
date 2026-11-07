@@ -131,7 +131,7 @@ class TimeOffController extends Controller
 
         $rowsQuery = Event::table()
             ->where('user_id', $userId)
-            ->where('event_type_id', 2)
+            ->where('event_type_id', EventType::idFor(EventType::VACATION))
             ->whereNull('deleted_at')
             ->where(function ($q) {
                 $q->whereNull('approval_status')
@@ -380,7 +380,7 @@ class TimeOffController extends Controller
         $scheduleDays = $this->schedules->loadScheduleDaysForUser((int) $user->id);
         $workingDays = $this->schedules->calculateWorkingDays($start->copy()->startOfDay(), $end->copy()->startOfDay(), $scheduleDays);
 
-        if ((int) $data['event_type_id'] === 2) {
+        if ((int) $data['event_type_id'] === EventType::idFor(EventType::VACATION)) {
             $year = (int) $start->year;
             $existingSet = $this->vacationWorkingDaysSetForYear((int) $user->id, $year, $scheduleDays, null);
             $combinedSet = $this->appendWorkingRangeToSet($existingSet, $start, $end, $scheduleDays);
@@ -503,7 +503,7 @@ class TimeOffController extends Controller
         $scheduleDays = $this->schedules->loadScheduleDaysForUser((int) $user->id);
         $workingDays = $this->schedules->calculateWorkingDays($start->copy()->startOfDay(), $end->copy()->startOfDay(), $scheduleDays);
 
-        if ((int) $data['event_type_id'] === 2) {
+        if ((int) $data['event_type_id'] === EventType::idFor(EventType::VACATION)) {
             $year = (int) $start->year;
             $existingSet = $this->vacationWorkingDaysSetForYear((int) $user->id, $year, $scheduleDays, (int) $event->id);
             $combinedSet = $this->appendWorkingRangeToSet($existingSet, $start, $end, $scheduleDays);

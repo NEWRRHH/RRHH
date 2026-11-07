@@ -115,10 +115,11 @@ class AuthController extends Controller
             return response()->json(['message' => 'Unauthenticated'], 401);
         }
 
-        $user->loadMissing('role:id,name,is_admin');
+        $user->loadMissing(['role:id,name,is_admin', 'company:id,name,slug,status']);
 
         $payload = $user->toArray();
         $payload['permissions'] = $user->permissionCodes();
+        $payload['is_super_admin'] = $user->isSuperAdmin();
         $payload['is_admin'] = $user->isAdmin();
         // legacy flag name kept for the frontend: "can see everybody's attendance"
         $payload['is_hr_team'] = $user->hasPermission('attendance.view_all');

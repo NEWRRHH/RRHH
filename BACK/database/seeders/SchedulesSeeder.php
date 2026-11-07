@@ -2,12 +2,14 @@
 
 namespace Database\Seeders;
 
+use Database\Seeders\Concerns\UsesDemoCompany;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 
 class SchedulesSeeder extends Seeder
 {
+    use UsesDemoCompany;
+
     public function run(): void
     {
         // Look up the admin user by email (avoid hardcoding id)
@@ -27,6 +29,7 @@ class SchedulesSeeder extends Seeder
 
         // Create default schedule template (L-V, 09:00-18:00)
         $scheduleId = DB::table('schedules')->insertGetId([
+            'company_id' => $this->demoCompanyId(),
             'start_time' => '09:00:00',
             'end_time' => '18:00:00',
             'days' => json_encode(['L', 'M', 'X', 'J', 'V']),

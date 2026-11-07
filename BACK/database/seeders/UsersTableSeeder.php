@@ -6,6 +6,7 @@ use App\Models\Role;
 use App\Models\Team;
 use App\Models\User;
 use App\Support\DefaultRoles;
+use Database\Seeders\Concerns\UsesDemoCompany;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
@@ -18,11 +19,14 @@ use Illuminate\Support\Facades\Hash;
  */
 class UsersTableSeeder extends Seeder
 {
+    use UsesDemoCompany;
+
     public function run(): void
     {
         $password = (string) env('SEED_ADMIN_PASSWORD', 'Admin1234!');
-        $roles = Role::pluck('id', 'name');
-        $teams = Team::pluck('id', 'name');
+        $companyId = $this->demoCompanyId();
+        $roles = Role::where('company_id', $companyId)->pluck('id', 'name');
+        $teams = Team::where('company_id', $companyId)->pluck('id', 'name');
 
         $admin = User::create([
             'name' => 'Fernando Heredia',
@@ -35,6 +39,7 @@ class UsersTableSeeder extends Seeder
             'photo' => '',
             'team_id' => $teams['Administración'] ?? $teams->first(),
         ]);
+        $admin->company_id = $companyId;
         $admin->role_id = $roles[DefaultRoles::ADMIN];
         $admin->save();
 
@@ -49,11 +54,13 @@ class UsersTableSeeder extends Seeder
             'photo' => '',
             'team_id' => $teams['RRHH'] ?? $teams->first(),
         ]);
+        $hr->company_id = $companyId;
         $hr->role_id = $roles[DefaultRoles::HR];
         $hr->save();
 
         // example employees
         User::factory()->count(3)->create([
+            'company_id' => $companyId,
             'role_id' => $roles[DefaultRoles::EMPLOYEE],
             'team_id' => $teams['IT'] ?? $teams->first(),
         ]);

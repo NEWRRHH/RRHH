@@ -11,6 +11,7 @@ use App\Models\Attendance;
 use App\Models\DashboardWidget;
 use App\Models\Document;
 use App\Models\Event;
+use App\Models\EventType;
 use App\Models\Post;
 use App\Models\Team;
 use App\Services\ScheduleService;
@@ -631,10 +632,11 @@ class DashboardController extends Controller
         $yearStart = $today->copy()->startOfYear();
         $yearEnd = $today->copy()->endOfYear();
 
+        $vacationTypeId = EventType::idFor(EventType::VACATION);
         $requestedWorkingDates = [];
         $requestedRows = Event::table()
             ->where('events.user_id', $user->id)
-            ->where('events.event_type_id', 2)
+            ->where('events.event_type_id', $vacationTypeId)
             ->whereNull('events.deleted_at')
             ->where(function ($q) {
                 $q->whereNull('events.approval_status')
@@ -677,7 +679,7 @@ class DashboardController extends Controller
 
         $event = Event::table()
             ->where('events.user_id', $user->id)
-            ->where('events.event_type_id', 2)
+            ->where('events.event_type_id', $vacationTypeId)
             ->whereNull('events.deleted_at')
             ->where(function ($q) {
                 $q->whereNull('events.approval_status')
