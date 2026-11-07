@@ -7,6 +7,7 @@ use App\Models\Attendance;
 use App\Models\User;
 use App\Services\AttendanceService;
 use App\Services\CompanyProvisioner;
+use App\Services\PlanLimits;
 use App\Support\Audit;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -158,6 +159,9 @@ class AuthController extends Controller
         $payload['can_edit_employee'] = $user->hasPermission('employees.edit');
         $payload['can_manage_schedules'] = $user->hasPermission('schedules.manage');
         $payload['can_manage_teams'] = $user->hasPermission('teams.manage');
+        $payload['can_manage_holidays'] = $user->hasPermission('holidays.manage');
+        // plan limits vs usage (company admins see it in the settings screen)
+        $payload['plan_usage'] = $user->company && $user->isAdmin() ? app(PlanLimits::class)->usage($user->company) : null;
         $payload['can_access_announcements'] = $user->hasPermission('announcements.manage');
         $payload['can_manage_announcements'] = $user->hasPermission('announcements.manage');
         $payload['can_access_settings'] = $user->isAdmin()

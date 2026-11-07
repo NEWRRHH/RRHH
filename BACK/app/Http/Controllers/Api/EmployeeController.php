@@ -10,6 +10,7 @@ use App\Models\Role;
 use App\Support\Audit;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\PlanLimits;
 use App\Services\ScheduleService;
 use App\Support\WorkTime;
 use Carbon\Carbon;
@@ -78,11 +79,16 @@ class EmployeeController extends Controller
     /**
      * Create one employee user.
      */
-    public function createEmployee(Request $request)
+    public function createEmployee(Request $request, PlanLimits $limits)
     {
         $user = $request->user();
         if ($user->cannot('employees.create')) {
             return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        // plan limit (number of employees)
+        if ($user->company && ($limitError = $limits->canAddEmployee($user->company))) {
+            return response()->json(['message' => $limitError], 422);
         }
 
         $data = $request->validate([
@@ -292,7 +298,10 @@ class EmployeeController extends Controller
             $key = $cursor->toDateString();
             $att = $rowsByDate[$key] ?? null;
             $dayLetter = $weekMap[$cursor->dayOfWeekIso] ?? 'L';
-            $isWorkingDay = in_array($dayLetter, $scheduleDays, true);
+            // a company holiday on a scheduled day is not a working day (no target, no absence)
+            $isScheduledDay = in_array($dayLetter, $scheduleDays, true);
+            $holidayName = $isScheduledDay ? $this->schedules->holidayName($cursor) : null;
+            $isWorkingDay = $isScheduledDay && $holidayName === null;
 
             if ($isWorkingDay) {
                 $targetMinutes += $dailyTargetMinutes;
@@ -308,7 +317,7 @@ class EmployeeController extends Controller
             }
             $workedMinutes += $rowWorked;
 
-            if ($isWorkingDay || $includeNonWorking) {
+            if ($isScheduledDay || $includeNonWorking) {
                 $rows[] = [
                     'date' => $key,
                     'weekday' => $dayLetter,
@@ -319,6 +328,7 @@ class EmployeeController extends Controller
                     'hours_worked' => $att->hours_worked ?? null,
                     'status' => $att->status ?? null,
                     'is_working_day' => $isWorkingDay,
+                    'holiday' => $holidayName,
                 ];
             }
 

@@ -104,15 +104,9 @@ class DashboardController extends Controller
         }
 
         $daily = $this->dailyTargetMinutesForUser($userId);
-        $weekMap = [1 => 'L', 2 => 'M', 3 => 'X', 4 => 'J', 5 => 'V', 6 => 'S', 7 => 'D'];
-        $cursor = $today->copy()->startOfMonth();
-        $end = $today->copy()->endOfMonth();
-        $days = 0;
-        while ($cursor->lte($end)) {
-            $w = $weekMap[$cursor->dayOfWeekIso] ?? 'L';
-            if (in_array($w, $scheduleDays, true)) $days++;
-            $cursor->addDay();
-        }
+        // holidays are not working days
+        $days = $this->schedules->calculateWorkingDays($today->copy()->startOfMonth(), $today->copy()->endOfMonth(), $scheduleDays);
+
         return $days * $daily;
     }
 
@@ -450,29 +444,6 @@ class DashboardController extends Controller
         ]);
     }
 
-    public function upcomingHolidays(Request $request)
-    {
-        $today = Carbon::today();
-        $year = (int) $today->year;
-        $nextYear = $year + 1;
-        $list = [
-            ['date' => "{$year}-01-01", 'name' => 'Año Nuevo'],
-            ['date' => "{$year}-05-01", 'name' => 'Dia del Trabajador'],
-            ['date' => "{$year}-12-25", 'name' => 'Navidad'],
-            ['date' => "{$nextYear}-01-01", 'name' => 'Año Nuevo'],
-            ['date' => "{$nextYear}-05-01", 'name' => 'Dia del Trabajador'],
-            ['date' => "{$nextYear}-12-25", 'name' => 'Navidad'],
-        ];
-
-        $rows = collect($list)
-            ->filter(fn ($h) => Carbon::parse($h['date'])->gte($today))
-            ->sortBy('date')
-            ->take(5)
-            ->values();
-
-        return response()->json($rows);
-    }
-
     public function announcements(Request $request)
     {
         $rows = Post::table()
@@ -664,9 +635,7 @@ class DashboardController extends Controller
 
             $cursor = $clampedStart->copy();
             while ($cursor->lte($clampedEnd)) {
-                $weekMap = [1 => 'L', 2 => 'M', 3 => 'X', 4 => 'J', 5 => 'V', 6 => 'S', 7 => 'D'];
-                $letter = $weekMap[$cursor->dayOfWeekIso] ?? 'L';
-                if (in_array($letter, $scheduleDays, true)) {
+                if ($this->schedules->isWorkingDate($cursor, $scheduleDays)) {
                     $requestedWorkingDates[$cursor->toDateString()] = true;
                 }
                 $cursor->addDay();

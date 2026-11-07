@@ -16,7 +16,7 @@ class CompaniesSeeder extends Seeder
     {
         Company::firstOrCreate(
             ['slug' => self::DEMO_SLUG],
-            ['name' => 'Empresa Demo', 'status' => Company::STATUS_ACTIVE],
+            ['name' => 'Empresa Demo', 'status' => Company::STATUS_ACTIVE, 'plan' => 'basic', 'country_code' => 'ES'],
         );
     }
 }

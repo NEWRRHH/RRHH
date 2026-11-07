@@ -155,7 +155,6 @@ class TimeOffController extends Controller
         }
 
         $rows = $rowsQuery->get(['start_at', 'end_at']);
-        $weekMap = [1 => 'L', 2 => 'M', 3 => 'X', 4 => 'J', 5 => 'V', 6 => 'S', 7 => 'D'];
         $set = [];
 
         foreach ($rows as $row) {
@@ -167,8 +166,7 @@ class TimeOffController extends Controller
 
             $cursor = $clampedStart->copy();
             while ($cursor->lte($clampedEnd)) {
-                $letter = $weekMap[$cursor->dayOfWeekIso] ?? 'L';
-                if (in_array($letter, $scheduleDays, true)) {
+                if ($this->schedules->isWorkingDate($cursor, $scheduleDays)) {
                     $set[$cursor->toDateString()] = true;
                 }
                 $cursor->addDay();
@@ -180,12 +178,10 @@ class TimeOffController extends Controller
 
     private function appendWorkingRangeToSet(array $set, Carbon $start, Carbon $end, array $scheduleDays): array
     {
-        $weekMap = [1 => 'L', 2 => 'M', 3 => 'X', 4 => 'J', 5 => 'V', 6 => 'S', 7 => 'D'];
         $cursor = $start->copy()->startOfDay();
         $last = $end->copy()->startOfDay();
         while ($cursor->lte($last)) {
-            $letter = $weekMap[$cursor->dayOfWeekIso] ?? 'L';
-            if (in_array($letter, $scheduleDays, true)) {
+            if ($this->schedules->isWorkingDate($cursor, $scheduleDays)) {
                 $set[$cursor->toDateString()] = true;
             }
             $cursor->addDay();

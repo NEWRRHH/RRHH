@@ -12,11 +12,15 @@
           <div v-if="!editing" class="flex items-center gap-3 flex-wrap">
             <h2 class="text-xl font-semibold text-white">{{ company.name }}</h2>
             <span class="text-[11px] px-2 py-0.5 rounded-full" :class="statusClass">{{ statusLabel }}</span>
-            <span v-if="company.plan" class="text-[11px] px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300">Plan {{ company.plan }}</span>
+            <span v-if="planUsage?.plan" class="text-[11px] px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300">Plan {{ planUsage.plan.name }}</span>
+            <span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-300">{{ company.country_code }}</span>
           </div>
           <form v-else class="flex flex-col sm:flex-row gap-2" @submit.prevent="saveEdit">
             <input v-model="editForm.name" required minlength="2" class="flex-1 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm" />
-            <input v-model="editForm.plan" placeholder="Plan" class="sm:w-40 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm" />
+            <select v-model="editForm.plan" required class="sm:w-40 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm">
+              <option v-for="p in plans" :key="p.code" :value="p.code">{{ p.name }}</option>
+            </select>
+            <input v-model="editForm.country_code" maxlength="2" placeholder="País" title="País (código de 2 letras) para los feriados nacionales" class="sm:w-20 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm uppercase" />
             <button class="px-3 py-2 rounded-lg bg-violet-600 text-white text-sm">Guardar</button>
             <button type="button" class="px-3 py-2 rounded-lg border border-gray-700 text-gray-300 text-sm" @click="editing = false">Cancelar</button>
           </form>
@@ -46,10 +50,10 @@
 
       <!-- Usage -->
       <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-        <AdminStatCard label="Usuarios" :value="formatNumber(usage.users)" />
+        <AdminStatCard label="Usuarios" :value="formatNumber(usage.users)" :hint="planUsage?.employees?.max ? `límite del plan: ${planUsage.employees.max}` : 'sin límite'" :tone="planUsage?.employees?.max && usage.users >= planUsage.employees.max ? 'warning' : 'neutral'" />
         <AdminStatCard label="Activos (30 días)" :value="formatNumber(usage.users_active_30d)" />
         <AdminStatCard label="Documentos" :value="formatNumber(usage.documents)" />
-        <AdminStatCard label="Almacenamiento" :value="formatBytes(usage.storage_bytes)" />
+        <AdminStatCard label="Almacenamiento" :value="formatBytes(usage.storage_bytes)" :hint="planUsage?.storage_mb?.max ? `límite: ${formatBytes(planUsage.storage_mb.max * 1048576)}` : 'sin límite'" />
         <AdminStatCard label="Fichajes (30 días)" :value="formatNumber(usage.attendances_30d)" />
         <AdminStatCard label="Solicitudes pendientes" :value="formatNumber(usage.requests_pending)" />
       </div>
@@ -138,7 +142,9 @@ const users = ref<any[]>([])
 const roles = ref<any[]>([])
 const audit = ref<any[]>([])
 const editing = ref(false)
-const editForm = ref({ name: '', plan: '' })
+const editForm = ref({ name: '', plan: '', country_code: '' })
+const plans = ref<any[]>([])
+const planUsage = ref<any>(null)
 
 const statusLabel = computed(() => (company.value?.deleted_at ? 'Eliminada' : company.value?.status === 'active' ? 'Activa' : 'Suspendida'))
 const statusClass = computed(() =>
@@ -154,6 +160,8 @@ async function load() {
     users.value = res.users || []
     roles.value = res.roles || []
     audit.value = res.audit || []
+    plans.value = res.plans || []
+    planUsage.value = res.plan_usage || null
   } catch {
     company.value = null
   } finally {
@@ -162,13 +170,13 @@ async function load() {
 }
 
 function startEdit() {
-  editForm.value = { name: company.value.name, plan: company.value.plan || '' }
+  editForm.value = { name: company.value.name, plan: company.value.plan || plans.value[0]?.code || '', country_code: company.value.country_code || 'ES' }
   editing.value = true
 }
 
 async function saveEdit() {
   try {
-    await $fetch(`/api/admin/companies/${id.value}`, { method: 'PUT', body: { name: editForm.value.name, plan: editForm.value.plan || null } })
+    await $fetch(`/api/admin/companies/${id.value}`, { method: 'PUT', body: { ...editForm.value } })
     editing.value = false
     $swal.toast('success', 'Empresa actualizada')
     await load()

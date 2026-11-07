@@ -13,6 +13,15 @@ use Illuminate\Support\Facades\Schema;
  */
 class ScheduleService
 {
+    public const WEEK_LETTERS = [1 => 'L', 2 => 'M', 3 => 'X', 4 => 'J', 5 => 'V', 6 => 'S', 7 => 'D'];
+
+    /** @var array<int, array<string, string>> holidays of the current company per year */
+    private array $holidaysByYear = [];
+
+    public function __construct(private HolidayService $holidays)
+    {
+    }
+
     public function normalizeScheduleDays($days): array
     {
         // Default: Monday to Friday if schedule has no configured days.
@@ -240,31 +249,48 @@ class ScheduleService
         return $fromTemplates;
     }
 
+    /**
+     * Working days in a range: days of the schedule that are not a company holiday.
+     */
     public function calculateWorkingDays(Carbon $start, Carbon $end, array $scheduleDays): int
     {
-        $weekMap = [
-            1 => 'L',
-            2 => 'M',
-            3 => 'X',
-            4 => 'J',
-            5 => 'V',
-            6 => 'S',
-            7 => 'D',
-        ];
-
         $count = 0;
         $cursor = $start->copy()->startOfDay();
         $last = $end->copy()->startOfDay();
 
         while ($cursor->lte($last)) {
-            $letter = $weekMap[$cursor->dayOfWeekIso] ?? 'L';
-            if (in_array($letter, $scheduleDays, true)) {
+            if ($this->isWorkingDate($cursor, $scheduleDays)) {
                 $count++;
             }
             $cursor->addDay();
         }
 
         return $count;
+    }
+
+    /**
+     * True when the date is one of the schedule's week days and not a holiday
+     * of the current company.
+     */
+    public function isWorkingDate(Carbon $date, array $scheduleDays): bool
+    {
+        $letter = self::WEEK_LETTERS[$date->dayOfWeekIso] ?? 'L';
+
+        return in_array($letter, $scheduleDays, true) && $this->holidayName($date) === null;
+    }
+
+    /**
+     * Name of the company holiday on that date, or null.
+     */
+    public function holidayName(Carbon $date): ?string
+    {
+        $year = $date->year;
+        $this->holidaysByYear[$year] ??= $this->holidays->forRange(
+            Carbon::create($year, 1, 1),
+            Carbon::create($year, 12, 31),
+        );
+
+        return $this->holidaysByYear[$year][$date->toDateString()] ?? null;
     }
 
     public function loadScheduleDaysForUser(int $userId): array

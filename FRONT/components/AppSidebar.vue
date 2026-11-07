@@ -155,6 +155,10 @@ const canSeeVacations = computed(() => {
   const u: any = user.value || {}
   return Boolean(u?.can_view_vacations) || (Array.isArray(u?.permissions) && u.permissions.includes('vacations.view'))
 })
+const canManageHolidays = computed(() => {
+  const u: any = user.value || {}
+  return Boolean(u?.can_manage_holidays) || (Array.isArray(u?.permissions) && u.permissions.includes('holidays.manage'))
+})
 const canSeeRequests = computed(() => {
   const u: any = user.value || {}
   return Boolean(u?.can_view_requests) || (Array.isArray(u?.permissions) && u.permissions.includes('requests.view'))
@@ -265,7 +269,14 @@ const navItems = computed(() => [
       <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3M4 11h16M6 5h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2z"/>
     </svg>`
   }] : []),
-  ...(canSeeRequests.value ? [{
+  ...(canManageHolidays.value ? [{
+    label: 'Festivos',
+    to: '/festivos',
+    active: route.path.startsWith('/festivos'),
+    icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3M4 11h16M6 5h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2zm6 9l1 2 2 .3-1.5 1.4.4 2.1-1.9-1-1.9 1 .4-2.1L9 16.3l2-.3 1-2z"/>
+    </svg>`
+  }] : []),  ...(canSeeRequests.value ? [{
     label: 'Solicitudes',
     to: '/solicitudes',
     active: route.path.startsWith('/solicitudes'),

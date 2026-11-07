@@ -34,6 +34,7 @@ final class DefaultRoles
         'schedules.manage',
         'teams.manage',
         'announcements.manage',
+        'holidays.manage',
     ];
 
     /** Self-service permissions of a regular employee. */

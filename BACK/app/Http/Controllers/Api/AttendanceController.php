@@ -614,7 +614,10 @@ class AttendanceController extends Controller
             $key = $cursor->toDateString();
             $att = $rowsByDate[$key] ?? null;
             $dayLetter = $weekMap[$cursor->dayOfWeekIso] ?? 'L';
-            $isWorkingDay = in_array($dayLetter, $scheduleDays, true);
+            // a company holiday on a scheduled day is not a working day (no target, no absence)
+            $isScheduledDay = in_array($dayLetter, $scheduleDays, true);
+            $holidayName = $isScheduledDay ? $this->schedules->holidayName($cursor) : null;
+            $isWorkingDay = $isScheduledDay && $holidayName === null;
 
             if ($isWorkingDay) {
                 $targetMinutes += $dailyTargetMinutes;
@@ -646,7 +649,7 @@ class AttendanceController extends Controller
 
             // Default table shows only configured working days (e.g. L-V).
             // Optionally include non-working days when requested by UI switch.
-            if ($isWorkingDay || $includeNonWorking) {
+            if ($isScheduledDay || $includeNonWorking) {
                 $rows[] = [
                     'date' => $key,
                     'weekday' => $dayLetter,
@@ -657,6 +660,7 @@ class AttendanceController extends Controller
                     'hours_worked' => $att->hours_worked ?? null,
                     'status' => $att->status ?? null,
                     'is_working_day' => $isWorkingDay,
+                    'holiday' => $holidayName,
                     'events' => $eventsByDate[$key] ?? [],
                     'attendance_request_pending' => isset($pendingAttendanceRequestsByDate[$key]),
                     'attendance_request_id' => $pendingAttendanceRequestsByDate[$key] ?? null,

@@ -32,6 +32,24 @@
 
       <main class="relative z-10 flex-1 min-h-0 p-6 overflow-auto">
         <div class="max-w-5xl mx-auto space-y-4">
+          <!-- Plan & limits (company admins) -->
+          <div v-if="planUsage" class="rounded-2xl border border-gray-800 bg-gray-900 px-5 py-4 flex flex-wrap items-center gap-x-8 gap-y-2 text-sm">
+            <div>
+              <span class="text-gray-400">Plan</span>
+              <span class="ml-2 font-semibold text-white">{{ planUsage.plan?.name || 'Sin plan' }}</span>
+            </div>
+            <div class="text-gray-300">
+              Empleados:
+              <span class="tabular-nums text-white">{{ planUsage.employees.used }}</span>
+              <span class="text-gray-500"> / {{ planUsage.employees.max ?? 'ilimitados' }}</span>
+            </div>
+            <div class="text-gray-300">
+              Almacenamiento:
+              <span class="tabular-nums text-white">{{ planUsage.storage_mb.used }} MB</span>
+              <span class="text-gray-500"> / {{ planUsage.storage_mb.max ? `${planUsage.storage_mb.max} MB` : 'ilimitado' }}</span>
+            </div>
+            <span class="text-xs text-gray-500">Para ampliar el plan contacta con el soporte.</span>
+          </div>
           <div class="inline-flex max-w-full overflow-x-auto rounded-xl border border-gray-700 p-1 bg-gray-900">
             <button
               v-for="tab in tabs"
@@ -630,6 +648,8 @@ declare const $fetch: any
 const router = useRouter()
 const sidebar = ref<{ open: boolean } | null>(null)
 const { authenticated, fetchUser, logout, apiBase, user } = useAuth()
+
+const planUsage = computed(() => (user.value as any)?.plan_usage || null)
 
 const isAdminUser = computed(() => {
   const currentUser: any = user.value || {}

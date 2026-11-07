@@ -119,7 +119,7 @@
                   </thead>
                   <tbody>
                     <tr v-for="r in attendanceRows" :key="r.date" class="border-t border-gray-800 text-gray-200">
-                      <td class="px-3 py-2">{{ formatDate(r.date) }}</td>
+                      <td class="px-3 py-2">{{ formatDate(r.date) }}<span v-if="r.holiday" class="block text-[10px] text-blue-300">Festivo: {{ r.holiday }}</span></td>
                       <td class="px-3 py-2">{{ r.start_time || '--:--' }}</td>
                       <td class="px-3 py-2">{{ r.pause_time || '--:--' }}</td>
                       <td class="px-3 py-2">{{ r.resume_time || '--:--' }}</td>

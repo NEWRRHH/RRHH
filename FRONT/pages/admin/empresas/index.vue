@@ -67,8 +67,11 @@
           <label class="sm:col-span-2 text-xs text-gray-400">Nombre de la empresa
             <input v-model="form.company_name" required minlength="2" maxlength="150" class="mt-1 w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm" />
           </label>
-          <label class="text-xs text-gray-400">Plan (opcional)
-            <input v-model="form.plan" maxlength="50" placeholder="ej: basico, pro" class="mt-1 w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm" />
+          <label class="text-xs text-gray-400">Plan
+            <select v-model="form.plan" class="mt-1 w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm">
+              <option value="">Por defecto</option>
+              <option v-for="p in plans" :key="p.code" :value="p.code">{{ p.name }}</option>
+            </select>
           </label>
           <label class="text-xs text-gray-400">Nombre del administrador
             <input v-model="form.admin_name" required class="mt-1 w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm" />
@@ -129,7 +132,10 @@ function debouncedLoad() {
   timer = setTimeout(() => load(1), 300)
 }
 
-function openCreate() {
+const plans = ref<any[]>([])
+
+async function openCreate() {
+  if (!plans.value.length) plans.value = ((await $fetch('/api/admin/plans').catch(() => [])) as any[])
   form.value = emptyForm()
   createError.value = ''
   createOpen.value = true

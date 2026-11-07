@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -17,7 +18,13 @@ class Company extends Model
     public const STATUS_ACTIVE = 'active';
     public const STATUS_SUSPENDED = 'suspended';
 
-    protected $fillable = ['name', 'slug', 'status', 'plan'];
+    protected $fillable = ['name', 'slug', 'status', 'plan', 'country_code'];
+
+    /** companies.plan stores the plan code */
+    public function planModel(): BelongsTo
+    {
+        return $this->belongsTo(Plan::class, 'plan', 'code');
+    }
 
     public function users(): HasMany
     {

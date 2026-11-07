@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Company;
 use App\Models\EventType;
+use App\Models\Plan;
 use App\Models\Schedule;
 use App\Models\User;
 use App\Models\UserSchedule;
@@ -41,6 +42,7 @@ class CompanyProvisioner
                 'name' => trim($companyName),
                 'slug' => $this->uniqueSlug($companyName),
                 'status' => Company::STATUS_ACTIVE,
+                'plan' => Plan::defaultCode(),
             ]);
 
             $roles = DefaultRoles::ensure($company->id);

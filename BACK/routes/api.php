@@ -7,6 +7,9 @@ use App\Http\Controllers\Admin\AuditLogController as AdminAudit;
 use App\Http\Controllers\Admin\CompanyController as AdminCompanies;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboard;
 use App\Http\Controllers\Admin\ErrorLogController as AdminErrors;
+use App\Http\Controllers\Admin\NationalHolidayController as AdminNationalHolidays;
+use App\Http\Controllers\Admin\PermissionCatalogController as AdminPermissionCatalog;
+use App\Http\Controllers\Admin\PlanController as AdminPlans;
 use App\Http\Controllers\Admin\UserController as AdminUsers;
 use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AuthController;
@@ -15,6 +18,7 @@ use App\Http\Controllers\Api\TimeOffController;
 use App\Http\Controllers\Api\DocumentController;
 use App\Http\Controllers\Api\AnnouncementController;
 use App\Http\Controllers\Api\EmployeeController;
+use App\Http\Controllers\Api\HolidayController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\ScheduleController;
@@ -86,7 +90,15 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     // workers currently "en_trabajo"
     Route::get('/working', [DashboardController::class, 'working']);
     Route::get('/team/me', [DashboardController::class, 'team']);
-    Route::get('/holidays/upcoming', [DashboardController::class, 'upcomingHolidays']);
+    // company holidays (festivos)
+    Route::get('/holidays/upcoming', [HolidayController::class, 'upcoming']);
+    Route::get('/holidays/template', [HolidayController::class, 'template']);
+    Route::get('/holidays', [HolidayController::class, 'index']);
+    Route::post('/holidays', [HolidayController::class, 'store']);
+    Route::post('/holidays/import', [HolidayController::class, 'import']);
+    Route::post('/holidays/import-national', [HolidayController::class, 'importNational']);
+    Route::put('/holidays/{id}', [HolidayController::class, 'update']);
+    Route::delete('/holidays/{id}', [HolidayController::class, 'destroy']);
     Route::get('/announcements', [AnnouncementController::class, 'index']);
     Route::get('/announcements/teams', [AnnouncementController::class, 'teams']);
     Route::post('/announcements', [AnnouncementController::class, 'store']);
@@ -143,6 +155,19 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
             Route::post('/errors/{id}/reopen', [AdminErrors::class, 'reopen']);
 
             Route::get('/audit', [AdminAudit::class, 'index']);
+
+            // global configuration
+            Route::get('/plans', [AdminPlans::class, 'index']);
+            Route::post('/plans', [AdminPlans::class, 'store']);
+            Route::put('/plans/{id}', [AdminPlans::class, 'update']);
+            Route::delete('/plans/{id}', [AdminPlans::class, 'destroy']);
+
+            Route::get('/national-holidays', [AdminNationalHolidays::class, 'index']);
+            Route::post('/national-holidays', [AdminNationalHolidays::class, 'store']);
+            Route::post('/national-holidays/import', [AdminNationalHolidays::class, 'import']);
+            Route::delete('/national-holidays/{id}', [AdminNationalHolidays::class, 'destroy']);
+
+            Route::get('/permissions', [AdminPermissionCatalog::class, 'index']);
         });
 });
 

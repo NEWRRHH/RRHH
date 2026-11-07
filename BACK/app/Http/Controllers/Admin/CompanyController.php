@@ -9,9 +9,11 @@ use App\Models\AuditLog;
 use App\Models\Company;
 use App\Models\Document;
 use App\Models\Event;
+use App\Models\Plan;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\CompanyProvisioner;
+use App\Services\PlanLimits;
 use App\Support\Audit;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rules\Password;
@@ -51,7 +53,8 @@ class CompanyController extends Controller
     {
         $data = $request->validate([
             'company_name' => 'required|string|min:2|max:150',
-            'plan' => 'nullable|string|max:50',
+            'plan' => 'nullable|string|exists:plans,code',
+            'country_code' => 'nullable|string|size:2',
             'admin_name' => 'required|string|max:255',
             'admin_email' => 'required|email|max:255|unique:users,email',
             'admin_password' => ['required', Password::min(8)->mixedCase()->numbers()->symbols()],
@@ -62,16 +65,17 @@ class CompanyController extends Controller
             'email' => $data['admin_email'],
             'password' => $data['admin_password'],
         ]);
-        if (! empty($data['plan'])) {
-            $company->update(['plan' => $data['plan']]);
-        }
+        $company->update(array_filter([
+            'plan' => $data['plan'] ?? null,
+            'country_code' => isset($data['country_code']) ? strtoupper($data['country_code']) : null,
+        ]));
 
         Audit::log('company.created', $company, ['admin_email' => $data['admin_email']]);
 
         return response()->json(['status' => 'ok', 'company' => $company->fresh()], 201);
     }
 
-    public function show(int $id)
+    public function show(int $id, PlanLimits $limits)
     {
         $company = Company::withTrashed()->findOrFail($id);
 
@@ -92,6 +96,8 @@ class CompanyController extends Controller
 
         return response()->json([
             'company' => $company,
+            'plan_usage' => $limits->usage($company),
+            'plans' => Plan::orderBy('id')->get(['code', 'name']),
             'usage' => [
                 'users' => $users->count(),
                 'users_active_30d' => $users->filter(fn ($u) => $u->last_login_at && $u->last_login_at->gte(now()->subDays(30)))->count(),
@@ -111,12 +117,17 @@ class CompanyController extends Controller
         $company = Company::findOrFail($id);
         $data = $request->validate([
             'name' => 'required|string|min:2|max:150',
-            'plan' => 'nullable|string|max:50',
+            'plan' => 'required|string|exists:plans,code',
+            'country_code' => 'nullable|string|size:2',
         ]);
 
-        $before = $company->only(['name', 'plan']);
-        $company->update(['name' => trim($data['name']), 'plan' => $data['plan'] ?? null]);
-        Audit::log('company.updated', $company, ['before' => $before, 'after' => $company->only(['name', 'plan'])]);
+        $before = $company->only(['name', 'plan', 'country_code']);
+        $company->update([
+            'name' => trim($data['name']),
+            'plan' => $data['plan'],
+            'country_code' => strtoupper($data['country_code'] ?? $company->country_code),
+        ]);
+        Audit::log('company.updated', $company, ['before' => $before, 'after' => $company->only(['name', 'plan', 'country_code'])]);
 
         return response()->json(['status' => 'ok', 'company' => $company]);
     }

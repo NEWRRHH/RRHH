@@ -59,6 +59,16 @@ const AUDIT_LABELS: Record<string, string> = {
   'employee.deleted': 'Empleado eliminado',
   'employee.role_changed': 'Rol de empleado cambiado',
   'error.resolved': 'Error resuelto',
+  'holiday.created': 'Festivo creado',
+  'holiday.deleted': 'Festivo eliminado',
+  'holiday.imported': 'Festivos importados (CSV)',
+  'holiday.imported_national': 'Feriados nacionales importados',
+  'national_holiday.created': 'Feriado nacional creado',
+  'national_holiday.deleted': 'Feriado nacional eliminado',
+  'national_holiday.imported': 'Feriados nacionales importados (CSV)',
+  'plan.created': 'Plan creado',
+  'plan.updated': 'Plan editado',
+  'plan.deleted': 'Plan eliminado',
 }
 
 export function auditLabel(action: string): string {

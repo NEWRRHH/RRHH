@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Document;
+use App\Services\PlanLimits;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -48,7 +49,7 @@ class DocumentController extends Controller
         return response()->json(['documents' => $rows]);
     }
 
-    public function upload(Request $request)
+    public function upload(Request $request, PlanLimits $limits)
     {
         $user = $request->user();
         if (!$user) return response()->json(['message' => 'Unauthenticated'], 401);
@@ -64,6 +65,11 @@ class DocumentController extends Controller
         ]);
 
         $file = $request->file('file');
+
+        // plan limit (storage)
+        if ($user->company && ($limitError = $limits->canStore($user->company, (int) $file->getSize()))) {
+            return response()->json(['message' => $limitError], 422);
+        }
         $safeName = Str::random(24) . '.' . $file->getClientOriginalExtension();
         $storedPath = $file->storeAs("documents/{$user->company_id}/{$user->id}", $safeName, 'local');
 
