@@ -68,6 +68,8 @@ services:
     # Credenciales: definir DB_PASSWORD / DB_ROOT_PASSWORD en el .env raiz (defaults solo para dev)
     volumes:
       - back_dbdata:/var/lib/mysql
+      # crea la base laravel_testing (tests) la primera vez que se crea el volumen
+      - ./BACK/docker/mysql/init:/docker-entrypoint-initdb.d:ro
 
   # Reverb WebSocket server – correrlo en la misma imagen que el backend
   back_reverb:

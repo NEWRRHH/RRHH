@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\ScheduleService;
 use App\Support\WorkTime;
 use Carbon\Carbon;
+use App\Support\Tenancy\TenantRule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
@@ -88,8 +89,8 @@ class EmployeeController extends Controller
             'username' => 'nullable|string|max:255|unique:users,username',
             'email' => 'required|email|unique:users,email',
             'password' => ['required','confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
-            'team_id' => 'nullable|integer|exists:teams,id',
-            'role_id' => 'nullable|integer|exists:roles,id',
+            'team_id' => ['nullable', 'integer', TenantRule::exists('teams', 'id', true)],
+            'role_id' => ['nullable', 'integer', TenantRule::exists('roles')],
             'photo' => 'nullable|image|max:2048',
             'first_name' => 'nullable|string|max:50',
             'last_name' => 'nullable|string|max:50',
@@ -106,7 +107,7 @@ class EmployeeController extends Controller
             'days' => 'nullable|array',
             'days.*' => 'in:L,M,X,J,V,S,D',
             'schedule_template_ids' => 'nullable|array',
-            'schedule_template_ids.*' => 'integer|exists:schedules,id',
+            'schedule_template_ids.*' => ['integer', TenantRule::exists('schedules', 'id', true)],
         ]);
 
         // Privilege escalation guard: only an admin may grant the admin role
@@ -136,7 +137,7 @@ class EmployeeController extends Controller
         $employee->vacation_days_total = isset($data['vacation_days_total']) ? (int) $data['vacation_days_total'] : 0;
 
         if ($request->hasFile('photo')) {
-            $path = $request->file('photo')->store('avatars', 'public');
+            $path = $request->file('photo')->store('avatars/' . $user->company_id, 'public');
             $employee->photo = '/storage/' . $path;
         }
 
@@ -473,8 +474,8 @@ class EmployeeController extends Controller
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email,' . $employee->id,
-            'team_id' => 'nullable|integer|exists:teams,id',
-            'role_id' => 'nullable|integer|exists:roles,id',
+            'team_id' => ['nullable', 'integer', TenantRule::exists('teams', 'id', true)],
+            'role_id' => ['nullable', 'integer', TenantRule::exists('roles')],
             'photo' => 'nullable|image|max:2048',
             'phone' => 'nullable|string|max:20',
             'hire_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
@@ -490,7 +491,7 @@ class EmployeeController extends Controller
             'days' => 'nullable|array',
             'days.*' => 'in:L,M,X,J,V,S,D',
             'schedule_template_ids' => 'nullable|array',
-            'schedule_template_ids.*' => 'integer|exists:schedules,id',
+            'schedule_template_ids.*' => ['integer', TenantRule::exists('schedules', 'id', true)],
         ]);
 
         // Role change: only when the field is sent, never on yourself (an
@@ -521,7 +522,7 @@ class EmployeeController extends Controller
         $employee->contract_start_date = $data['contract_start_date'] ?? null;
         $employee->vacation_days_total = isset($data['vacation_days_total']) ? (int) $data['vacation_days_total'] : (int) ($employee->vacation_days_total ?? 0);
         if ($request->hasFile('photo')) {
-            $path = $request->file('photo')->store('avatars', 'public');
+            $path = $request->file('photo')->store('avatars/' . $user->company_id, 'public');
             $employee->photo = '/storage/' . $path;
         }
         if (! empty($data['password'])) {

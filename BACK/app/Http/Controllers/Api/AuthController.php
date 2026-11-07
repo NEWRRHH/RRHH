@@ -59,6 +59,11 @@ class AuthController extends Controller
             return response()->json(['message' => 'Invalid credentials'], 401);
         }
 
+        // A regular user can only log in while their company is active.
+        if (! $user->isSuperAdmin() && ! $user->company?->isActive()) {
+            return response()->json(['message' => 'La empresa esta suspendida o no existe. Contacta con el soporte.'], 403);
+        }
+
         $token = $user->createToken('api-token')->plainTextToken;
 
         // record session token hash on user (attendance start is manual now)
@@ -165,7 +170,7 @@ class AuthController extends Controller
         $user->dni = $data['dni'] ?? $user->dni;
         $user->social_security_number = $data['social_security_number'] ?? $user->social_security_number;
         if ($request->hasFile('photo')) {
-            $path = $request->file('photo')->store('avatars', 'public');
+            $path = $request->file('photo')->store('avatars/' . ($user->company_id ?? 'platform'), 'public');
             $user->photo = '/storage/' . $path;
         }
         $user->save();

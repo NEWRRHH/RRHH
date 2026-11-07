@@ -26,8 +26,9 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:register');
     Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
 
-    // protected routes (auth first so the api limiter can key by user id)
-    Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
+    // protected routes: auth first (so the api limiter can key by user id),
+    // then bind the request to the user's company (multi-tenant filter)
+    Route::middleware(['auth:sanctum', \App\Http\Middleware\EnsureTenant::class, 'throttle:api'])->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::get('/user', [AuthController::class, 'user']);
         Route::put('/user', [AuthController::class, 'updateProfile']);

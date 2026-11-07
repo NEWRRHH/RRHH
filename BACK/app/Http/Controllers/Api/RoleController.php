@@ -5,9 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Permission;
 use App\Models\Role;
+use App\Support\Tenancy\TenantRule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
 
 /**
  * Roles (permission profiles) management. Admin only ("roles.manage" is not
@@ -50,7 +50,7 @@ class RoleController extends Controller
         }
 
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:100', Rule::unique('roles', 'name')],
+            'name' => ['required', 'string', 'max:100', TenantRule::unique('roles', 'name')],
             'description' => 'nullable|string|max:255',
             'permission_codes' => 'nullable|array',
             'permission_codes.*' => 'string|exists:permissions,code',
@@ -80,7 +80,7 @@ class RoleController extends Controller
         }
 
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:100', Rule::unique('roles', 'name')->ignore($role->id)],
+            'name' => ['required', 'string', 'max:100', TenantRule::unique('roles', 'name')->ignore($role->id)],
             'description' => 'nullable|string|max:255',
         ]);
 

@@ -18,8 +18,10 @@ Broadcast::channel('user.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
 });
 
-Broadcast::channel('timeoff.reviewers', function ($user) {
-    if (!$user) return false;
+// Request reviewers of ONE company (multi-tenant: never a global channel).
+Broadcast::channel('company.{companyId}.timeoff.reviewers', function ($user, $companyId) {
+    if (!$user || $user->isSuperAdmin()) return false;
 
-    return $user->hasPermission('requests.review');
+    return (int) $user->company_id === (int) $companyId
+        && $user->hasPermission('requests.review');
 });

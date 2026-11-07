@@ -2,9 +2,7 @@
 
 namespace App\Events;
 
-use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
 // ShouldBroadcastNow broadcasts synchronously (no queue worker needed).
 // This guarantees instant delivery to Reverb without requiring `queue:work`.

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToCompany;
 use App\Models\Concerns\HasTableQuery;
 use Illuminate\Database\Eloquent\Model;
 
@@ -10,6 +11,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class Holiday extends Model
 {
+    use BelongsToCompany;
     use HasTableQuery;
 
     protected $fillable = ['date', 'name', 'type', 'recurring'];

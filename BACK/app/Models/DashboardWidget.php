@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToCompany;
 use App\Models\Concerns\HasTableQuery;
 use Illuminate\Database\Eloquent\Model;
 
@@ -10,6 +11,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class DashboardWidget extends Model
 {
+    use BelongsToCompany;
     use HasTableQuery;
 
     protected $table = 'user_dashboard_widgets';

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\Tenancy\TenantRule;
 use Illuminate\Http\Request;
 
 /**
@@ -54,7 +55,7 @@ class TeamController extends Controller
         }
 
         $data = $request->validate([
-            'name' => 'required|string|max:100|unique:teams,name,NULL,id,deleted_at,NULL',
+            'name' => ['required', 'string', 'max:100', TenantRule::unique('teams', 'name', true)],
         ]);
 
         $id = Team::table()->insertGetId([
@@ -92,7 +93,7 @@ class TeamController extends Controller
         }
 
         $data = $request->validate([
-            'name' => 'required|string|max:100|unique:teams,name,' . $id . ',id,deleted_at,NULL',
+            'name' => ['required', 'string', 'max:100', TenantRule::unique('teams', 'name', true)->ignore($id)],
         ]);
 
         Team::table()

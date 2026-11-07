@@ -182,6 +182,11 @@ async function fetchRequestsBadge() {
   }
 }
 
+// Reviewers channel is per company (multi-tenant).
+function reviewersChannelName() {
+  return `company.${Number((user.value as any)?.company_id || 0)}.timeoff.reviewers`
+}
+
 function teardownRequestsRealtime() {
   try {
     reviewerRealtimeChannel?.stopListening?.('.TimeOffRequestUpdated')
@@ -207,7 +212,7 @@ function setupRequestsRealtime() {
 
   const canReview = Array.isArray((user.value as any)?.permissions) && (user.value as any).permissions.includes('requests.review')
   if (canReview) {
-    reviewerRealtimeChannel = echo.private('timeoff.reviewers')
+    reviewerRealtimeChannel = echo.private(reviewersChannelName())
     reviewerRealtimeChannel.listen('.TimeOffRequestUpdated', () => {
       void fetchRequestsBadge()
     })

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Schedule;
 use App\Services\ScheduleService;
+use App\Support\Tenancy\TenantRule;
 use Illuminate\Http\Request;
 
 /**
@@ -162,7 +163,7 @@ class ScheduleController extends Controller
             'days' => 'nullable|array',
             'days.*' => 'in:L,M,X,J,V,S,D',
             'schedule_template_ids' => 'nullable|array',
-            'schedule_template_ids.*' => 'integer|exists:schedules,id',
+            'schedule_template_ids.*' => ['integer', TenantRule::exists('schedules', 'id', true)],
         ]);
         $days = array_values(array_unique($this->schedules->normalizeScheduleDays($data['days'] ?? null)));
         $startTime = $data['start_time'] ?? null;

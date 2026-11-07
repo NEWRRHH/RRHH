@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Post;
 use App\Models\PostRead;
 use App\Models\Team;
+use App\Support\Tenancy\TenantRule;
 use Illuminate\Http\Request;
 
 class AnnouncementController extends Controller
@@ -101,7 +102,7 @@ class AnnouncementController extends Controller
             'title' => 'required|string|max:255',
             'body' => 'required|string|max:5000',
             'scope' => 'required|string|in:all,team',
-            'team_id' => 'nullable|integer|exists:teams,id',
+            'team_id' => ['nullable', 'integer', TenantRule::exists('teams', 'id', true)],
         ]);
 
         $scope = (string) $data['scope'];

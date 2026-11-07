@@ -65,7 +65,7 @@ class DocumentController extends Controller
 
         $file = $request->file('file');
         $safeName = Str::random(24) . '.' . $file->getClientOriginalExtension();
-        $storedPath = $file->storeAs("documents/{$user->id}", $safeName, 'local');
+        $storedPath = $file->storeAs("documents/{$user->company_id}/{$user->id}", $safeName, 'local');
 
         $id = Document::table()->insertGetId([
             'description' => $data['description'] ?? '',

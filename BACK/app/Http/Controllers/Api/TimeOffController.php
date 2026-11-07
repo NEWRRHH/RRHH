@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Events\TimeOffRequestUpdated;
 use Carbon\Carbon;
+use App\Support\Tenancy\TenantRule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Models\Attendance;
@@ -326,7 +327,7 @@ class TimeOffController extends Controller
         $data = $request->validate([
             'title' => 'required|string|max:100',
             'description' => 'nullable|string',
-            'event_type_id' => 'required|integer|exists:event_types,id',
+            'event_type_id' => ['required', 'integer', TenantRule::exists('event_types', 'id', true)],
             'start_date' => 'required|date_format:Y-m-d',
             'end_date' => 'required|date_format:Y-m-d',
             'all_day' => 'nullable|boolean',
@@ -449,7 +450,7 @@ class TimeOffController extends Controller
         $data = $request->validate([
             'title' => 'required|string|max:100',
             'description' => 'nullable|string',
-            'event_type_id' => 'required|integer|exists:event_types,id',
+            'event_type_id' => ['required', 'integer', TenantRule::exists('event_types', 'id', true)],
             'start_date' => 'required|date_format:Y-m-d',
             'end_date' => 'required|date_format:Y-m-d',
             'all_day' => 'nullable|boolean',

@@ -270,6 +270,11 @@ async function handleRealtimeUpdate(payload?: any, source = 'unknown') {
   }
 }
 
+// Reviewers channel is per company (multi-tenant).
+function reviewersChannelName() {
+  return `company.${Number((user.value as any)?.company_id || 0)}.timeoff.reviewers`
+}
+
 function teardownRealtimeListeners() {
   if (realtimeRetryTimer) {
     clearTimeout(realtimeRetryTimer)
@@ -301,9 +306,9 @@ function setupRealtimeListeners() {
   })
 
   if (canReview.value) {
-    reviewerRealtimeChannel = echo.private('timeoff.reviewers')
+    reviewerRealtimeChannel = echo.private(reviewersChannelName())
     reviewerRealtimeChannel.listen('.TimeOffRequestUpdated', (e: any) => {
-      void handleRealtimeUpdate(e, 'timeoff.reviewers')
+      void handleRealtimeUpdate(e, reviewersChannelName())
     })
   }
 }
