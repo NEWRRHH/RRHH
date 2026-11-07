@@ -3,11 +3,17 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
+use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\TimeOffController;
 use App\Http\Controllers\Api\DocumentController;
 use App\Http\Controllers\Api\AnnouncementController;
+use App\Http\Controllers\Api\EmployeeController;
+use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\RoleController;
+use App\Http\Controllers\Api\ScheduleController;
+use App\Http\Controllers\Api\TeamController;
 
 // apply a proper middleware class that always attaches the CORS headers
 // (including on redirects such as the unauthorised login redirect). this
@@ -26,40 +32,44 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
         Route::get('/user', [AuthController::class, 'user']);
         Route::put('/user', [AuthController::class, 'updateProfile']);
     Route::put('/user/password', [AuthController::class, 'updatePassword']);
-    Route::put('/user/schedule', [AuthController::class, 'updateSchedule']);
-    Route::get('/employees', [AuthController::class, 'employees']);
-    Route::get('/employees/{id}', [AuthController::class, 'getEmployee']);
-    Route::get('/employees/{id}/attendance-month', [AuthController::class, 'employeeAttendanceMonth']);
-    Route::get('/employees/{id}/documents', [AuthController::class, 'employeeDocuments']);
-    Route::get('/employees/{employeeId}/documents/{docId}/download', [AuthController::class, 'employeeDocumentDownload']);
-    Route::post('/employees', [AuthController::class, 'createEmployee']);
-    Route::post('/employees/{id}', [AuthController::class, 'updateEmployee']);
-    Route::put('/employees/{id}', [AuthController::class, 'updateEmployee']);
-    Route::delete('/employees/{id}', [AuthController::class, 'deleteEmployee']);
-    Route::get('/permissions/catalog', [AuthController::class, 'permissionsCatalog']);
-    Route::put('/permissions/teams/{id}', [AuthController::class, 'updateTeamPermissions']);
-    Route::get('/settings/schedules', [AuthController::class, 'scheduleTemplates']);
-    Route::post('/settings/schedules', [AuthController::class, 'createScheduleTemplate']);
-    Route::put('/settings/schedules/{id}', [AuthController::class, 'updateScheduleTemplate']);
-    Route::delete('/settings/schedules/{id}', [AuthController::class, 'deleteScheduleTemplate']);
+    Route::put('/user/schedule', [ScheduleController::class, 'updateSchedule']);
+    Route::get('/employees', [EmployeeController::class, 'employees']);
+    Route::get('/employees/{id}', [EmployeeController::class, 'getEmployee']);
+    Route::get('/employees/{id}/attendance-month', [EmployeeController::class, 'employeeAttendanceMonth']);
+    Route::get('/employees/{id}/documents', [EmployeeController::class, 'employeeDocuments']);
+    Route::get('/employees/{employeeId}/documents/{docId}/download', [EmployeeController::class, 'employeeDocumentDownload']);
+    Route::post('/employees', [EmployeeController::class, 'createEmployee']);
+    Route::post('/employees/{id}', [EmployeeController::class, 'updateEmployee']);
+    Route::put('/employees/{id}', [EmployeeController::class, 'updateEmployee']);
+    Route::delete('/employees/{id}', [EmployeeController::class, 'deleteEmployee']);
+    // roles & permissions (admin only)
+    Route::get('/permissions/catalog', [RoleController::class, 'catalog']);
+    Route::post('/roles', [RoleController::class, 'store']);
+    Route::put('/roles/{id}', [RoleController::class, 'update']);
+    Route::delete('/roles/{id}', [RoleController::class, 'destroy']);
+    Route::put('/roles/{id}/permissions', [RoleController::class, 'updatePermissions']);
+    Route::get('/settings/schedules', [ScheduleController::class, 'scheduleTemplates']);
+    Route::post('/settings/schedules', [ScheduleController::class, 'createScheduleTemplate']);
+    Route::put('/settings/schedules/{id}', [ScheduleController::class, 'updateScheduleTemplate']);
+    Route::delete('/settings/schedules/{id}', [ScheduleController::class, 'deleteScheduleTemplate']);
     // Teams CRUD
-    Route::get('/settings/teams', [AuthController::class, 'listTeams']);
-    Route::post('/settings/teams', [AuthController::class, 'createTeam']);
-    Route::put('/settings/teams/{id}', [AuthController::class, 'updateTeam']);
-    Route::delete('/settings/teams/{id}', [AuthController::class, 'deleteTeam']);
+    Route::get('/settings/teams', [TeamController::class, 'listTeams']);
+    Route::post('/settings/teams', [TeamController::class, 'createTeam']);
+    Route::put('/settings/teams/{id}', [TeamController::class, 'updateTeam']);
+    Route::delete('/settings/teams/{id}', [TeamController::class, 'deleteTeam']);
 
     // attendance control
-    Route::post('/attendance/start', [AuthController::class, 'startAttendance']);
-    Route::post('/attendance/pause', [AuthController::class, 'pauseAttendance']);
-    Route::post('/attendance/resume', [AuthController::class, 'resumeAttendance']);
-    Route::get('/attendance/status', [AuthController::class, 'attendanceStatus']);
-    Route::get('/attendance/current', [AuthController::class, 'currentAttendance']);
-    Route::post('/attendance/stop', [AuthController::class, 'stopAttendance']);
-    Route::get('/attendance/info', [AuthController::class, 'attendanceInfo']);
-    Route::get('/attendance/day', [AuthController::class, 'attendanceDay']);
-    Route::get('/attendance/month', [AuthController::class, 'attendanceMonth']);
-    Route::get('/attendance/who-is-in', [AuthController::class, 'attendanceWhoIsIn']);
-    Route::post('/attendance/requests', [AuthController::class, 'requestAttendanceAdjustment']);
+    Route::post('/attendance/start', [AttendanceController::class, 'startAttendance']);
+    Route::post('/attendance/pause', [AttendanceController::class, 'pauseAttendance']);
+    Route::post('/attendance/resume', [AttendanceController::class, 'resumeAttendance']);
+    Route::get('/attendance/status', [AttendanceController::class, 'attendanceStatus']);
+    Route::get('/attendance/current', [AttendanceController::class, 'currentAttendance']);
+    Route::post('/attendance/stop', [AttendanceController::class, 'stopAttendance']);
+    Route::get('/attendance/info', [AttendanceController::class, 'attendanceInfo']);
+    Route::get('/attendance/day', [AttendanceController::class, 'attendanceDay']);
+    Route::get('/attendance/month', [AttendanceController::class, 'attendanceMonth']);
+    Route::get('/attendance/who-is-in', [AttendanceController::class, 'attendanceWhoIsIn']);
+    Route::post('/attendance/requests', [AttendanceController::class, 'requestAttendanceAdjustment']);
 
     Route::get('/dashboard', [DashboardController::class, 'index']);
     Route::get('/dashboard/layout', [DashboardController::class, 'dashboardLayout']);
@@ -82,10 +92,10 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::post('/notification/{id}/read', [DashboardController::class, 'markNotificationRead']);
 
     // chat-style notifications endpoints
-    Route::get('/notifications/conversations', [\App\Http\Controllers\Api\NotificationController::class, 'conversations']);
-    Route::get('/notifications/conversation/{userId}', [\App\Http\Controllers\Api\NotificationController::class, 'conversation']);
-    Route::post('/notifications/send', [\App\Http\Controllers\Api\NotificationController::class, 'send']);
-    Route::get('/notifications/users', [\App\Http\Controllers\Api\NotificationController::class, 'users']);
+    Route::get('/notifications/conversations', [NotificationController::class, 'conversations']);
+    Route::get('/notifications/conversation/{userId}', [NotificationController::class, 'conversation']);
+    Route::post('/notifications/send', [NotificationController::class, 'send']);
+    Route::get('/notifications/users', [NotificationController::class, 'users']);
 
     // time-off / vacations calendar
     Route::get('/timeoff/calendar', [TimeOffController::class, 'calendar']);

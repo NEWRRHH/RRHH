@@ -140,16 +140,16 @@ const { fetchUser, unreadNotifications, fetchUnread, user, authenticated, apiBas
 const unreadCount = computed(() => unreadNotifications.value || 0)
 const userInitial = computed(() => String((user.value as any)?.name || '?').charAt(0).toUpperCase())
 const requestsCount = ref(0)
-const isHrTeam = computed(() => Boolean((user.value as any)?.is_hr_team))
-const isAdmin = computed(() => Boolean((user.value as any)?.is_admin) || Number((user.value as any)?.user_type_id || 0) === 1)
-const canAccessSettings = computed(() => Boolean((user.value as any)?.can_access_settings) || isAdmin.value || isHrTeam.value)
+// All flags come from the user's role (see GET /api/user).
+const isAdmin = computed(() => Boolean((user.value as any)?.is_admin))
+const canAccessSettings = computed(() => Boolean((user.value as any)?.can_access_settings) || isAdmin.value)
 const canSeeEmployees = computed(() => {
   const u: any = user.value || {}
-  return isHrTeam.value || Boolean(u?.can_view_employee_details) || (Array.isArray(u?.permissions) && u.permissions.includes('employees.view_details'))
+  return Boolean(u?.can_view_employee_details) || (Array.isArray(u?.permissions) && u.permissions.includes('employees.view_details'))
 })
 const canSeeAnnouncements = computed(() => {
   const u: any = user.value || {}
-  return isHrTeam.value || Boolean(u?.can_access_announcements) || Boolean(u?.can_manage_announcements) || (Array.isArray(u?.permissions) && u.permissions.includes('announcements.manage'))
+  return Boolean(u?.can_access_announcements) || Boolean(u?.can_manage_announcements) || (Array.isArray(u?.permissions) && u.permissions.includes('announcements.manage'))
 })
 const canSeeVacations = computed(() => {
   const u: any = user.value || {}

@@ -97,7 +97,10 @@
                     </button>
                   </td>
                   <td class="px-4 py-3 text-gray-300">{{ employee.email }}</td>
-                  <td class="px-4 py-3 text-gray-300">{{ employee.team_name || 'Sin equipo' }}</td>
+                  <td class="px-4 py-3 text-gray-300">
+                    <div>{{ employee.team_name || 'Sin equipo' }}</div>
+                    <span v-if="employee.role_name" class="mt-1 inline-block text-[11px] px-2 py-0.5 rounded-full border border-violet-500/40 bg-violet-500/10 text-violet-200">{{ employee.role_name }}</span>
+                  </td>
                   <td class="px-4 py-3">
                     <div v-if="employee.assigned_schedule_templates?.length" class="flex flex-wrap gap-1.5">
                       <span
@@ -195,15 +198,11 @@
               </select>
             </div>
             <div>
-              <label class="block text-xs text-gray-400 mb-1">Tipo de usuario</label>
-              <select v-model="createForm.user_type_id" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white">
-                <option :value="null">Sin tipo</option>
-                <option v-for="type in userTypes" :key="type.id" :value="type.id">{{ type.name }}</option>
-              </select>
-            </div>
-            <div>
               <label class="block text-xs text-gray-400 mb-1">Rol</label>
-              <input v-model="createForm.role" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
+              <select v-model="createForm.role_id" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white">
+                <option :value="null">Sin rol (sin permisos)</option>
+                <option v-for="role in roles" :key="role.id" :value="role.id">{{ role.name }}</option>
+              </select>
             </div>
             <div>
               <label class="block text-xs text-gray-400 mb-1">DNI</label>
@@ -327,7 +326,7 @@ const sidebar = ref<{ open: boolean } | null>(null)
 const loadingEmployees = ref(true)
 const employees = ref<any[]>([])
 const teams = ref<any[]>([])
-const userTypes = ref<any[]>([])
+const roles = ref<Array<{ id: number; name: string; is_admin: boolean }>>([])
 const scheduleTemplates = ref<any[]>([])
 const openMenuId = ref<number | null>(null)
 const selectedTeam = ref('Todos')
@@ -347,9 +346,8 @@ const createForm = ref<any>({
   birth_date: '',
   hire_date: '',
   phone: '',
-  user_type_id: null,
+  role_id: null,
   team_id: null,
-  role: '',
   dni: '',
   social_security_number: '',
   contract_type: '',
@@ -410,10 +408,6 @@ const canCreateEmployee = computed(() => {
   const permissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : []
   return permissions.includes('employees.create')
 })
-const isHrTeam = computed(() => {
-  const currentUser: any = user.value || {}
-  return Boolean(currentUser?.is_hr_team)
-})
 
 function resolvePhotoUrl(path?: string | null) {
   if (!path) return ''
@@ -449,9 +443,8 @@ function resetCreateForm() {
     birth_date: '',
     hire_date: '',
     phone: '',
-    user_type_id: null,
+    role_id: null,
     team_id: null,
-    role: '',
     dni: '',
     social_security_number: '',
     contract_type: '',
@@ -538,7 +531,7 @@ async function loadEmployees() {
     })
     employees.value = res?.employees || []
     teams.value = res?.teams || []
-    userTypes.value = res?.user_types || []
+    roles.value = res?.roles || []
     scheduleTemplates.value = res?.schedule_templates || []
   } catch (e: any) {
     if (e?.status === 403 || e?.data?.message === 'Forbidden') {
@@ -547,7 +540,7 @@ async function loadEmployees() {
     }
     employees.value = []
     teams.value = []
-    userTypes.value = []
+    roles.value = []
     scheduleTemplates.value = []
   } finally {
     loadingEmployees.value = false
@@ -585,7 +578,6 @@ async function submitCreateEmployee() {
     data.append('birth_date', createForm.value.birth_date || '')
     data.append('hire_date', createForm.value.hire_date || '')
     data.append('phone', createForm.value.phone || '')
-    data.append('role', createForm.value.role || '')
     data.append('dni', createForm.value.dni || '')
     data.append('social_security_number', createForm.value.social_security_number || '')
     data.append('contract_type', createForm.value.contract_type || '')
@@ -602,8 +594,8 @@ async function submitCreateEmployee() {
     if (createForm.value.team_id !== null && createForm.value.team_id !== '') {
       data.append('team_id', String(createForm.value.team_id))
     }
-    if (createForm.value.user_type_id !== null && createForm.value.user_type_id !== '') {
-      data.append('user_type_id', String(createForm.value.user_type_id))
+    if (createForm.value.role_id !== null && createForm.value.role_id !== '') {
+      data.append('role_id', String(createForm.value.role_id))
     }
     if (createForm.value.photo) {
       data.append('photo', createForm.value.photo)
@@ -646,7 +638,7 @@ onMounted(() => {
 onBeforeMount(async () => {
   await fetchUser()
   const currentUser: any = user.value || {}
-  const canViewEmployees = Boolean(currentUser?.is_hr_team) || Boolean(currentUser?.can_view_employee_details) || (Array.isArray(currentUser?.permissions) && currentUser.permissions.includes('employees.view_details'))
+  const canViewEmployees = Boolean(currentUser?.can_view_employee_details) || (Array.isArray(currentUser?.permissions) && currentUser.permissions.includes('employees.view_details'))
   if (!canViewEmployees) {
     return router.push('/dashboard')
   }

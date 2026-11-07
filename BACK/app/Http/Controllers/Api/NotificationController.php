@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\User;
 use App\Models\Notification;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class NotificationController extends Controller
@@ -24,7 +23,7 @@ class NotificationController extends Controller
         $userId = $user->id;
 
         // query distinct other user ids from sender/receiver
-        $ids = DB::table('notifications')
+        $ids = Notification::table()
             ->selectRaw("CASE WHEN sender_id = ? THEN receiver_id ELSE sender_id END as other_id", [$userId])
             ->where(function ($q) use ($userId) {
                 $q->where('sender_id', $userId)

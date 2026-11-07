@@ -208,7 +208,7 @@
           </section>
 
           <section v-else-if="activeTab === 'permissions'" class="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-4">
-            <h2 class="text-white font-semibold">Permisos por Equipo</h2>
+            <h2 class="text-white font-semibold">Roles y permisos</h2>
 
             <div v-if="permissionsLoading" class="space-y-3">
               <div v-for="i in 4" :key="'sk-perm-' + i" class="rounded-xl border border-gray-800 bg-gray-950 overflow-hidden">
@@ -225,120 +225,177 @@
             <div v-else-if="!canManagePermissions" class="text-sm text-gray-400">No tienes permisos para gestionar esta seccion.</div>
 
             <div v-else class="space-y-3">
-              <p class="text-sm text-gray-400">Asigna permisos a cada equipo. Los cambios se aplican a todos los usuarios del equipo.</p>
+              <p class="text-sm text-gray-400">
+                Cada usuario tiene un unico rol. Asigna permisos a cada rol: los cambios se aplican a todos los usuarios con ese rol.
+                El rol de administrador tiene siempre todos los permisos.
+              </p>
 
-              <div v-if="!permissionTeams.length" class="text-sm text-gray-500">No hay equipos registrados.</div>
+              <!-- Create / rename role -->
+              <div class="flex flex-col sm:flex-row gap-2">
+                <input
+                  v-model="roleForm.name"
+                  type="text"
+                  maxlength="100"
+                  :placeholder="editingRoleId ? 'Nuevo nombre del rol' : 'Nombre del nuevo rol (ej: IT, Ventas)'"
+                  class="flex-1 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  @keyup.enter="saveRole"
+                />
+                <div class="flex gap-2">
+                  <button
+                    v-if="editingRoleId"
+                    class="px-3 py-2 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800 text-sm"
+                    @click="cancelEditRole"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    class="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm disabled:opacity-50"
+                    :disabled="roleSaving || !roleForm.name.trim()"
+                    @click="saveRole"
+                  >
+                    {{ roleSaving ? 'Guardando...' : (editingRoleId ? 'Renombrar rol' : 'Crear rol') }}
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="!filteredPermissionRoles.length" class="text-sm text-gray-500">No hay roles que coincidan.</div>
 
               <template v-else>
-                <div v-for="team in permissionTeams" :key="team.id" class="rounded-xl border border-gray-800 bg-gray-950 overflow-hidden">
+                <div v-for="role in filteredPermissionRoles" :key="role.id" class="rounded-xl border border-gray-800 bg-gray-950 overflow-hidden">
                   <!-- Accordion header -->
-                  <button
-                    class="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-800/40 transition"
-                    @click="toggleTeamExpanded(team.id)"
-                  >
-                    <div class="flex items-center gap-3">
-                      <span class="font-medium text-white">{{ team.name }}</span>
-                      <span class="text-xs px-2 py-0.5 rounded-full bg-blue-600/20 text-blue-400 font-medium relative">
-                        {{ (localTeamPermissions[team.id] || []).length }} / {{ permissionsCatalog.length }}
+                  <div class="w-full flex items-center justify-between gap-3 px-5 py-4 hover:bg-gray-800/40 transition">
+                    <button class="flex-1 flex items-center gap-3 text-left min-w-0" @click="toggleRoleExpanded(role.id)">
+                      <span class="font-medium text-white truncate">{{ role.name }}</span>
+                      <span v-if="role.is_admin" class="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-medium">Administrador</span>
+                      <span v-else class="text-xs px-2 py-0.5 rounded-full bg-blue-600/20 text-blue-400 font-medium relative">
+                        {{ (localRolePermissions[role.id] || []).length }} / {{ permissionsCatalog.length }}
                         <span
-                          v-if="hasChangedTeam(team.id)"
+                          v-if="hasChangedRole(role.id)"
                           class="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full"
                         ></span>
                       </span>
-                    </div>
-                    <svg
-                      class="w-4 h-4 text-gray-400 transition-transform duration-200"
-                      :class="expandedTeams.includes(team.id) ? 'rotate-180' : ''"
-                      fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"
-                    >
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-
-                  <!-- Accordion body -->
-                  <div v-if="expandedTeams.includes(team.id)" class="border-t border-gray-800 px-5 py-4 space-y-3">
-                    <!-- Search -->
-                    <div class="relative">
-                      <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                      </svg>
-                      <input
-                        :value="permissionSearchQuery[team.id] || ''"
-                        @input="onPermissionSearch(team.id, ($event.target as HTMLInputElement).value)"
-                        type="search"
-                        placeholder="Buscar permiso por nombre o código..."
-                        class="w-full pl-10 pr-4 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-500 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      <button
-                        v-if="permissionSearchQuery[team.id]"
-                        class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
-                        @click="clearPermissionSearch(team.id)"
-                      >
-                        ✕
-                      </button>
-                    </div>
-
-                    <!-- Bulk actions -->
-                    <div class="flex items-center gap-2">
-                      <button
-                        class="px-3 py-1.5 rounded-lg bg-green-600/20 border border-green-700/30 text-green-300 text-xs font-medium hover:bg-green-600/30 transition"
-                        @click="selectAllPermissions(team.id)"
-                      >
-                        ✓ Seleccionar todos
-                      </button>
-                      <button
-                        class="px-3 py-1.5 rounded-lg bg-red-600/20 border border-red-700/30 text-red-300 text-xs font-medium hover:bg-red-600/30 transition"
-                        @click="deselectAllPermissions(team.id)"
-                      >
-                        ✕ Quitar todos
-                      </button>
-                    </div>
-
-                    <div v-for="group in getFilteredGroups(team.id)" :key="group.prefix" class="rounded-xl border border-gray-800 bg-gray-950 overflow-hidden">
-                      <!-- Group accordion header -->
-                      <button
-                        type="button"
-                        class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-800/40 transition"
-                        @click="togglePermissionGroup(group.prefix)"
-                      >
-                        <div class="flex items-center gap-3">
-                          <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-400">{{ group.label }}</h4>
-                          <span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">
-                            {{ group.permissions.length }} permiso(s)
-                          </span>
-                        </div>
+                      <span class="text-xs text-gray-500 whitespace-nowrap">{{ role.users_count }} usuario(s)</span>
+                    </button>
+                    <div class="flex items-center gap-1 shrink-0">
+                      <template v-if="!role.is_admin">
+                        <button
+                          class="px-2 py-1 rounded-lg text-xs text-gray-300 hover:bg-gray-800"
+                          title="Renombrar"
+                          @click="editRole(role)"
+                        >
+                          Renombrar
+                        </button>
+                        <button
+                          class="px-2 py-1 rounded-lg text-xs text-red-300 hover:bg-red-900/30 disabled:opacity-50"
+                          :disabled="roleDeletingId === role.id"
+                          title="Eliminar"
+                          @click="deleteRole(role)"
+                        >
+                          {{ roleDeletingId === role.id ? '...' : 'Eliminar' }}
+                        </button>
+                      </template>
+                      <button class="p-1" @click="toggleRoleExpanded(role.id)">
                         <svg
                           class="w-4 h-4 text-gray-400 transition-transform duration-200"
-                          :class="expandedPermissionGroups.includes(group.prefix) ? 'rotate-180' : ''"
+                          :class="expandedRoles.includes(role.id) ? 'rotate-180' : ''"
                           fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"
                         >
                           <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
                         </svg>
                       </button>
+                    </div>
+                  </div>
 
-                      <!-- Group accordion body (collapsed by default) -->
-                      <div v-if="expandedPermissionGroups.includes(group.prefix)" class="border-t border-gray-800 px-4 py-3 space-y-1.5">
-                        <div
-                          v-for="p in group.permissions"
-                          :key="p.code"
-                          class="flex items-center justify-between gap-4 rounded-lg bg-gray-900 px-4 py-3"
+                  <!-- Accordion body -->
+                  <div v-if="expandedRoles.includes(role.id)" class="border-t border-gray-800 px-5 py-4 space-y-3">
+                    <p v-if="role.is_admin" class="text-sm text-gray-400">
+                      Este rol tiene acceso total y todos los permisos. No se puede editar ni eliminar.
+                    </p>
+
+                    <template v-else>
+                      <!-- Search -->
+                      <div class="relative">
+                        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                        </svg>
+                        <input
+                          :value="permissionSearchQuery[role.id] || ''"
+                          @input="onPermissionSearch(role.id, ($event.target as HTMLInputElement).value)"
+                          type="search"
+                          placeholder="Buscar permiso por nombre o código..."
+                          class="w-full pl-10 pr-4 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-500 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <button
+                          v-if="permissionSearchQuery[role.id]"
+                          class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                          @click="clearPermissionSearch(role.id)"
                         >
-                          <div class="min-w-0">
-                            <div class="text-sm text-gray-200 font-medium">{{ p.name }}</div>
-                            <div v-if="p.description" class="text-xs text-gray-500 mt-0.5">{{ p.description }}</div>
+                          ✕
+                        </button>
+                      </div>
+
+                      <!-- Bulk actions -->
+                      <div class="flex items-center gap-2">
+                        <button
+                          class="px-3 py-1.5 rounded-lg bg-green-600/20 border border-green-700/30 text-green-300 text-xs font-medium hover:bg-green-600/30 transition"
+                          @click="selectAllPermissions(role.id)"
+                        >
+                          ✓ Seleccionar todos
+                        </button>
+                        <button
+                          class="px-3 py-1.5 rounded-lg bg-red-600/20 border border-red-700/30 text-red-300 text-xs font-medium hover:bg-red-600/30 transition"
+                          @click="deselectAllPermissions(role.id)"
+                        >
+                          ✕ Quitar todos
+                        </button>
+                      </div>
+
+                      <div v-for="group in getFilteredGroups(role.id)" :key="group.prefix" class="rounded-xl border border-gray-800 bg-gray-950 overflow-hidden">
+                        <!-- Group accordion header -->
+                        <button
+                          type="button"
+                          class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-800/40 transition"
+                          @click="togglePermissionGroup(group.prefix)"
+                        >
+                          <div class="flex items-center gap-3">
+                            <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-400">{{ group.label }}</h4>
+                            <span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">
+                              {{ group.permissions.length }} permiso(s)
+                            </span>
                           </div>
-                          <label class="relative inline-flex items-center cursor-pointer shrink-0">
-                            <input
-                              type="checkbox"
-                              :checked="localTeamPermissions[team.id]?.includes(p.code)"
-                              class="sr-only peer"
-                              @change="toggleTeamPermission(team.id, p.code, $event)"
-                            />
-                            <div class="w-9 h-5 bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
-                          </label>
+                          <svg
+                            class="w-4 h-4 text-gray-400 transition-transform duration-200"
+                            :class="expandedPermissionGroups.includes(group.prefix) ? 'rotate-180' : ''"
+                            fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"
+                          >
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+
+                        <!-- Group accordion body (collapsed by default) -->
+                        <div v-if="expandedPermissionGroups.includes(group.prefix)" class="border-t border-gray-800 px-4 py-3 space-y-1.5">
+                          <div
+                            v-for="p in group.permissions"
+                            :key="p.code"
+                            class="flex items-center justify-between gap-4 rounded-lg bg-gray-900 px-4 py-3"
+                          >
+                            <div class="min-w-0">
+                              <div class="text-sm text-gray-200 font-medium">{{ p.name }}</div>
+                              <div v-if="p.description" class="text-xs text-gray-500 mt-0.5">{{ p.description }}</div>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                              <input
+                                type="checkbox"
+                                :checked="localRolePermissions[role.id]?.includes(p.code)"
+                                class="sr-only peer"
+                                @change="toggleRolePermission(role.id, p.code, $event)"
+                              />
+                              <div class="w-9 h-5 bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                            </label>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    </template>
                   </div>
                 </div>
               </template>
@@ -576,12 +633,7 @@ const { authenticated, fetchUser, logout, apiBase, user } = useAuth()
 
 const isAdminUser = computed(() => {
   const currentUser: any = user.value || {}
-  return Boolean(currentUser?.is_admin) || Number(currentUser?.user_type_id || 0) === 1
-})
-
-const isHrTeamUser = computed(() => {
-  const currentUser: any = user.value || {}
-  return Boolean(currentUser?.is_hr_team)
+  return Boolean(currentUser?.is_admin)
 })
 
 const canManageSchedules = computed(() => {
@@ -591,24 +643,27 @@ const canManageSchedules = computed(() => {
   return permissions.includes('schedules.manage')
 })
 
+const canManageTeams = computed(() => {
+  const currentUser: any = user.value || {}
+  if (currentUser?.can_manage_teams) return true
+  const permissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : []
+  return permissions.includes('teams.manage')
+})
+
 const tabs = computed(() => {
   if (isAdminUser.value) {
     return [
       { id: 'dashboard', label: 'Dashboard' },
-      { id: 'permissions', label: 'Permisos' },
+      { id: 'permissions', label: 'Roles y permisos' },
       { id: 'schedules', label: 'Jornadas laborales' },
       { id: 'equipos', label: 'Equipos' },
     ]
   }
 
-  if (isHrTeamUser.value || canManageSchedules.value) {
-    return [
-      { id: 'dashboard', label: 'Bienvenida' },
-      { id: 'schedules', label: 'Jornadas laborales' },
-    ]
-  }
-
-  return []
+  const list = [{ id: 'dashboard', label: 'Bienvenida' }]
+  if (canManageSchedules.value) list.push({ id: 'schedules', label: 'Jornadas laborales' })
+  if (canManageTeams.value) list.push({ id: 'equipos', label: 'Equipos' })
+  return list.length > 1 ? list : []
 })
 
 const activeTab = ref('dashboard')
@@ -626,19 +681,17 @@ const canManagePermissions = ref(false)
 const permissionsLoading = ref(false)
 const permissionSaving = ref(false)
 const permissionsCatalog = ref<Array<{ id: number; code: string; name: string; description: string | null }>>([])
-const permissionTeams = ref<Array<{ id: number; name: string; permission_codes: string[] }>>([])
-const selectedPermissionTeamId = ref<number | null>(null)
-const selectedPermissionCodes = ref<string[]>([])
+const permissionRoles = ref<PermissionRole[]>([])
 const searchQuery = ref('')
-const localTeamPermissions = ref<Record<number, string[]>>({})
-const savedTeamPermissionsSnapshot = ref<Record<number, string[]>>({})
-const expandedTeams = ref<number[]>([])
+const localRolePermissions = ref<Record<number, string[]>>({})
+const savedRolePermissionsSnapshot = ref<Record<number, string[]>>({})
+const expandedRoles = ref<number[]>([])
 
 const hasPermissionChanges = computed(() => {
-  const current = localTeamPermissions.value
-  const saved = savedTeamPermissionsSnapshot.value
-  const teamIds = new Set([...Object.keys(current), ...Object.keys(saved)])
-  for (const idStr of teamIds) {
+  const current = localRolePermissions.value
+  const saved = savedRolePermissionsSnapshot.value
+  const roleIds = new Set([...Object.keys(current), ...Object.keys(saved)])
+  for (const idStr of roleIds) {
     const id = Number(idStr)
     const curr = (current[id] || []).slice().sort()
     const svd = (saved[id] || []).slice().sort()
@@ -653,8 +706,13 @@ const expandedPermissionGroups = ref<string[]>([])
 
 const GROUP_LABELS: Record<string, string> = {
   employees: 'Usuarios',
+  attendance: 'Fichajes',
   requests: 'Solicitudes',
+  vacations: 'Vacaciones',
+  documents: 'Documentos',
+  reports: 'Reportes',
   schedules: 'Jornadas',
+  teams: 'Equipos',
   announcements: 'Comunicados',
 }
 
@@ -680,10 +738,10 @@ function togglePermissionGroup(prefix: string) {
   else expandedPermissionGroups.value.push(prefix)
 }
 
-function toggleTeamExpanded(teamId: number) {
-  const idx = expandedTeams.value.indexOf(teamId)
-  if (idx >= 0) expandedTeams.value.splice(idx, 1)
-  else expandedTeams.value.push(teamId)
+function toggleRoleExpanded(roleId: number) {
+  const idx = expandedRoles.value.indexOf(roleId)
+  if (idx >= 0) expandedRoles.value.splice(idx, 1)
+  else expandedRoles.value.push(roleId)
 }
 
 function onPermissionSearch(teamId: number, value: string) {
@@ -857,30 +915,25 @@ async function saveLayout() {
   }
 }
 
-const selectedPermissionTeamName = computed(() => {
-  const t = permissionTeams.value.find((x) => x.id === selectedPermissionTeamId.value)
-  return t?.name || ''
+// ── Roles & permissions ──
+type PermissionRole = { id: number; name: string; description: string | null; is_admin: boolean; users_count: number; permission_codes: string[] }
+
+const roleForm = ref<{ name: string }>({ name: '' })
+const editingRoleId = ref<number | null>(null)
+const roleSaving = ref(false)
+const roleDeletingId = ref<number | null>(null)
+
+const filteredPermissionRoles = computed(() => {
+  const q = searchQuery.value.toLowerCase().trim()
+  if (!q) return permissionRoles.value
+  return permissionRoles.value.filter((r) => r.name.toLowerCase().includes(q))
 })
-
-function selectPermissionTeam(id: number) {
-  selectedPermissionTeamId.value = id
-  const t = permissionTeams.value.find((x) => x.id === id)
-  selectedPermissionCodes.value = Array.isArray(t?.permission_codes) ? [...t!.permission_codes] : []
-}
-
-function togglePermissionCode(code: string, e: Event) {
-  const checked = (e.target as HTMLInputElement).checked
-  const set = new Set(selectedPermissionCodes.value)
-  if (checked) set.add(code)
-  else set.delete(code)
-  selectedPermissionCodes.value = Array.from(set.values())
-}
 
 async function loadPermissions() {
   if (!isAdminUser.value) {
     canManagePermissions.value = false
     permissionsCatalog.value = []
-    permissionTeams.value = []
+    permissionRoles.value = []
     return
   }
   if (!authenticated.value) return
@@ -890,66 +943,65 @@ async function loadPermissions() {
     })
     canManagePermissions.value = true
     permissionsCatalog.value = Array.isArray(res?.permissions) ? res.permissions : []
-    permissionTeams.value = Array.isArray(res?.teams) ? res.teams : []
+    permissionRoles.value = Array.isArray(res?.roles) ? res.roles : []
     const map: Record<number, string[]> = {}
-    for (const t of permissionTeams.value) {
-      map[t.id] = Array.isArray(t.permission_codes) ? [...t.permission_codes] : []
+    for (const r of permissionRoles.value) {
+      map[r.id] = Array.isArray(r.permission_codes) ? [...r.permission_codes] : []
     }
-    localTeamPermissions.value = map
-    savedTeamPermissionsSnapshot.value = JSON.parse(JSON.stringify(map))
-    if (!selectedPermissionTeamId.value && permissionTeams.value.length) {
-      selectPermissionTeam(permissionTeams.value[0].id)
-    }
+    localRolePermissions.value = map
+    savedRolePermissionsSnapshot.value = JSON.parse(JSON.stringify(map))
   } catch (e: any) {
     if (e?.status === 403 || e?.data?.message === 'Forbidden') {
       canManagePermissions.value = false
     }
     permissionsCatalog.value = []
-    permissionTeams.value = []
+    permissionRoles.value = []
   } finally {
     permissionsLoading.value = false
   }
 }
 
-function toggleTeamPermission(teamId: number, code: string, e: Event) {
+function toggleRolePermission(roleId: number, code: string, e: Event) {
   const checked = (e.target as HTMLInputElement).checked
-  const current = localTeamPermissions.value[teamId] ? [...localTeamPermissions.value[teamId]] : []
+  const current = localRolePermissions.value[roleId] ? [...localRolePermissions.value[roleId]] : []
   const set = new Set(current)
   if (checked) set.add(code)
   else set.delete(code)
-  localTeamPermissions.value[teamId] = Array.from(set)
+  localRolePermissions.value[roleId] = Array.from(set)
 }
 
-function hasChangedTeam(teamId: number): boolean {
-  const curr = (localTeamPermissions.value[teamId] || []).slice().sort()
-  const svd = (savedTeamPermissionsSnapshot.value[teamId] || []).slice().sort()
+function hasChangedRole(roleId: number): boolean {
+  const curr = (localRolePermissions.value[roleId] || []).slice().sort()
+  const svd = (savedRolePermissionsSnapshot.value[roleId] || []).slice().sort()
   return curr.length !== svd.length || curr.some((c, i) => c !== svd[i])
 }
 
-function selectAllPermissions(teamId: number) {
+function selectAllPermissions(roleId: number) {
   const allCodes = permissionsCatalog.value.map((p) => p.code)
-  localTeamPermissions.value[teamId] = [...allCodes]
+  localRolePermissions.value[roleId] = [...allCodes]
 }
 
-async function deselectAllPermissions(teamId: number) {
-  const ok = await $swal.confirm('Quitar todos los permisos', '¿Estás seguro de quitar todos los permisos de este equipo? Los cambios son locales hasta que guardes.', 'Sí, quitar todos', 'Cancelar')
+async function deselectAllPermissions(roleId: number) {
+  const ok = await $swal.confirm('Quitar todos los permisos', '¿Estás seguro de quitar todos los permisos de este rol? Los cambios son locales hasta que guardes.', 'Sí, quitar todos', 'Cancelar')
   if (!ok) return
-  localTeamPermissions.value[teamId] = []
+  localRolePermissions.value[roleId] = []
 }
 
 async function saveAllPermissions() {
   if (!authenticated.value || !canManagePermissions.value) return
   permissionSaving.value = true
   try {
-    for (const team of permissionTeams.value) {
-      const codes = localTeamPermissions.value[team.id] || []
-      await $fetch(`/api/permissions/teams/${team.id}`, {
+    for (const role of permissionRoles.value) {
+      // the admin role always has every permission; only send roles that changed
+      if (role.is_admin || !hasChangedRole(role.id)) continue
+      const codes = localRolePermissions.value[role.id] || []
+      await $fetch(`/api/roles/${role.id}/permissions`, {
         method: 'PUT',
         body: { permission_codes: codes },
       })
-      team.permission_codes = [...codes]
+      role.permission_codes = [...codes]
     }
-    savedTeamPermissionsSnapshot.value = JSON.parse(JSON.stringify(localTeamPermissions.value))
+    savedRolePermissionsSnapshot.value = JSON.parse(JSON.stringify(localRolePermissions.value))
     $swal.toast('success', 'Permisos actualizados')
   } catch (e) {
     $swal.toast('error', 'No se pudieron guardar los permisos')
@@ -957,6 +1009,58 @@ async function saveAllPermissions() {
     permissionSaving.value = false
   }
 }
+
+function editRole(role: PermissionRole) {
+  editingRoleId.value = role.id
+  roleForm.value = { name: role.name }
+}
+
+function cancelEditRole() {
+  editingRoleId.value = null
+  roleForm.value = { name: '' }
+}
+
+async function saveRole() {
+  const name = roleForm.value.name.trim()
+  if (!name || !authenticated.value) return
+  if (hasPermissionChanges.value) {
+    const ok = await $swal.confirm('Cambios sin guardar', 'Tienes cambios de permisos sin guardar que se perderán al recargar los roles. ¿Continuar?', 'Continuar', 'Cancelar')
+    if (!ok) return
+  }
+  roleSaving.value = true
+  try {
+    if (editingRoleId.value) {
+      await $fetch(`/api/roles/${editingRoleId.value}`, { method: 'PUT', body: { name } })
+      $swal.toast('success', 'Rol renombrado')
+    } else {
+      await $fetch(`/api/roles`, { method: 'POST', body: { name, permission_codes: [] } })
+      $swal.toast('success', 'Rol creado')
+    }
+    cancelEditRole()
+    await loadPermissions()
+  } catch (e: any) {
+    $swal.toast('error', e?.data?.message || 'No se pudo guardar el rol')
+  } finally {
+    roleSaving.value = false
+  }
+}
+
+async function deleteRole(role: PermissionRole) {
+  const ok = await $swal.confirm('Eliminar rol', `¿Eliminar el rol <strong>${role.name}</strong>? Solo se pueden eliminar roles sin usuarios.`, 'Eliminar', 'Cancelar')
+  if (!ok) return
+  roleDeletingId.value = role.id
+  try {
+    await $fetch(`/api/roles/${role.id}`, { method: 'DELETE' })
+    if (editingRoleId.value === role.id) cancelEditRole()
+    $swal.toast('success', 'Rol eliminado')
+    await loadPermissions()
+  } catch (e: any) {
+    $swal.toast('error', e?.data?.message || 'No se pudo eliminar el rol')
+  } finally {
+    roleDeletingId.value = null
+  }
+}
+// ── End roles & permissions ──
 
 async function loadScheduleTemplates() {
   if (!authenticated.value) return

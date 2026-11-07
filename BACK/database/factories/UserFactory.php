@@ -40,9 +40,8 @@ class UserFactory extends Factory
             'remember_token' => Str::random(10),
             'profile_photo_path' => null,
             'current_team_id' => null,
-            'user_type_id' => 2,
-            'team_id' => 1,
-            'role' => 'user',
+            'team_id' => null,
+            'role_id' => null,
         ];
     }
 

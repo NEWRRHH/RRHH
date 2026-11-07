@@ -1,7 +1,6 @@
 <?php
 
 use Illuminate\Support\Facades\Broadcast;
-use Illuminate\Support\Facades\DB;
 
 /*
 |--------------------------------------------------------------------------
@@ -22,9 +21,5 @@ Broadcast::channel('user.{id}', function ($user, $id) {
 Broadcast::channel('timeoff.reviewers', function ($user) {
     if (!$user) return false;
 
-    return DB::table('team_permision')
-        ->join('permisions', 'team_permision.permision_id', '=', 'permisions.id')
-        ->where('team_permision.team_id', (int) ($user->team_id ?? 0))
-        ->where('permisions.code', 'requests.review')
-        ->exists();
+    return $user->hasPermission('requests.review');
 });

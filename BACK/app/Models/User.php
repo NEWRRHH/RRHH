@@ -3,7 +3,9 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Models\Concerns\HasTableQuery;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -18,12 +20,16 @@ class User extends Authenticatable
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory;
     use HasProfilePhoto;
+    use HasTableQuery;
     use Notifiable;
     use SoftDeletes;
     use TwoFactorAuthenticatable;
 
     /**
      * The attributes that are mass assignable.
+     *
+     * role_id is intentionally NOT mass assignable: assigning a role is a
+     * privileged action and must go through UserPolicy::assignRole.
      *
      * @var array<int, string>
      */
@@ -39,9 +45,7 @@ class User extends Authenticatable
         'photo',
         'phone',
         'vacation_days_total',
-        'user_type_id',
         'team_id',
-        'role',
     ];
 
     /**
@@ -69,6 +73,13 @@ class User extends Authenticatable
     ];
 
     /**
+     * Permission codes resolved for this user (memoized per instance).
+     *
+     * @var array<int, string>|null
+     */
+    private ?array $permissionCodesCache = null;
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -79,6 +90,53 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    public function role(): BelongsTo
+    {
+        return $this->belongsTo(Role::class);
+    }
+
+    public function team(): BelongsTo
+    {
+        return $this->belongsTo(Team::class);
+    }
+
+    /**
+     * Admin of the company: its role is flagged is_admin and bypasses every
+     * permission check (see Gate::before in AppServiceProvider).
+     */
+    public function isAdmin(): bool
+    {
+        return (bool) $this->role?->is_admin;
+    }
+
+    /**
+     * Permission codes granted to this user through their single role.
+     * Admins implicitly hold every permission in the catalog.
+     *
+     * @return array<int, string>
+     */
+    public function permissionCodes(): array
+    {
+        if ($this->permissionCodesCache !== null) {
+            return $this->permissionCodesCache;
+        }
+
+        if ($this->isAdmin()) {
+            $codes = Permission::query()->orderBy('code')->pluck('code')->all();
+        } elseif ($this->role) {
+            $codes = $this->role->permissions()->orderBy('code')->pluck('code')->all();
+        } else {
+            $codes = [];
+        }
+
+        return $this->permissionCodesCache = array_values($codes);
+    }
+
+    public function hasPermission(string $code): bool
+    {
+        return $this->isAdmin() || in_array($code, $this->permissionCodes(), true);
     }
 
     /**

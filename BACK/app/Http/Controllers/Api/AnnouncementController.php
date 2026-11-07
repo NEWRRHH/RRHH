@@ -3,18 +3,17 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Traits\PermissionTrait;
+use App\Models\Post;
+use App\Models\PostRead;
+use App\Models\Team;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class AnnouncementController extends Controller
 {
-    use PermissionTrait;
-
     private function canAccessAnnouncements(?object $user): bool
     {
         if (!$user) return false;
-        return $this->isAdminUser($user) || $this->isHrTeam($user) || $this->teamHasPermission((int) ($user->team_id ?? 0), 'announcements.manage');
+        return $user->hasPermission('announcements.manage');
     }
 
     public function index(Request $request)
@@ -25,7 +24,7 @@ class AnnouncementController extends Controller
         $limit = max(1, min(100, (int) $request->query('limit', 20)));
         $canSeeAll = $this->canAccessAnnouncements($user);
 
-        $query = DB::table('posts')
+        $query = Post::table()
             ->join('users', 'posts.user_id', '=', 'users.id')
             ->leftJoin('teams', 'posts.team_id', '=', 'teams.id')
             ->leftJoin('post_reads', function ($join) use ($user) {
@@ -75,7 +74,7 @@ class AnnouncementController extends Controller
             })
             ->values();
 
-        return response()->json($rows)->header('Access-Control-Allow-Origin', '*');
+        return response()->json($rows);
     }
 
     public function teams(Request $request)
@@ -84,12 +83,12 @@ class AnnouncementController extends Controller
         if (!$user) return response()->json(['message' => 'Unauthenticated'], 401);
         if (!$this->canAccessAnnouncements($user)) return response()->json(['message' => 'Forbidden'], 403);
 
-        $rows = DB::table('teams')
+        $rows = Team::table()
             ->select('id', 'name')
             ->orderBy('name', 'asc')
             ->get();
 
-        return response()->json($rows)->header('Access-Control-Allow-Origin', '*');
+        return response()->json($rows);
     }
 
     public function store(Request $request)
@@ -111,7 +110,7 @@ class AnnouncementController extends Controller
             return response()->json(['message' => 'Debes seleccionar un equipo'], 422);
         }
 
-        $id = DB::table('posts')->insertGetId([
+        $id = Post::table()->insertGetId([
             'title' => trim((string) $data['title']),
             'body' => trim((string) $data['body']),
             'user_id' => $user->id,
@@ -121,7 +120,7 @@ class AnnouncementController extends Controller
             'created_at' => now(),
         ]);
 
-        return response()->json(['status' => 'ok', 'id' => $id])->header('Access-Control-Allow-Origin', '*');
+        return response()->json(['status' => 'ok', 'id' => $id]);
     }
 
     public function markRead(Request $request, int $id)
@@ -129,10 +128,10 @@ class AnnouncementController extends Controller
         $user = $request->user();
         if (!$user) return response()->json(['message' => 'Unauthenticated'], 401);
 
-        $exists = DB::table('posts')->where('id', $id)->exists();
+        $exists = Post::table()->where('id', $id)->exists();
         if (!$exists) return response()->json(['message' => 'No encontrado'], 404);
 
-        DB::table('post_reads')->insertOrIgnore([
+        PostRead::table()->insertOrIgnore([
             'user_id' => $user->id,
             'post_id' => $id,
             'read_at' => now(),

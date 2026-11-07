@@ -7,100 +7,23 @@ use Illuminate\Http\Request;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use App\Models\Attendance;
+use App\Models\DashboardWidget;
+use App\Models\Document;
+use App\Models\Event;
+use App\Models\Post;
+use App\Models\Team;
+use App\Services\ScheduleService;
+use App\Support\WorkTime;
 
 class DashboardController extends Controller
 {
-    private function normalizeScheduleDays($days): array
+    public function __construct(private ScheduleService $schedules)
     {
-        $default = ['L', 'M', 'X', 'J', 'V'];
-        if (empty($days)) return $default;
-        $decoded = is_string($days) ? json_decode($days, true) : $days;
-        if (!is_array($decoded)) return $default;
-        $allowed = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
-        $normalized = array_values(array_intersect($allowed, array_map('strtoupper', $decoded)));
-        return count($normalized) ? $normalized : $default;
     }
-
-    private function loadScheduleDaysForUser(int $userId): array
-    {
-        $schedule = $this->loadEffectiveScheduleForUser($userId);
-        return $this->normalizeScheduleDays($schedule->days ?? null);
-    }
-
-    private function loadEffectiveScheduleForUser(int $userId): ?object
-    {
-        $templates = DB::table('user_schedules')
-            ->join('schedules', 'user_schedules.schedule_id', '=', 'schedules.id')
-            ->where('user_schedules.user_id', $userId)
-            ->whereNull('schedules.deleted_at')
-            ->orderBy('user_schedules.id', 'asc')
-            ->get(['schedules.start_time', 'schedules.end_time', 'schedules.days']);
-
-        if (!$templates->count()) {
-            return null;
-        }
-
-        $daysUnion = [];
-        $earliestStart = null;
-        $latestEnd = null;
-
-        foreach ($templates as $tpl) {
-            $daysUnion = array_values(array_unique(array_merge($daysUnion, $this->normalizeScheduleDays($tpl->days ?? null))));
-            $start = isset($tpl->start_time) ? substr((string) $tpl->start_time, 0, 5) : null;
-            $end = isset($tpl->end_time) ? substr((string) $tpl->end_time, 0, 5) : null;
-
-            if ($start && ($earliestStart === null || $this->timeToMinutes($start) < $this->timeToMinutes($earliestStart))) {
-                $earliestStart = $start;
-            }
-            if ($end && ($latestEnd === null || $this->timeToMinutes($end) > $this->timeToMinutes($latestEnd))) {
-                $latestEnd = $end;
-            }
-        }
-
-        return (object) [
-            'start_time' => $earliestStart,
-            'end_time' => $latestEnd,
-            'days' => $daysUnion,
-        ];
-    }
-
-    private function calculateWorkingDays(Carbon $start, Carbon $end, array $scheduleDays): int
-    {
-        $weekMap = [1 => 'L', 2 => 'M', 3 => 'X', 4 => 'J', 5 => 'V', 6 => 'S', 7 => 'D'];
-        $count = 0;
-        $cursor = $start->copy()->startOfDay();
-        $last = $end->copy()->startOfDay();
-
-        while ($cursor->lte($last)) {
-            $letter = $weekMap[$cursor->dayOfWeekIso] ?? 'L';
-            if (in_array($letter, $scheduleDays, true)) $count++;
-            $cursor->addDay();
-        }
-
-        return $count;
-    }
-
-    private function timeToMinutes(?string $time): int
-    {
-        if (!$time) return 0;
-        $parts = explode(':', $time);
-        if (count($parts) < 2) return 0;
-        $h = (int) ($parts[0] ?? 0);
-        $m = (int) ($parts[1] ?? 0);
-        return max(0, ($h * 60) + $m);
-    }
-
-    private function minutesToHHMM(int $minutes): string
-    {
-        $m = max(0, $minutes);
-        $h = intdiv($m, 60);
-        $mm = $m % 60;
-        return sprintf('%02d:%02d', $h, $mm);
-    }
-
     private function dailyTargetMinutesForUser(int $userId): int
     {
-        $schedule = $this->loadEffectiveScheduleForUser($userId);
+        $schedule = $this->schedules->loadEffectiveScheduleForUser($userId);
 
         if (!$schedule || empty($schedule->start_time) || empty($schedule->end_time)) return 0;
 
@@ -114,7 +37,7 @@ class DashboardController extends Controller
 
     private function workedMinutesTodayForUser(int $userId, Carbon $today): int
     {
-        $row = DB::table('attendances')
+        $row = Attendance::table()
             ->where('user_id', $userId)
             ->whereDate('date', $today->toDateString())
             ->orderBy('created_at', 'desc')
@@ -123,7 +46,7 @@ class DashboardController extends Controller
         if (!$row) return 0;
 
         if (!empty($row->hours_worked)) {
-            return $this->timeToMinutes((string) $row->hours_worked);
+            return WorkTime::timeStringToMinutes((string) $row->hours_worked);
         }
 
         if (empty($row->start_time)) return 0;
@@ -153,7 +76,7 @@ class DashboardController extends Controller
 
     private function workedMinutesMonthForUser(int $userId, Carbon $today): int
     {
-        $rows = DB::table('attendances')
+        $rows = Attendance::table()
             ->where('user_id', $userId)
             ->whereDate('date', '>=', $today->copy()->startOfMonth()->toDateString())
             ->whereDate('date', '<=', $today->copy()->endOfMonth()->toDateString())
@@ -161,14 +84,14 @@ class DashboardController extends Controller
 
         $sum = 0;
         foreach ($rows as $r) {
-            $sum += $this->timeToMinutes((string) ($r->hours_worked ?? null));
+            $sum += WorkTime::timeStringToMinutes((string) ($r->hours_worked ?? null));
         }
         return $sum;
     }
 
     private function targetMinutesMonthForUser(int $userId, Carbon $today): int
     {
-        $schedule = $this->loadEffectiveScheduleForUser($userId);
+        $schedule = $this->schedules->loadEffectiveScheduleForUser($userId);
         if (!$schedule) return 0;
 
         $scheduleDays = ['L', 'M', 'X', 'J', 'V'];
@@ -225,7 +148,7 @@ class DashboardController extends Controller
             $catalogByKey[$w['key']] = $w;
         }
 
-        $rows = DB::table('user_dashboard_widgets')
+        $rows = DashboardWidget::table()
             ->where('user_id', $userId)
             ->get(['widget_key', 'slot_index', 'visible', 'settings']);
 
@@ -296,8 +219,7 @@ class DashboardController extends Controller
             return response()->json(['message' => 'Unauthenticated'], 401);
         }
 
-        return response()->json($this->buildLayoutForUser((int) $user->id))
-            ->header('Access-Control-Allow-Origin', '*');
+        return response()->json($this->buildLayoutForUser((int) $user->id));
     }
 
     public function saveDashboardLayout(Request $request)
@@ -335,7 +257,7 @@ class DashboardController extends Controller
 
         $visibility = [];
         $settings = [];
-        $existingRows = DB::table('user_dashboard_widgets')
+        $existingRows = DashboardWidget::table()
             ->where('user_id', $user->id)
             ->get(['widget_key', 'settings', 'visible']);
         $existingByKey = [];
@@ -380,7 +302,7 @@ class DashboardController extends Controller
 
             foreach ($catalog as $w) {
                 $key = $w['key'];
-                DB::table('user_dashboard_widgets')->updateOrInsert(
+                DashboardWidget::table()->updateOrInsert(
                     ['user_id' => $user->id, 'widget_key' => $key],
                     [
                         'slot_index' => array_key_exists($key, $slotByWidget) ? $slotByWidget[$key] : null,
@@ -396,7 +318,7 @@ class DashboardController extends Controller
         return response()->json([
             'status' => 'ok',
             'layout' => $this->buildLayoutForUser((int) $user->id),
-        ])->header('Access-Control-Allow-Origin', '*');
+        ]);
     }
 
     public function index(Request $request)
@@ -404,11 +326,11 @@ class DashboardController extends Controller
         $today = Carbon::today();
 
         $usersCount = User::count();
-        $postsCount = DB::table('posts')->count();
+        $postsCount = Post::table()->count();
         // total open attendances in the system (used previously as "attendances_today")
         // requirements changed: only records that are unfinished
         // only consider records for today with unfinished state
-        $attendancesToday = DB::table('attendances')
+        $attendancesToday = Attendance::table()
             ->whereDate('date', $today)
             ->where(function ($q) {
                 $q->where('status', 'en_trabajo')
@@ -468,14 +390,14 @@ class DashboardController extends Controller
             $targetMonth = $this->targetMinutesMonthForUser($uid, $today);
             $workedHours = [
                 'worked_minutes' => $workedMinutes,
-                'worked_hhmm' => $this->minutesToHHMM($workedMinutes),
+                'worked_hhmm' => WorkTime::formatMinutesAsHHMM($workedMinutes),
                 'target_minutes' => $targetMinutes,
-                'target_hhmm' => $this->minutesToHHMM($targetMinutes),
+                'target_hhmm' => WorkTime::formatMinutesAsHHMM($targetMinutes),
                 'progress_percent' => $targetMinutes > 0 ? (int) min(999, round(($workedMinutes / $targetMinutes) * 100)) : 0,
                 'worked_month_minutes' => $workedMonth,
-                'worked_month_hhmm' => $this->minutesToHHMM($workedMonth),
+                'worked_month_hhmm' => WorkTime::formatMinutesAsHHMM($workedMonth),
                 'target_month_minutes' => $targetMonth,
-                'target_month_hhmm' => $this->minutesToHHMM($targetMonth),
+                'target_month_hhmm' => WorkTime::formatMinutesAsHHMM($targetMonth),
             ];
         }
 
@@ -490,7 +412,7 @@ class DashboardController extends Controller
             'notifications' => $notifications,
             'unread_notifications' => $unreadCount,
             'worked_hours' => $workedHours,
-        ])->header('Access-Control-Allow-Origin', '*');
+        ]);
     }
 
     public function team(Request $request)
@@ -505,9 +427,9 @@ class DashboardController extends Controller
             ]);
         }
 
-        $team = DB::table('teams')->where('id', $user->team_id)->first(['name']);
+        $team = Team::table()->where('id', $user->team_id)->first(['name']);
 
-        $rows = DB::table('users')
+        $rows = User::table()
             ->where('team_id', $user->team_id)
             ->whereNull('deleted_at')
             ->orderByRaw("COALESCE(first_name, name, '') asc")
@@ -524,7 +446,7 @@ class DashboardController extends Controller
         return response()->json([
             'team_name' => $team->name ?? null,
             'members' => $rows,
-        ])->header('Access-Control-Allow-Origin', '*');
+        ]);
     }
 
     public function upcomingHolidays(Request $request)
@@ -547,12 +469,12 @@ class DashboardController extends Controller
             ->take(5)
             ->values();
 
-        return response()->json($rows)->header('Access-Control-Allow-Origin', '*');
+        return response()->json($rows);
     }
 
     public function announcements(Request $request)
     {
-        $rows = DB::table('posts')
+        $rows = Post::table()
             ->join('users', 'posts.user_id', '=', 'users.id')
             ->orderBy('posts.created_at', 'desc')
             ->limit(5)
@@ -576,7 +498,7 @@ class DashboardController extends Controller
             })
             ->values();
 
-        return response()->json($rows)->header('Access-Control-Allow-Origin', '*');
+        return response()->json($rows);
     }
 
     public function documentsSummary(Request $request)
@@ -584,7 +506,7 @@ class DashboardController extends Controller
         $user = $request->user();
         if (!$user) return response()->json(['message' => 'Unauthenticated'], 401);
 
-        $rows = DB::table('documents')
+        $rows = Document::table()
             ->where('user_id', $user->id)
             ->whereNull('deleted_at')
             ->get(['id', 'category']);
@@ -604,7 +526,7 @@ class DashboardController extends Controller
             $summary['total']++;
         }
 
-        return response()->json($summary)->header('Access-Control-Allow-Origin', '*');
+        return response()->json($summary);
     }
 
     /**
@@ -643,7 +565,7 @@ class DashboardController extends Controller
             ->sortBy('next_birthday')
             ->values();
 
-        return response()->json($users->take(10))->header('Access-Control-Allow-Origin', '*');
+        return response()->json($users->take(10));
     }
 
     /**
@@ -653,7 +575,7 @@ class DashboardController extends Controller
     {
         $today = Carbon::today()->toDateString();
 
-        $rows = DB::table('attendances')
+        $rows = Attendance::table()
             ->where('date', $today)
             ->where('status', 'en_trabajo')
             ->join('users', 'attendances.user_id', '=', 'users.id')
@@ -668,7 +590,7 @@ class DashboardController extends Controller
                 ];
             });
 
-        return response()->json($rows)->header('Access-Control-Allow-Origin', '*');
+        return response()->json($rows);
     }
 
     /**
@@ -705,12 +627,12 @@ class DashboardController extends Controller
     {
         $user  = $request->user();
         $today = Carbon::today();
-        $scheduleDays = $this->loadScheduleDaysForUser((int) $user->id);
+        $scheduleDays = $this->schedules->loadScheduleDaysForUser((int) $user->id);
         $yearStart = $today->copy()->startOfYear();
         $yearEnd = $today->copy()->endOfYear();
 
         $requestedWorkingDates = [];
-        $requestedRows = DB::table('events')
+        $requestedRows = Event::table()
             ->where('events.user_id', $user->id)
             ->where('events.event_type_id', 2)
             ->whereNull('events.deleted_at')
@@ -753,7 +675,7 @@ class DashboardController extends Controller
         $vacationDaysTotal = (int) ($user->vacation_days_total ?? 0);
         $vacationDaysRemaining = max(0, $vacationDaysTotal - $requestedYear);
 
-        $event = DB::table('events')
+        $event = Event::table()
             ->where('events.user_id', $user->id)
             ->where('events.event_type_id', 2)
             ->whereNull('events.deleted_at')
@@ -773,13 +695,13 @@ class DashboardController extends Controller
                 'vacation_days_total' => $vacationDaysTotal,
                 'vacation_days_requested_year' => $requestedYear,
                 'remaining_vacation_days' => $vacationDaysRemaining,
-            ])->header('Access-Control-Allow-Origin', '*');
+            ]);
         }
 
         $start        = Carbon::parse($event->start_at)->startOfDay();
         $end          = $event->end_at ? Carbon::parse($event->end_at)->startOfDay() : $start->copy();
         $daysUntil    = (int) $today->diffInDays($start, false);
-        $vacationDays = $this->calculateWorkingDays($start, $end, $scheduleDays);
+        $vacationDays = $this->schedules->calculateWorkingDays($start, $end, $scheduleDays);
 
         return response()->json([
             'days_until_vacation' => max(0, $daysUntil),
@@ -787,6 +709,6 @@ class DashboardController extends Controller
             'vacation_days_total' => $vacationDaysTotal,
             'vacation_days_requested_year' => $requestedYear,
             'remaining_vacation_days' => $vacationDaysRemaining,
-        ])->header('Access-Control-Allow-Origin', '*');
+        ]);
     }
 }
