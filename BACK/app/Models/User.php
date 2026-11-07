@@ -54,7 +54,7 @@ class User extends Authenticatable
         'remember_token',
         'two_factor_recovery_codes',
         'two_factor_secret',
-        // session_token holds the plain API token for the active session:
+        // session_token holds the sha256 hash of the active API token:
         // never expose it in JSON responses (e.g. GET /api/employees/{id}).
         'session_token',
     ];

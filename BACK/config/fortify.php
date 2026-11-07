@@ -144,7 +144,9 @@ return [
     */
 
     'features' => [
-        Features::registration(),
+        // Registration is handled only by the API (POST /api/register).
+        // The Jetstream/Fortify web form was a second, unguarded sign-up path.
+        // Features::registration(),
         Features::resetPasswords(),
         // Features::emailVerification(),
         Features::updateProfileInformation(),

@@ -175,6 +175,15 @@ class AuthController extends Controller
         return sprintf('%02d:%02d', $h, $m);
     }
 
+    /**
+     * Hash of an API token as stored in users/attendances.session_token.
+     * The plain token is never persisted, so a DB leak does not leak sessions.
+     */
+    private function sessionTokenHash(?string $plainToken): ?string
+    {
+        return $plainToken ? hash('sha256', $plainToken) : null;
+    }
+
     public function register(Request $request)
     {
         $data = $request->validate([
@@ -191,8 +200,8 @@ class AuthController extends Controller
 
         $token = $user->createToken('api-token')->plainTextToken;
 
-        // record session token on user (attendance will be started manually via API)
-        $user->session_token = $token;
+        // record session token hash on user (attendance will be started manually via API)
+        $user->session_token = $this->sessionTokenHash($token);
         $user->save();
 
         return response()->json(['user' => $user, 'token' => $token], 201)
@@ -218,8 +227,8 @@ class AuthController extends Controller
 
         $token = $user->createToken('api-token')->plainTextToken;
 
-        // record session token on user (attendance start is manual now)
-        $user->session_token = $token;
+        // record session token hash on user (attendance start is manual now)
+        $user->session_token = $this->sessionTokenHash($token);
         $user->save();
 
         return response()->json(['user' => $user, 'token' => $token])
@@ -231,11 +240,11 @@ class AuthController extends Controller
         $user = $request->user();
         if ($user && $request->bearerToken()) {
             // close attendance if exists for this session
-            $token = $request->bearerToken();
+            $tokenHash = $this->sessionTokenHash($request->bearerToken());
             $now = Carbon::now();
             $att = DB::table('attendances')
                 ->where('user_id', $user->id)
-                ->where('session_token', $token)
+                ->where('session_token', $tokenHash)
                 ->where('status', 'en_trabajo')
                 ->orderBy('created_at', 'desc')
                 ->first();
@@ -782,8 +791,8 @@ class AuthController extends Controller
             }
         }
 
-        // use the current bearer token as session token
-        $token = $request->bearerToken() ?: $user->session_token;
+        // use the hash of the current bearer token as session token
+        $token = $this->sessionTokenHash($request->bearerToken()) ?: $user->session_token;
         if (! $token) {
             // should not happen if the user is authenticated via Sanctum
             $token = hash('sha256', Str::random(40));
@@ -2175,6 +2184,13 @@ class AuthController extends Controller
             return response()->json(['message' => 'Employee not found'], 404);
         }
 
+        // Account-takeover guard: only an admin may edit an admin account.
+        // Otherwise a user holding just "employees.edit" could change an
+        // admin's email/password and log in as them.
+        if ($this->isAdminUser($employee) && ! $this->isAdminUser($user)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email,' . $employee->id,
@@ -2269,6 +2285,11 @@ class AuthController extends Controller
         $employee = User::find($id);
         if (! $employee) {
             return response()->json(['message' => 'Employee not found'], 404);
+        }
+
+        // Only an admin may delete an admin account.
+        if ($this->isAdminUser($employee) && ! $this->isAdminUser($user)) {
+            return response()->json(['message' => 'Forbidden'], 403);
         }
 
         $employee->delete();
