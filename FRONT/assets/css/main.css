@@ -32,3 +32,9 @@ button { font: inherit; }
   border: 1px solid #d1d5db;
   border-radius: 6px;
 }
+
+/* Dashboard card drag & drop (SortableJS, see composables/useDashboardDrag.ts) */
+.dash-drag-ghost { opacity: 0.35; }
+.dash-drag-dragging,
+.sortable-fallback { opacity: 0.95 !important; transform: rotate(1.5deg); box-shadow: 0 20px 40px -12px rgb(0 0 0 / 0.6); cursor: grabbing; }
+[data-dash-key] { touch-action: manipulation; -webkit-user-select: none; user-select: none; }

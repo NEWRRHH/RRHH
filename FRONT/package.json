@@ -8,10 +8,12 @@
     "generate": "nuxi generate"
   },
   "dependencies": {
+    "@types/sortablejs": "^1.15.8",
     "chart.js": "^4.4.4",
     "laravel-echo": "^1.11.0",
     "nuxt": "^3",
     "pusher-js": "^8.0.0",
+    "sortablejs": "^1.15.6",
     "sweetalert2": "^11.26.25",
     "vue-chartjs": "^5.3.1"
   },

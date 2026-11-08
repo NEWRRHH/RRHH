@@ -25,7 +25,7 @@
         </div>
       </header>
 
-      <main class="relative z-10 flex-1 p-6 space-y-6 overflow-auto">
+      <main ref="boardRoot" class="relative z-10 flex-1 p-6 space-y-6 overflow-auto">
         <div class="flex flex-wrap items-center gap-3">
           <div class="bg-white/5 border border-white/5 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm">
             <div class="text-2xl text-blue-300 font-semibold">{{ data.stats?.users_count ?? 0 }}</div>
@@ -51,18 +51,16 @@
         <!-- Personal arrangement: hidden cards tray + back to the company layout -->
         <div
           v-if="isEditMode"
+          data-dash-drop="hidden"
           class="rounded-2xl border-2 border-dashed p-4 transition"
-          :class="dragOverTray ? 'border-red-400/60 bg-red-500/5' : 'border-blue-500/40 bg-blue-500/5'"
-          @dragover.prevent="dragOverTray = true"
-          @dragleave="dragOverTray = false"
-          @drop.prevent="onTrayDrop"
+          :class="dashDragging ? 'border-red-400/60 bg-red-500/5' : 'border-blue-500/40 bg-blue-500/5'"
         >
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p class="text-sm font-medium text-white">Estás personalizando tu dashboard</p>
               <p class="text-xs text-gray-400 mt-0.5">
                 Arrastra las tarjetas para cambiarlas de lugar. Suéltalas aquí para ocultarlas o arrastra una oculta a cualquier posición.
-                Los cambios solo los ves tú.
+                En el celular, mantén pulsada la tarjeta para arrastrarla. Los cambios solo los ves tú.
               </p>
             </div>
             <div class="flex gap-2">
@@ -76,15 +74,13 @@
               <button class="text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white" @click="toggleEditMode">Listo</button>
             </div>
           </div>
-          <div class="mt-3 flex flex-wrap gap-2">
+          <div data-dash-list class="mt-3 flex flex-wrap gap-2 min-h-[36px]">
             <div
               v-for="key in hiddenCards"
               :key="key"
-              draggable="true"
-              class="flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-900 px-2.5 py-1.5 cursor-grab active:cursor-grabbing select-none"
+              :data-dash-key="key"
+              class="flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-900 px-2.5 py-1.5 cursor-grab active:cursor-grabbing"
               :title="`Arrastra a una posición para mostrar ${DASHBOARD_WIDGETS[key].name}`"
-              @dragstart="onTrayDragStart($event, key)"
-              @dragend="onCardDragEnd"
             >
               <span class="w-6 h-6 rounded-md flex items-center justify-center" :class="DASHBOARD_WIDGETS[key].tone">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
@@ -93,7 +89,7 @@
               </span>
               <span class="text-xs text-gray-200">{{ DASHBOARD_WIDGETS[key].name }}</span>
             </div>
-            <span v-if="!hiddenCards.length" class="text-xs text-gray-500">No tienes tarjetas ocultas.</span>
+            <span v-if="!hiddenCards.length" class="pointer-events-none self-center text-xs text-gray-500">No tienes tarjetas ocultas.</span>
           </div>
         </div>
 
@@ -103,23 +99,20 @@
               v-for="slotIndex in visibleSlots(column)"
               :key="`slot-${slotIndex}`"
               class="rounded-2xl border transition"
+              :data-dash-drop="isEditMode ? slotIndex : undefined"
+              :data-dash-list="isEditMode ? '' : undefined"
               :class="[
                 isEditMode ? 'min-h-40' : 'h-auto',
                 isEditMode
-                  ? (dragOverSlot === slotIndex ? 'border-blue-500 bg-blue-500/5 border-dashed' : 'border-gray-700 bg-gray-900/20 border-dashed')
+                  ? (dashDragging ? 'border-blue-500/60 bg-blue-500/5 border-dashed' : 'border-gray-700 bg-gray-900/20 border-dashed')
                   : 'border-gray-800 bg-transparent'
               ]"
-              @dragover.prevent="isEditMode ? onSlotDragOver(slotIndex) : null"
-              @dragleave="isEditMode ? onSlotDragLeave(slotIndex) : null"
-              @drop.prevent="isEditMode ? onSlotDrop(slotIndex) : null"
             >
               <div
                 v-if="boardLayout[slotIndex]"
                 class="rounded-2xl"
                 :class="isEditMode ? 'cursor-grab active:cursor-grabbing' : ''"
-                :draggable="isEditMode"
-                @dragstart="onCardDragStart(slotIndex)"
-                @dragend="onCardDragEnd"
+                :data-dash-key="isEditMode ? boardLayout[slotIndex] : undefined"
               >
                 <template v-if="boardLayout[slotIndex] === 'welcome'">
                   <div class="relative overflow-hidden bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-6 min-h-52 shadow-xl shadow-blue-900/40">
@@ -148,7 +141,7 @@
                 />
               </div>
 
-              <div v-else-if="isEditMode" class="h-full min-h-40 flex items-center justify-center text-xs text-gray-500">
+              <div v-else-if="isEditMode" class="pointer-events-none h-full min-h-40 flex items-center justify-center text-xs text-gray-500">
                 Posición libre — suelta una tarjeta aquí
               </div>
             </div>
@@ -163,6 +156,7 @@
 <script setup lang="ts">
 import { computed, ref, onBeforeMount, watch, onBeforeUnmount } from 'vue'
 import { DASHBOARD_COLUMNS, DASHBOARD_WIDGETS, DASHBOARD_WIDGET_KEYS, moveDashboardWidget, normalizeDashboardSlots } from '~/utils/dashboardWidgets'
+import { useDashboardDrag } from '~/composables/useDashboardDrag'
 
 definePageMeta({ auth: true })
 import { useRouter } from 'vue-router'
@@ -233,9 +227,6 @@ const boardLayout = ref<Array<CardKey | null>>(['welcome', 'birthdays', 'team', 
 const boardColumns = DASHBOARD_COLUMNS
 // 'user' = personal arrangement, 'company' = layout defined by RRHH
 const layoutSource = ref<'user' | 'company'>('company')
-const draggingKey = ref<CardKey | null>(null)
-const dragOverSlot = ref<number | null>(null)
-const dragOverTray = ref(false)
 const hiddenCards = computed(() => DASHBOARD_WIDGET_KEYS.filter((k) => !boardLayout.value.includes(k)))
 const isEditMode = ref(false)
 const savingLayout = ref(false)
@@ -299,39 +290,19 @@ const todayLabel = (() => {
 
 function toggleEditMode() {
   isEditMode.value = !isEditMode.value
-  if (!isEditMode.value) {
-    onCardDragEnd()
-  }
 }
+
+// Drag & drop (SortableJS: mouse + touch), only active in edit mode.
+const boardRoot = ref<HTMLElement | null>(null)
+const { dragging: dashDragging } = useDashboardDrag(boardRoot, (key, target) => {
+  if (target === 'hidden' ? !boardLayout.value.includes(key) : boardLayout.value[target] === key) return
+  boardLayout.value = moveDashboardWidget(boardLayout.value, key, target)
+  void saveDashboardLayout()
+}, isEditMode)
 
 function visibleSlots(column: number[]) {
   if (isEditMode.value) return column
   return column.filter((slotIndex) => boardLayout.value[slotIndex] !== null)
-}
-
-function onCardDragStart(slotIndex: number) {
-  if (!isEditMode.value) return
-  if (!boardLayout.value[slotIndex]) return
-  draggingKey.value = boardLayout.value[slotIndex]
-}
-
-function onTrayDragStart(event: DragEvent, key: CardKey) {
-  draggingKey.value = key
-  event.dataTransfer?.setData('text/plain', key) // required by Firefox
-}
-
-function onCardDragEnd() {
-  draggingKey.value = null
-  dragOverSlot.value = null
-  dragOverTray.value = false
-}
-
-function onTrayDrop() {
-  const key = draggingKey.value
-  onCardDragEnd()
-  if (!isEditMode.value || !key || !boardLayout.value.includes(key)) return
-  boardLayout.value = moveDashboardWidget(boardLayout.value, key, 'hidden')
-  void saveDashboardLayout()
 }
 
 async function resetToCompanyLayout() {
@@ -342,23 +313,6 @@ async function resetToCompanyLayout() {
   } catch (e) {
     $swal.toast('error', 'No se pudo restablecer el dashboard')
   }
-}
-
-function onSlotDragOver(slotIndex: number) {
-  dragOverSlot.value = slotIndex
-}
-
-function onSlotDragLeave(slotIndex: number) {
-  if (dragOverSlot.value === slotIndex) dragOverSlot.value = null
-}
-
-function onSlotDrop(slotIndex: number) {
-  if (!isEditMode.value) return
-  const key = draggingKey.value
-  onCardDragEnd()
-  if (!key || boardLayout.value[slotIndex] === key) return
-  boardLayout.value = moveDashboardWidget(boardLayout.value, key, slotIndex)
-  void saveDashboardLayout()
 }
 
 function applyLayout(res: any) {
