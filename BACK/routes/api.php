@@ -85,6 +85,10 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index']);
     Route::get('/dashboard/layout', [DashboardController::class, 'dashboardLayout']);
     Route::put('/dashboard/layout', [DashboardController::class, 'saveDashboardLayout']);
+    Route::delete('/dashboard/layout', [DashboardController::class, 'resetDashboardLayout']);
+    // company default dashboard (RRHH)
+    Route::get('/settings/dashboard', [DashboardController::class, 'companyLayout']);
+    Route::put('/settings/dashboard', [DashboardController::class, 'saveCompanyLayout']);
     // upcoming birthdays for dashboard UI
     Route::get('/birthdays', [DashboardController::class, 'birthdays']);
     // workers currently "en_trabajo"

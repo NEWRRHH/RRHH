@@ -12,7 +12,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
           </svg>
         </button>
-        <h1 class="text-base font-semibold text-white hidden sm:block">{{ tabs.find(t => t.id === activeTab)?.label || 'Configuración' }}</h1>
+        <h1 class="text-base font-semibold text-white hidden sm:block">Configuración</h1>
         <div v-if="activeTab === 'permissions'" class="relative flex items-center ml-2 sm:ml-8 max-w-[120px] sm:max-w-none">
           <input
             v-model="searchQuery"
@@ -56,173 +56,102 @@
               :key="tab.id"
               class="mx-0.5 px-4 py-2 rounded-lg text-sm transition whitespace-nowrap"
               :class="activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
-              @click="activeTab = tab.id"
+              @click="selectTab(tab.id)"
             >
               {{ tab.label }}
             </button>
           </div>
 
-          <section v-if="activeTab === 'dashboard'" class="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-4">
-            <div class="flex items-center justify-between gap-3 flex-wrap">
-              <div>
-                <h2 class="text-white font-semibold">{{ isAdminUser ? 'Personalizar Dashboard' : 'Mensaje de bienvenida' }}</h2>
-                <p class="text-sm text-gray-400 mt-1">{{ isAdminUser ? 'Activa, desactiva y reordena las cards del dashboard.' : 'Actualiza el mensaje de bienvenida.' }}</p>
-              </div>
-              <div class="flex gap-2">
-                <button v-if="isAdminUser" class="px-3 py-2 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800 text-xs transition" @click="resetDefaults">
-                  Restablecer
-                </button>
-                <button
-                  class="px-4 py-2 rounded-lg bg-blue-600 text-white text-xs font-medium disabled:opacity-50 hover:bg-blue-500 transition"
-                  :disabled="saving"
-                  @click="saveLayout"
-                >
-                  {{ saving ? 'Guardando...' : 'Guardar cambios' }}
-                </button>
-              </div>
+          <section v-if="activeTab === 'dashboard'" class="space-y-6">
+            <div>
+              <h2 class="text-white font-semibold">Dashboard de la empresa</h2>
+              <p class="text-sm text-gray-400 mt-1">
+                Es el diseño que ven todos los empleados por defecto. Cada persona puede reacomodar el suyo desde su dashboard y volver a este cuando quiera.
+              </p>
             </div>
 
-            <!-- Welcome message card -->
-            <div class="rounded-xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/5 to-sky-500/5 p-4 space-y-3">
-              <div class="flex items-center gap-2">
-                <div class="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
-                  <svg class="w-4 h-4 text-cyan-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
-                  </svg>
-                </div>
-                <h3 class="text-sm font-semibold text-white">Mensaje de bienvenida</h3>
-              </div>
-              <div class="flex flex-col gap-3">
-                <div>
-                  <label class="block text-xs text-gray-400 mb-1">Título</label>
-                  <input v-model="welcomeSettings.title" class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500" maxlength="80" />
-                </div>
-                <div>
-                  <label class="block text-xs text-gray-400 mb-1">Descripción</label>
-                  <textarea v-model="welcomeSettings.subtitle" rows="3" class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 resize-none" maxlength="180" />
-                </div>
-              </div>
-              <label class="inline-flex items-center gap-2 text-sm text-gray-200 cursor-pointer hover:text-white transition">
-                <input v-model="welcomeSettings.show_date" type="checkbox" class="accent-cyan-500 w-4 h-4" />
-                Mostrar fecha en bienvenida
-              </label>
+            <div v-if="layoutLoading" class="space-y-4">
+              <div class="h-40 rounded-2xl bg-gray-900 border border-gray-800 animate-pulse"></div>
+              <div class="h-64 rounded-2xl bg-gray-900 border border-gray-800 animate-pulse"></div>
             </div>
 
-            <div v-if="loading" class="space-y-3">
-              <div class="rounded-xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/5 to-sky-500/5 p-4 space-y-3">
-                <div class="flex items-center gap-2">
-                  <div class="w-8 h-8 rounded-lg bg-gray-800 animate-pulse"></div>
-                  <div class="h-4 w-40 rounded bg-gray-800 animate-pulse"></div>
-                </div>
-                <div class="flex flex-col gap-3">
-                  <div class="space-y-2">
-                    <div class="h-3 w-12 rounded bg-gray-800 animate-pulse"></div>
-                    <div class="h-10 w-full rounded-lg bg-gray-800 animate-pulse"></div>
-                  </div>
-                  <div class="space-y-2">
-                    <div class="h-3 w-16 rounded bg-gray-800 animate-pulse"></div>
-                    <div class="h-20 w-full rounded-lg bg-gray-800 animate-pulse"></div>
-                  </div>
-                </div>
-              </div>
-              <div class="rounded-xl border border-gray-800 bg-gray-950/60 p-4 space-y-3">
-                <div class="h-4 w-36 rounded bg-gray-800 animate-pulse"></div>
-                <div class="grid grid-cols-3 gap-2">
-                  <div v-for="i in 9" :key="'sk-slot-' + i" class="h-16 rounded-lg border-2 border-dashed border-gray-700/50 bg-gray-900/40 animate-pulse"></div>
-                </div>
-              </div>
-              <div class="space-y-2">
-                <div class="h-4 w-32 rounded bg-gray-800 animate-pulse"></div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                  <div v-for="i in 9" :key="'sk-wid-' + i" class="h-24 rounded-xl border border-gray-800 bg-gray-950/60 animate-pulse"></div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Visual slots grid (only for admin) -->
-            <div v-else-if="isAdminUser" class="space-y-4">
-              <div class="rounded-xl border border-gray-800 bg-gray-950/60 p-4">
-                <h3 class="text-sm font-semibold text-white mb-3 flex items-center gap-2">
-                  <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
-                  </svg>
-                  Vista previa del layout
-                  <span class="text-xs text-gray-500 font-normal">(3 columnas × 3 filas)</span>
-                </h3>
-
-                <div class="grid grid-cols-3 gap-2 mb-4">
-                  <div
-                    v-for="(slotKey, idx) in slots"
-                    :key="idx"
-                    class="min-w-0 min-h-[70px] rounded-lg border-2 border-dashed p-2 text-xs flex flex-col items-center justify-center gap-1 transition-all duration-200"
-                    :class="slotKey
-                      ? 'border-blue-500/40 bg-blue-500/10'
-                      : 'border-gray-700/50 bg-gray-900/40 text-gray-500 hover:border-gray-600'
-                    "
-                  >
-                    <template v-if="slotKey">
-                      <div class="w-5 h-5 rounded bg-blue-500/30 flex items-center justify-center">
-                        <svg class="w-3 h-3 text-blue-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-                        </svg>
+            <template v-else>
+              <!-- Welcome message + live preview -->
+              <div class="rounded-2xl border border-gray-800 bg-gray-900 p-5">
+                <h3 class="text-sm font-semibold text-white mb-4">Mensaje de bienvenida</h3>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                  <div class="space-y-4">
+                    <div>
+                      <div class="flex items-baseline justify-between mb-1">
+                        <label for="welcome-title" class="!mb-0 text-xs !font-medium text-gray-400">Título</label>
+                        <span class="text-[11px] tabular-nums" :class="welcome.title.length >= 80 ? 'text-amber-300' : 'text-gray-500'">{{ welcome.title.length }}/80</span>
                       </div>
-                      <span class="text-[10px] text-blue-300 font-medium truncate w-full text-center px-1">{{ getWidgetName(slotKey) }}</span>
-                    </template>
-                    <template v-else>
-                      <span class="text-[10px]">Slot {{ idx + 1 }}</span>
-                      <span class="text-[9px] text-gray-600">Vacío</span>
-                    </template>
+                      <input id="welcome-title" v-model="welcome.title" maxlength="80" placeholder="Bienvenido" class="!mb-0 w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      <p class="mt-1 text-[11px] text-gray-500">Se completa con el nombre de cada empleado: "{{ welcome.title || 'Bienvenido' }}, Ana".</p>
+                    </div>
+                    <div>
+                      <div class="flex items-baseline justify-between mb-1">
+                        <label for="welcome-subtitle" class="!mb-0 text-xs !font-medium text-gray-400">Descripción</label>
+                        <span class="text-[11px] tabular-nums" :class="welcome.subtitle.length >= 180 ? 'text-amber-300' : 'text-gray-500'">{{ welcome.subtitle.length }}/180</span>
+                      </div>
+                      <textarea id="welcome-subtitle" v-model="welcome.subtitle" rows="3" maxlength="180" class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+                    </div>
+                    <label class="inline-flex items-center gap-2 text-sm text-gray-200 cursor-pointer">
+                      <input v-model="welcome.show_date" type="checkbox" class="accent-blue-500 w-4 h-4" />
+                      Mostrar la fecha de hoy
+                    </label>
+                  </div>
+
+                  <!-- Live preview: same look as the dashboard card -->
+                  <div>
+                    <div class="text-[11px] text-gray-500 mb-1.5">Vista previa</div>
+                    <div class="relative overflow-hidden bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-6 min-h-44 shadow-xl shadow-blue-900/40">
+                      <div class="absolute -top-10 -right-10 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
+                      <div class="relative">
+                        <p class="text-blue-200 text-xs font-medium mb-1">Panel de control</p>
+                        <h4 class="text-xl font-bold text-white leading-tight break-words">{{ welcome.title || 'Bienvenido' }}, {{ previewName }}</h4>
+                        <p v-if="welcome.show_date" class="mt-1 text-blue-100/90 text-xs">{{ todayLabel }}</p>
+                        <p class="mt-2 text-blue-200 text-sm break-words">{{ welcome.subtitle || 'Aquí tienes un resumen de la actividad de la empresa.' }}</p>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <!-- Widget list -->
-              <div class="space-y-2">
-                <h3 class="text-sm font-semibold text-white flex items-center gap-2">
-                  <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                  </svg>
-                  Widgets disponibles
-                </h3>
-
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                  <div
-                    v-for="w in widgets"
-                    :key="w.key"
-                    class="rounded-xl border p-3 transition-all duration-200"
-                    :class="visibility[w.key]
-                      ? 'border-blue-500/30 bg-blue-500/5'
-                      : 'border-gray-800 bg-gray-950/60 opacity-60 hover:opacity-80'
-                    "
-                  >
-                    <div class="flex items-center justify-between gap-2 mb-2">
-                      <label class="flex items-center gap-2 cursor-pointer min-w-0">
-                        <input v-model="visibility[w.key]" type="checkbox" class="accent-blue-500 w-4 h-4 shrink-0" />
-                        <span class="text-sm font-medium text-gray-200 truncate">{{ w.name }}</span>
-                      </label>
-                    </div>
-                    <div class="flex items-center gap-2">
-                      <span class="text-[10px] text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded font-mono shrink-0">{{ w.key }}</span>
-                      <select
-                        :value="widgetSlot(w.key)"
-                        class="flex-1 min-w-0 rounded-lg bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        :disabled="!visibility[w.key]"
-                        @change="onSlotChange(w.key, $event)"
-                      >
-                        <option :value="-1">Sin slot</option>
-                        <option v-for="i in 9" :key="i" :value="i - 1">Slot {{ i }}</option>
-                      </select>
-                    </div>
+              <!-- Cards -->
+              <div class="rounded-2xl border border-gray-800 bg-gray-900 p-5">
+                <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+                  <div>
+                    <h3 class="text-sm font-semibold text-white">Tarjetas</h3>
+                    <p class="text-xs text-gray-500 mt-0.5">Arrastra las tarjetas para cambiarlas de lugar. Se ordenan igual que en el dashboard: por columnas, de arriba hacia abajo.</p>
                   </div>
+                  <button class="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800" @click="restoreLayoutDefaults">
+                    Restablecer diseño original
+                  </button>
                 </div>
+                <DashboardLayoutEditor v-model="companySlots" />
+              </div>
+
+              <p v-if="layoutUpdatedAt" class="text-xs text-gray-600">Última modificación: {{ new Date(layoutUpdatedAt).toLocaleString('es-ES') }}</p>
+            </template>
+
+            <!-- Sticky save bar: only when there are unsaved changes -->
+            <div
+              v-if="layoutDirty"
+              class="sticky bottom-0 z-20 -mx-1 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-500/30 bg-gray-900/95 backdrop-blur px-4 py-3 shadow-2xl shadow-black/50"
+              role="status"
+            >
+              <span class="text-sm text-gray-200 flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-amber-400" aria-hidden="true"></span>
+                Tienes cambios sin guardar
+              </span>
+              <div class="flex gap-2">
+                <button class="px-3 py-2 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800 text-sm" :disabled="layoutSaving" @click="discardLayoutChanges">Descartar</button>
+                <button class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium disabled:opacity-50" :disabled="layoutSaving" @click="saveCompanyLayout">
+                  {{ layoutSaving ? 'Guardando...' : 'Guardar para toda la empresa' }}
+                </button>
               </div>
             </div>
-
-            <!-- Non-admin sees only welcome message -->
-            <p v-else class="text-sm text-gray-400 text-center py-4">
-              Solo los administradores pueden gestionar los widgets del dashboard.
-            </p>
           </section>
 
           <section v-else-if="activeTab === 'permissions'" class="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-4">
@@ -634,8 +563,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeMount, onBeforeUnmount, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onBeforeMount, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeRouteLeave, useRouter } from 'vue-router'
+import { DASHBOARD_POSITIONS, normalizeDashboardSlots, type DashboardSlots } from '~/utils/dashboardWidgets'
+import DashboardLayoutEditor from '../components/DashboardLayoutEditor.vue'
 import { useAuth } from '../composables/useAuth'
 import AppSidebar from '../components/AppSidebar.vue'
 import AttendanceButton from '../components/AttendanceButton.vue'
@@ -670,6 +601,13 @@ const canManageTeams = computed(() => {
   return permissions.includes('teams.manage')
 })
 
+const canManageDashboard = computed(() => {
+  const currentUser: any = user.value || {}
+  if (currentUser?.can_manage_dashboard) return true
+  const permissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : []
+  return permissions.includes('dashboard.manage')
+})
+
 const tabs = computed(() => {
   if (isAdminUser.value) {
     return [
@@ -680,23 +618,14 @@ const tabs = computed(() => {
     ]
   }
 
-  const list = [{ id: 'dashboard', label: 'Bienvenida' }]
+  const list: Array<{ id: string; label: string }> = []
+  if (canManageDashboard.value) list.push({ id: 'dashboard', label: 'Dashboard' })
   if (canManageSchedules.value) list.push({ id: 'schedules', label: 'Jornadas laborales' })
   if (canManageTeams.value) list.push({ id: 'equipos', label: 'Equipos' })
-  return list.length > 1 ? list : []
+  return list
 })
 
 const activeTab = ref('dashboard')
-const loading = ref(true)
-const saving = ref(false)
-const widgets = ref<Array<{ key: string; name: string }>>([])
-const slots = ref<Array<string | null>>([null, null, null, null, null, null, null, null, null])
-const visibility = ref<Record<string, boolean>>({})
-const welcomeSettings = ref<{ title: string; subtitle: string; show_date: boolean }>({
-  title: 'Bienvenido',
-  subtitle: 'Aqui tenes un resumen de la actividad del sistema.',
-  show_date: true,
-})
 const canManagePermissions = ref(false)
 const permissionsLoading = ref(false)
 const permissionSaving = ref(false)
@@ -834,106 +763,108 @@ const onLogout = async () => {
   router.push('/login')
 }
 
-function getWidgetName(key: string): string {
-  const w = widgets.value.find((w) => w.key === key)
-  return w?.name || key
+// ── Company dashboard (default layout + welcome message) ──
+type WelcomeSettings = { title: string; subtitle: string; show_date: boolean }
+
+const layoutLoading = ref(false)
+const layoutSaving = ref(false)
+const companySlots = ref<DashboardSlots>(Array(DASHBOARD_POSITIONS).fill(null))
+const welcome = ref<WelcomeSettings>({ title: '', subtitle: '', show_date: true })
+const defaultSlots = ref<DashboardSlots>([])
+const defaultWelcome = ref<WelcomeSettings>({ title: 'Bienvenido', subtitle: '', show_date: true })
+const layoutUpdatedAt = ref<string | null>(null)
+const savedLayoutSnapshot = ref('')
+
+const layoutSnapshot = () => JSON.stringify({ slots: companySlots.value, welcome: welcome.value })
+const layoutDirty = computed(() => !layoutLoading.value && savedLayoutSnapshot.value !== '' && layoutSnapshot() !== savedLayoutSnapshot.value)
+
+const previewName = computed(() => String((user.value as any)?.first_name || (user.value as any)?.name || 'Ana').split(' ')[0])
+const todayLabel = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+
+function applyCompanyLayout(res: any) {
+  companySlots.value = normalizeDashboardSlots(res?.slots)
+  const w = res?.welcome || {}
+  welcome.value = { title: String(w.title || ''), subtitle: String(w.subtitle || ''), show_date: w.show_date !== false }
+  layoutUpdatedAt.value = res?.updated_at || null
+  savedLayoutSnapshot.value = layoutSnapshot()
 }
 
-function widgetSlot(key: string): number {
-  return slots.value.findIndex((k) => k === key)
-}
-
-function onSlotChange(key: string, e: Event) {
-  const target = e.target as HTMLSelectElement
-  const next = Number(target.value)
-
-  const current = widgetSlot(key)
-  if (current >= 0) slots.value[current] = null
-  if (next >= 0) {
-    const occupying = slots.value[next]
-    if (occupying && occupying !== key) {
-      slots.value[next] = key
-      if (current >= 0) {
-        slots.value[current] = occupying
-      }
-      return
-    }
-    slots.value[next] = key
-  }
-}
-
-function resetDefaults() {
-  if (!isAdminUser.value) return
-  slots.value = [null, null, null, null, null, null, null, null, null]
-  const order = ['welcome', 'birthdays', 'team', 'vacation', 'notifications', 'worked_hours', 'holidays', 'announcements', 'documents']
-  order.forEach((k, idx) => {
-    slots.value[idx] = k
-    visibility.value[k] = true
-  })
-  welcomeSettings.value = {
-    title: 'Bienvenido',
-    subtitle: 'Aqui tenes un resumen de la actividad del sistema.',
-    show_date: true,
-  }
-}
-
-async function loadLayout() {
-  if (!authenticated.value) return
-  loading.value = true
+async function loadCompanyLayout() {
+  if (!canManageDashboard.value) return
+  layoutLoading.value = true
   try {
-    const res: any = await $fetch(`/api/dashboard/layout`, {
-    })
-
-    widgets.value = (res?.widgets || []).map((w: any) => ({ key: String(w.key), name: String(w.name) }))
-    slots.value = Array.isArray(res?.slots) ? res.slots.slice(0, 9) : [null, null, null, null, null, null, null, null, null]
-    while (slots.value.length < 9) slots.value.push(null)
-
-    const vis: Record<string, boolean> = {}
-    for (const w of widgets.value) {
-      vis[w.key] = !!(res?.visibility?.[w.key] ?? true)
-    }
-    visibility.value = vis
-
-    const ws = res?.settings?.welcome || {}
-    welcomeSettings.value = {
-      title: typeof ws?.title === 'string' && ws.title.trim() ? ws.title.trim() : 'Bienvenido',
-      subtitle: typeof ws?.subtitle === 'string' && ws.subtitle.trim() ? ws.subtitle.trim() : 'Aqui tenes un resumen de la actividad del sistema.',
-      show_date: ws?.show_date !== false,
-    }
+    const res: any = await $fetch('/api/settings/dashboard')
+    defaultSlots.value = normalizeDashboardSlots(res?.default_slots)
+    if (res?.default_welcome) defaultWelcome.value = { ...res.default_welcome }
+    applyCompanyLayout(res)
   } catch (e) {
-    console.error('layout load failed', e)
+    $swal.toast('error', 'No se pudo cargar el dashboard de la empresa')
   } finally {
-    loading.value = false
+    layoutLoading.value = false
   }
 }
 
-async function saveLayout() {
-  if (!authenticated.value) return
-  saving.value = true
+async function saveCompanyLayout() {
+  layoutSaving.value = true
   try {
-    const normalizedSlots = slots.value.map((k) => {
-      if (!k) return null
-      return visibility.value[k] ? k : null
-    })
-
-    await $fetch(`/api/dashboard/layout`, {
+    const res: any = await $fetch('/api/settings/dashboard', {
       method: 'PUT',
-      body: {
-        slots: normalizedSlots,
-        visibility: visibility.value,
-        settings: {
-          welcome: welcomeSettings.value,
-        },
-      },
+      body: { slots: companySlots.value, welcome: welcome.value },
     })
-    $swal.toast('success', 'Configuracion guardada correctamente')
-  } catch (e) {
-    console.error('layout save failed', e)
-    $swal.toast('error', 'No se pudo guardar la configuracion')
+    applyCompanyLayout(res?.layout)
+    $swal.toast('success', 'Dashboard de la empresa guardado')
+  } catch (e: any) {
+    const errors = e?.data?.errors
+    $swal.toast('error', errors ? String(Object.values(errors).flat()[0]) : 'No se pudo guardar el dashboard')
   } finally {
-    saving.value = false
+    layoutSaving.value = false
   }
 }
+
+function discardLayoutChanges() {
+  if (!savedLayoutSnapshot.value) return
+  const saved = JSON.parse(savedLayoutSnapshot.value)
+  companySlots.value = saved.slots
+  welcome.value = saved.welcome
+}
+
+async function restoreLayoutDefaults() {
+  const ok = await $swal.confirm(
+    'Restablecer diseño original',
+    'Se volverá a la disposición de fábrica de las tarjetas y al mensaje de bienvenida por defecto. No se guarda hasta que pulses "Guardar".',
+    'Restablecer',
+    'Cancelar',
+  )
+  if (!ok) return
+  companySlots.value = [...defaultSlots.value]
+  welcome.value = { ...defaultWelcome.value }
+}
+
+async function confirmLeaveDashboardTab(): Promise<boolean> {
+  if (!layoutDirty.value) return true
+  return await $swal.confirm('Cambios sin guardar', 'Tienes cambios en el dashboard de la empresa que se perderán. ¿Salir igualmente?', 'Salir sin guardar', 'Seguir editando')
+}
+
+async function selectTab(id: string) {
+  if (id === activeTab.value) return
+  if (activeTab.value === 'dashboard' && !(await confirmLeaveDashboardTab())) return
+  if (activeTab.value === 'dashboard') discardLayoutChanges()
+  activeTab.value = id
+}
+
+onBeforeRouteLeave(async () => {
+  if (activeTab.value === 'dashboard' && !(await confirmLeaveDashboardTab())) return false
+})
+
+function warnBeforeUnload(event: BeforeUnloadEvent) {
+  if (layoutDirty.value) {
+    event.preventDefault()
+    event.returnValue = ''
+  }
+}
+onMounted(() => window.addEventListener('beforeunload', warnBeforeUnload))
+onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnload))
+// ── End company dashboard ──
 
 // ── Roles & permissions ──
 type PermissionRole = { id: number; name: string; description: string | null; is_admin: boolean; users_count: number; permission_codes: string[] }
@@ -1258,7 +1189,7 @@ onBeforeMount(async () => {
     return router.push('/dashboard')
   }
 
-  await loadLayout()
+  await loadCompanyLayout()
   await loadPermissions()
   await loadScheduleTemplates()
 })

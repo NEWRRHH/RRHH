@@ -69,6 +69,7 @@ const AUDIT_LABELS: Record<string, string> = {
   'plan.created': 'Plan creado',
   'plan.updated': 'Plan editado',
   'plan.deleted': 'Plan eliminado',
+  'dashboard.company_layout_updated': 'Dashboard de empresa actualizado',
 }
 
 export function auditLabel(action: string): string {

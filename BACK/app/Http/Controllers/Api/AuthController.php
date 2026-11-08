@@ -160,13 +160,15 @@ class AuthController extends Controller
         $payload['can_manage_schedules'] = $user->hasPermission('schedules.manage');
         $payload['can_manage_teams'] = $user->hasPermission('teams.manage');
         $payload['can_manage_holidays'] = $user->hasPermission('holidays.manage');
+        $payload['can_manage_dashboard'] = $user->hasPermission('dashboard.manage');
         // plan limits vs usage (company admins see it in the settings screen)
         $payload['plan_usage'] = $user->company && $user->isAdmin() ? app(PlanLimits::class)->usage($user->company) : null;
         $payload['can_access_announcements'] = $user->hasPermission('announcements.manage');
         $payload['can_manage_announcements'] = $user->hasPermission('announcements.manage');
         $payload['can_access_settings'] = $user->isAdmin()
             || $user->hasPermission('schedules.manage')
-            || $user->hasPermission('teams.manage');
+            || $user->hasPermission('teams.manage')
+            || $user->hasPermission('dashboard.manage');
         $payload['can_view_vacations'] = $user->hasPermission('vacations.view');
         $payload['can_create_vacations'] = $user->hasPermission('vacations.create');
         $payload['can_edit_vacations'] = $user->hasPermission('vacations.edit');

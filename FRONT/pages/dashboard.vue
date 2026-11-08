@@ -38,14 +38,63 @@
           <button
             class="ml-auto w-10 h-10 rounded-xl border inline-flex items-center justify-center transition"
             :class="isEditMode ? 'border-blue-500 bg-blue-600/20 text-blue-200' : 'border-gray-700 bg-gray-900 text-gray-200 hover:bg-gray-800'"
-            :title="isEditMode ? 'Salir de modificacion' : 'Activar modificacion'"
-            aria-label="Editar dashboard"
+            :title="isEditMode ? 'Terminar de personalizar' : 'Personalizar mi dashboard'"
+            aria-label="Personalizar mi dashboard"
             @click="toggleEditMode"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5M16.5 3.5a2.121 2.121 0 113 3L12 14l-4 1 1-4 7.5-7.5z"/>
             </svg>
           </button>
+        </div>
+
+        <!-- Personal arrangement: hidden cards tray + back to the company layout -->
+        <div
+          v-if="isEditMode"
+          class="rounded-2xl border-2 border-dashed p-4 transition"
+          :class="dragOverTray ? 'border-red-400/60 bg-red-500/5' : 'border-blue-500/40 bg-blue-500/5'"
+          @dragover.prevent="dragOverTray = true"
+          @dragleave="dragOverTray = false"
+          @drop.prevent="onTrayDrop"
+        >
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p class="text-sm font-medium text-white">Estás personalizando tu dashboard</p>
+              <p class="text-xs text-gray-400 mt-0.5">
+                Arrastra las tarjetas para cambiarlas de lugar. Suéltalas aquí para ocultarlas o arrastra una oculta a cualquier posición.
+                Los cambios solo los ves tú.
+              </p>
+            </div>
+            <div class="flex gap-2">
+              <button
+                v-if="layoutSource === 'user'"
+                class="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-200 hover:bg-gray-800"
+                @click="resetToCompanyLayout"
+              >
+                Volver al diseño de la empresa
+              </button>
+              <button class="text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white" @click="toggleEditMode">Listo</button>
+            </div>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <div
+              v-for="key in hiddenCards"
+              :key="key"
+              draggable="true"
+              class="flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-900 px-2.5 py-1.5 cursor-grab active:cursor-grabbing select-none"
+              :title="`Arrastra a una posición para mostrar ${DASHBOARD_WIDGETS[key].name}`"
+              @dragstart="onTrayDragStart($event, key)"
+              @dragend="onCardDragEnd"
+            >
+              <span class="w-6 h-6 rounded-md flex items-center justify-center" :class="DASHBOARD_WIDGETS[key].tone">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" :d="DASHBOARD_WIDGETS[key].icon" />
+                </svg>
+              </span>
+              <span class="text-xs text-gray-200">{{ DASHBOARD_WIDGETS[key].name }}</span>
+            </div>
+            <span v-if="!hiddenCards.length" class="text-xs text-gray-500">No tienes tarjetas ocultas.</span>
+          </div>
         </div>
 
         <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -85,7 +134,7 @@
                         {{ todayLabel }}
                       </p>
                       <p class="mt-2 text-blue-200 text-xs sm:text-sm">
-                        {{ isEditMode ? 'Modo modificacion activo: puedes reorganizar tus cards.' : (welcomeSettings.subtitle || 'Aqui tenes un resumen de la actividad del sistema.') }}
+                        {{ welcomeSettings.subtitle || 'Aquí tienes un resumen de la actividad de la empresa.' }}
                       </p>
                     </div>
                   </div>
@@ -99,8 +148,8 @@
                 />
               </div>
 
-              <div v-else-if="isEditMode" class="h-full flex items-center justify-center text-xs text-gray-500">
-                Soltar card aqui
+              <div v-else-if="isEditMode" class="h-full min-h-40 flex items-center justify-center text-xs text-gray-500">
+                Posición libre — suelta una tarjeta aquí
               </div>
             </div>
           </div>
@@ -112,7 +161,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onBeforeMount, watch, onBeforeUnmount } from 'vue'
+import { computed, ref, onBeforeMount, watch, onBeforeUnmount } from 'vue'
+import { DASHBOARD_COLUMNS, DASHBOARD_WIDGETS, DASHBOARD_WIDGET_KEYS, moveDashboardWidget, normalizeDashboardSlots } from '~/utils/dashboardWidgets'
 
 definePageMeta({ auth: true })
 import { useRouter } from 'vue-router'
@@ -180,14 +230,18 @@ const vacationInfo = ref<{
 })
 
 const boardLayout = ref<Array<CardKey | null>>(['welcome', 'birthdays', 'team', 'vacation', 'notifications', 'worked_hours', 'holidays', 'announcements', 'documents'])
-const boardColumns = [[0, 1, 2], [3, 4, 5], [6, 7, 8]]
-const draggingSlot = ref<number | null>(null)
+const boardColumns = DASHBOARD_COLUMNS
+// 'user' = personal arrangement, 'company' = layout defined by RRHH
+const layoutSource = ref<'user' | 'company'>('company')
+const draggingKey = ref<CardKey | null>(null)
 const dragOverSlot = ref<number | null>(null)
+const dragOverTray = ref(false)
+const hiddenCards = computed(() => DASHBOARD_WIDGET_KEYS.filter((k) => !boardLayout.value.includes(k)))
 const isEditMode = ref(false)
 const savingLayout = ref(false)
 const welcomeSettings = ref<{ title: string; subtitle: string; show_date: boolean }>({
   title: 'Bienvenido',
-  subtitle: 'Aqui tenes un resumen de la actividad del sistema.',
+  subtitle: 'Aquí tienes un resumen de la actividad de la empresa.',
   show_date: true,
 })
 const { $swal } = useNuxtApp()
@@ -258,12 +312,36 @@ function visibleSlots(column: number[]) {
 function onCardDragStart(slotIndex: number) {
   if (!isEditMode.value) return
   if (!boardLayout.value[slotIndex]) return
-  draggingSlot.value = slotIndex
+  draggingKey.value = boardLayout.value[slotIndex]
+}
+
+function onTrayDragStart(event: DragEvent, key: CardKey) {
+  draggingKey.value = key
+  event.dataTransfer?.setData('text/plain', key) // required by Firefox
 }
 
 function onCardDragEnd() {
-  draggingSlot.value = null
+  draggingKey.value = null
   dragOverSlot.value = null
+  dragOverTray.value = false
+}
+
+function onTrayDrop() {
+  const key = draggingKey.value
+  onCardDragEnd()
+  if (!isEditMode.value || !key || !boardLayout.value.includes(key)) return
+  boardLayout.value = moveDashboardWidget(boardLayout.value, key, 'hidden')
+  void saveDashboardLayout()
+}
+
+async function resetToCompanyLayout() {
+  try {
+    const res: any = await $fetch('/api/dashboard/layout', { method: 'DELETE' })
+    applyLayout(res?.layout)
+    $swal.toast('success', 'Volviste al diseño de la empresa')
+  } catch (e) {
+    $swal.toast('error', 'No se pudo restablecer el dashboard')
+  }
 }
 
 function onSlotDragOver(slotIndex: number) {
@@ -276,35 +354,29 @@ function onSlotDragLeave(slotIndex: number) {
 
 function onSlotDrop(slotIndex: number) {
   if (!isEditMode.value) return
-  if (draggingSlot.value === null) return
-  const from = draggingSlot.value
-  if (from === slotIndex) {
-    onCardDragEnd()
-    return
-  }
-  const tmp = boardLayout.value[slotIndex]
-  boardLayout.value[slotIndex] = boardLayout.value[from]
-  boardLayout.value[from] = tmp
+  const key = draggingKey.value
   onCardDragEnd()
+  if (!key || boardLayout.value[slotIndex] === key) return
+  boardLayout.value = moveDashboardWidget(boardLayout.value, key, slotIndex)
   void saveDashboardLayout()
+}
+
+function applyLayout(res: any) {
+  if (!res) return
+  boardLayout.value = normalizeDashboardSlots(res.slots)
+  layoutSource.value = res.source === 'user' ? 'user' : 'company'
+  const ws = res?.settings?.welcome || {}
+  welcomeSettings.value = {
+    title: typeof ws?.title === 'string' && ws.title.trim() ? ws.title.trim() : 'Bienvenido',
+    subtitle: typeof ws?.subtitle === 'string' && ws.subtitle.trim() ? ws.subtitle.trim() : 'Aquí tienes un resumen de la actividad de la empresa.',
+    show_date: ws?.show_date !== false,
+  }
 }
 
 async function loadDashboardLayout() {
   if (!authenticated.value) return
   try {
-    const res: any = await $fetch(`/api/dashboard/layout`, {
-    })
-    if (Array.isArray(res?.slots)) {
-      const normalized = res.slots.slice(0, 9)
-      while (normalized.length < 9) normalized.push(null)
-      boardLayout.value = normalized as Array<CardKey | null>
-    }
-    const ws = res?.settings?.welcome || {}
-    welcomeSettings.value = {
-      title: typeof ws?.title === 'string' && ws.title.trim() ? ws.title.trim() : 'Bienvenido',
-      subtitle: typeof ws?.subtitle === 'string' && ws.subtitle.trim() ? ws.subtitle.trim() : 'Aqui tenes un resumen de la actividad del sistema.',
-      show_date: ws?.show_date !== false,
-    }
+    applyLayout(await $fetch(`/api/dashboard/layout`))
   } catch (e) {
     console.error('dashboard layout load failed', e)
   }
@@ -319,7 +391,8 @@ async function saveDashboardLayout() {
       method: 'PUT',
       body: { slots: boardLayout.value },
     })
-    $swal.toast('success', 'Dashboard guardado correctamente')
+    layoutSource.value = 'user'
+    $swal.toast('success', 'Tu dashboard se guardó')
   } catch (e) {
     console.error('dashboard layout save failed', e)
     $swal.toast('error', 'No se pudo guardar el dashboard')

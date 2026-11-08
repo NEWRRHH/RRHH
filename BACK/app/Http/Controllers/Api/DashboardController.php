@@ -14,7 +14,9 @@ use App\Models\Event;
 use App\Models\EventType;
 use App\Models\Post;
 use App\Models\Team;
+use App\Services\DashboardLayoutService;
 use App\Services\ScheduleService;
+use App\Support\Audit;
 use App\Support\WorkTime;
 
 class DashboardController extends Controller
@@ -110,210 +112,74 @@ class DashboardController extends Controller
         return $days * $daily;
     }
 
-    private function widgetCatalog(): array
+    /**
+     * The logged-in user's dashboard: their own arrangement if they made one,
+     * otherwise the company layout. The welcome message is the company's.
+     */
+    public function dashboardLayout(Request $request, DashboardLayoutService $layouts)
     {
-        return [
-            [
-                'key' => 'welcome',
-                'name' => 'Bienvenida',
-                'default_visible' => true,
-                'default_slot' => 0,
-                'default_settings' => [
-                    'title' => 'Bienvenido',
-                    'subtitle' => 'Aqui tenes un resumen de la actividad del sistema.',
-                    'show_date' => true,
-                ],
-            ],
-            ['key' => 'birthdays', 'name' => 'Cumpleaños', 'default_visible' => true, 'default_slot' => 1],
-            ['key' => 'team', 'name' => 'Tu equipo', 'default_visible' => true, 'default_slot' => 2],
-            ['key' => 'vacation', 'name' => 'Vacaciones', 'default_visible' => true, 'default_slot' => 3],
-            ['key' => 'notifications', 'name' => 'Notificaciones', 'default_visible' => true, 'default_slot' => 4],
-            ['key' => 'worked_hours', 'name' => 'Horas trabajadas', 'default_visible' => true, 'default_slot' => 5],
-            ['key' => 'holidays', 'name' => 'Proximos festivos', 'default_visible' => true, 'default_slot' => 6],
-            ['key' => 'announcements', 'name' => 'Comunicados', 'default_visible' => true, 'default_slot' => 7],
-            ['key' => 'documents', 'name' => 'Documentos', 'default_visible' => true, 'default_slot' => 8],
-        ];
+        return response()->json($layouts->forUser($request->user()));
     }
 
-    private function buildLayoutForUser(int $userId): array
+    /**
+     * Save the user's own arrangement (drag & drop on their dashboard).
+     */
+    public function saveDashboardLayout(Request $request, DashboardLayoutService $layouts)
     {
-        $catalog = $this->widgetCatalog();
-        $catalogByKey = [];
-        foreach ($catalog as $w) {
-            $catalogByKey[$w['key']] = $w;
-        }
-
-        $rows = DashboardWidget::table()
-            ->where('user_id', $userId)
-            ->get(['widget_key', 'slot_index', 'visible', 'settings']);
-
-        $hasCustom = $rows->count() > 0;
-
-        $visibility = [];
-        $settings = [];
-        $slots = array_fill(0, 9, null);
-
-        if (!$hasCustom) {
-            foreach ($catalog as $w) {
-                $visibility[$w['key']] = (bool) $w['default_visible'];
-                $settings[$w['key']] = $w['default_settings'] ?? [];
-                if ($w['default_visible'] && isset($w['default_slot']) && $w['default_slot'] >= 0 && $w['default_slot'] < 9) {
-                    $slots[$w['default_slot']] = $w['key'];
-                }
-            }
-        } else {
-            foreach ($catalog as $w) {
-                $visibility[$w['key']] = (bool) $w['default_visible'];
-                $settings[$w['key']] = $w['default_settings'] ?? [];
-            }
-
-            foreach ($rows as $r) {
-                if (!isset($catalogByKey[$r->widget_key])) continue;
-                $visibility[$r->widget_key] = (bool) $r->visible;
-                $decoded = is_string($r->settings) ? json_decode($r->settings, true) : (is_array($r->settings) ? $r->settings : null);
-                if (is_array($decoded)) {
-                    $settings[$r->widget_key] = array_merge($settings[$r->widget_key] ?? [], $decoded);
-                }
-            }
-
-            $placed = [];
-            foreach ($rows as $r) {
-                if (!isset($catalogByKey[$r->widget_key])) continue;
-                if (!(bool) $r->visible) continue;
-                if ($r->slot_index === null) continue;
-                $slot = (int) $r->slot_index;
-                if ($slot < 0 || $slot > 8) continue;
-                if ($slots[$slot] !== null) continue;
-                if (in_array($r->widget_key, $placed, true)) continue;
-                $slots[$slot] = $r->widget_key;
-                $placed[] = $r->widget_key;
-            }
-
-            foreach ($catalog as $w) {
-                $key = $w['key'];
-                if (!($visibility[$key] ?? false)) continue;
-                if (in_array($key, $slots, true)) continue;
-                $emptyIndex = array_search(null, $slots, true);
-                if ($emptyIndex === false) break;
-                $slots[$emptyIndex] = $key;
-            }
-        }
-
-        return [
-            'slots' => $slots,
-            'visibility' => $visibility,
-            'settings' => $settings,
-            'widgets' => $catalog,
-        ];
-    }
-
-    public function dashboardLayout(Request $request)
-    {
-        $user = $request->user();
-        if (!$user) {
-            return response()->json(['message' => 'Unauthenticated'], 401);
-        }
-
-        return response()->json($this->buildLayoutForUser((int) $user->id));
-    }
-
-    public function saveDashboardLayout(Request $request)
-    {
-        $user = $request->user();
-        if (!$user) {
-            return response()->json(['message' => 'Unauthenticated'], 401);
-        }
-
-        $catalog = $this->widgetCatalog();
-        $allowedKeys = array_map(fn ($w) => $w['key'], $catalog);
-        $slotsInput = $request->input('slots');
-        $visibilityInput = $request->input('visibility');
-        $settingsInput = $request->input('settings');
-
-        if (!is_array($slotsInput)) {
-            $slotsInput = array_fill(0, 9, null);
-        }
-
-        $slotsNormalized = array_slice(array_pad($slotsInput, 9, null), 0, 9);
-        $seen = [];
-        foreach ($slotsNormalized as $idx => $value) {
-            if ($value === null || $value === '') {
-                $slotsNormalized[$idx] = null;
-                continue;
-            }
-            if (!is_string($value) || !in_array($value, $allowedKeys, true)) {
-                return response()->json(['message' => 'Slot inválido'], 422);
-            }
-            if (in_array($value, $seen, true)) {
-                return response()->json(['message' => 'No se permiten widgets duplicados'], 422);
-            }
-            $seen[] = $value;
-        }
-
-        $visibility = [];
-        $settings = [];
-        $existingRows = DashboardWidget::table()
-            ->where('user_id', $user->id)
-            ->get(['widget_key', 'settings', 'visible']);
-        $existingByKey = [];
-        foreach ($existingRows as $r) {
-            $existingByKey[$r->widget_key] = $r;
-        }
-        foreach ($catalog as $w) {
-            $key = $w['key'];
-            $visibility[$key] = (bool) $w['default_visible'];
-            $settings[$key] = $w['default_settings'] ?? [];
-            if (isset($existingByKey[$key])) {
-                $old = $existingByKey[$key];
-                $visibility[$key] = (bool) $old->visible;
-                $decoded = is_string($old->settings) ? json_decode($old->settings, true) : (is_array($old->settings) ? $old->settings : null);
-                if (is_array($decoded)) {
-                    $settings[$key] = array_merge($settings[$key], $decoded);
-                }
-            }
-        }
-        if (is_array($visibilityInput)) {
-            foreach ($visibilityInput as $k => $v) {
-                if (in_array($k, $allowedKeys, true)) {
-                    $visibility[$k] = (bool) $v;
-                }
-            }
-        }
-        if (is_array($settingsInput)) {
-            foreach ($settingsInput as $k => $v) {
-                if (!in_array($k, $allowedKeys, true)) continue;
-                if (!is_array($v)) continue;
-                $settings[$k] = array_merge($settings[$k] ?? [], $v);
-            }
-        }
-
-        DB::transaction(function () use ($user, $catalog, $slotsNormalized, $visibility, $settings) {
-            $slotByWidget = [];
-            foreach ($slotsNormalized as $idx => $key) {
-                if ($key !== null) {
-                    $slotByWidget[$key] = $idx;
-                }
-            }
-
-            foreach ($catalog as $w) {
-                $key = $w['key'];
-                DashboardWidget::table()->updateOrInsert(
-                    ['user_id' => $user->id, 'widget_key' => $key],
-                    [
-                        'slot_index' => array_key_exists($key, $slotByWidget) ? $slotByWidget[$key] : null,
-                        'visible' => (bool) ($visibility[$key] ?? true),
-                        'settings' => json_encode($settings[$key] ?? []),
-                        'updated_at' => now(),
-                        'created_at' => now(),
-                    ]
-                );
-            }
-        });
-
-        return response()->json([
-            'status' => 'ok',
-            'layout' => $this->buildLayoutForUser((int) $user->id),
+        $data = $request->validate([
+            'slots' => 'required|array|max:' . DashboardLayoutService::POSITIONS,
+            'slots.*' => 'nullable|string|max:50',
         ]);
+        $layouts->saveForUser($request->user(), $data['slots']);
+
+        return response()->json(['status' => 'ok', 'layout' => $layouts->forUser($request->user())]);
+    }
+
+    /**
+     * Drop the user's arrangement and go back to the company layout.
+     */
+    public function resetDashboardLayout(Request $request, DashboardLayoutService $layouts)
+    {
+        $layouts->resetForUser($request->user());
+
+        return response()->json(['status' => 'ok', 'layout' => $layouts->forUser($request->user())]);
+    }
+
+    /**
+     * Company default layout + welcome message (RRHH, "dashboard.manage").
+     */
+    public function companyLayout(Request $request, DashboardLayoutService $layouts)
+    {
+        if ($request->user()->cannot('dashboard.manage')) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        return response()->json($layouts->companyLayout() + [
+            'widgets' => $layouts->catalog(),
+            'default_slots' => $layouts->defaultSlots(),
+            'default_welcome' => DashboardLayoutService::DEFAULT_WELCOME,
+        ]);
+    }
+
+    public function saveCompanyLayout(Request $request, DashboardLayoutService $layouts)
+    {
+        if ($request->user()->cannot('dashboard.manage')) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $data = $request->validate([
+            'slots' => 'required|array|max:' . DashboardLayoutService::POSITIONS,
+            'slots.*' => 'nullable|string|max:50',
+            'welcome' => 'required|array',
+            'welcome.title' => 'nullable|string|max:80',
+            'welcome.subtitle' => 'nullable|string|max:180',
+            'welcome.show_date' => 'nullable|boolean',
+        ]);
+
+        $layout = $layouts->saveCompanyLayout($request->user(), $data['slots'], $data['welcome']);
+        Audit::log('dashboard.company_layout_updated', null, ['slots' => $layout['slots']]);
+
+        return response()->json(['status' => 'ok', 'layout' => $layout]);
     }
 
     public function index(Request $request)
