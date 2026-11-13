@@ -1,0 +1,55 @@
+# Production overrides (server PC). Enabled from the root .env:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
+#   COMPOSE_PATH_SEPARATOR=:
+# See .env.production.example.
+
+services:
+  # Runs before everything else. If the .env is incomplete it prints the
+  # missing credentials (secure random values generated on the spot) and
+  # exits 1, so MySQL never gets initialised with empty/default passwords.
+  #   docker compose logs env-check
+  env-check:
+    image: alpine:3.20
+    restart: "no"
+    env_file:
+      - path: ./.env
+        required: true
+    volumes:
+      - ./docker/env-check.sh:/env-check.sh:ro
+    # tr strips CRLF in case the script was checked out with Windows endings.
+    command: ["sh", "-c", "tr -d '\\r' < /env-check.sh | sh"]
+
+  back_db:
+    depends_on:
+      env-check:
+        condition: service_completed_successfully
+
+  app:
+    depends_on:
+      env-check:
+        condition: service_completed_successfully
+
+  back_reverb:
+    depends_on:
+      env-check:
+        condition: service_completed_successfully
+
+  queue:
+    depends_on:
+      env-check:
+        condition: service_completed_successfully
+
+  # Compiled Nuxt (nuxi build) instead of the dev server: no source mount,
+  # no hot reload, no npm install on every start.
+  front:
+    build:
+      target: prod
+    image: rrhh_front:prod
+    user: node
+    command: !reset null
+    volumes: !reset []
+    environment:
+      - NODE_ENV=production
+    depends_on:
+      env-check:
+        condition: service_completed_successfully

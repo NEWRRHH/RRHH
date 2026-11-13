@@ -147,6 +147,7 @@ services:
     build:
       context: ./FRONT
       dockerfile: Dockerfile
+      target: dev
     image: rrhh_front:latest
     restart: unless-stopped
     working_dir: /app
