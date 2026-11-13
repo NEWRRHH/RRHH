@@ -11,7 +11,7 @@ Paso a paso para levantar el proyecto **en desarrollo** (tu PC) y **en producci�
 3. [Desarrollo (tu PC)](#3-desarrollo-tu-pc)
 4. [Producción (PC servidor)](#4-producción-pc-servidor)
 5. [Variables del `.env` de producción](#5-variables-del-env-de-producción)
-6. [Dominio propio (p. ej. `rrhh.nanodev.com`)](#6-dominio-propio-p-ej-rrhhnanodevcom)
+6. [Dominio propio (p. ej. `rrhh.fhnano.com`)](#6-dominio-propio-p-ej-rrhhnanodevcom)
 7. [Actualizar el servidor a una nueva versión](#7-actualizar-el-servidor-a-una-nueva-versión)
 8. [Dependencias: instalar paquetes en front y back](#8-dependencias-instalar-paquetes-en-front-y-back)
 9. [Comandos útiles](#9-comandos-útiles)
@@ -244,7 +244,7 @@ docker compose logs migrate       # migraciones aplicadas / "super admin created
 
 **7. Entrar**
 
-- Con dominio: `https://rrhh.nanodev.com`
+- Con dominio: `https://rrhh.fhnano.com`
 - Con túnel rápido: `docker compose logs tunnel | Select-String trycloudflare`
 - Desde el propio servidor: http://localhost:8080
 
@@ -264,7 +264,7 @@ Las marcadas con ⚙️ las genera `env-check`. Las marcadas con ✍️ las pone
 | `COMPOSE_PATH_SEPARATOR` | `:` | Hace que la línea anterior funcione en Windows y Linux. No tocar. |
 | `COMPOSE_PROFILES` | `tunnel-domain` o `tunnel` | `tunnel-domain` = dominio propio (URL fija). `tunnel` = URL aleatoria `*.trycloudflare.com`. |
 | ✍️ `CLOUDFLARE_TUNNEL_TOKEN` | `eyJ...` | Solo con `tunnel-domain`. Ver [sección 6](#6-dominio-propio-p-ej-rrhhnanodevcom). |
-| ✍️ `PUBLIC_HOSTS` | `rrhh.nanodev.com` | Dominio(s) públicos, separados por coma. |
+| ✍️ `PUBLIC_HOSTS` | `rrhh.fhnano.com` | Dominio(s) públicos, separados por coma. |
 
 ### Laravel
 
@@ -273,13 +273,13 @@ Las marcadas con ⚙️ las genera `env-check`. Las marcadas con ✍️ las pone
 | `APP_NAME` | `RRHH` | |
 | `APP_ENV` | `production` | |
 | `APP_DEBUG` | `false` | **Nunca** `true` en producción: expone trazas y configuración. |
-| ✍️ `APP_URL` | `https://rrhh.nanodev.com` | URL pública. |
+| ✍️ `APP_URL` | `https://rrhh.fhnano.com` | URL pública. |
 | ⚙️ `APP_KEY` | `base64:...` | Cifra sesiones y datos. **No cambiarla** una vez en uso. |
 | `APP_TIMEZONE` | `Europe/Madrid` | |
 | `APP_LOCALE` | `es` | |
 | `LOG_STACK` / `LOG_LEVEL` | `daily` / `warning` | Logs en `BACK/storage/logs`. |
 | `SESSION_ENCRYPT` | `true` | |
-| `CORS_ALLOWED_ORIGINS` | `https://rrhh.nanodev.com` | |
+| `CORS_ALLOWED_ORIGINS` | `https://rrhh.fhnano.com` | |
 
 ### Super admin inicial
 
@@ -320,34 +320,51 @@ Las marcadas con ⚙️ las genera `env-check`. Las marcadas con ✍️ las pone
 |----------|-------|
 | `MAIL_MAILER` | `log` (los mails se escriben en el log) hasta tener proveedor. Luego `smtp`. |
 | `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` | Datos de tu proveedor SMTP. |
-| `MAIL_FROM_ADDRESS` | p. ej. `no-reply@nanodev.com` |
+| `MAIL_FROM_ADDRESS` | p. ej. `no-reply@fhnano.com` |
 
 ---
 
-## 6. Dominio propio (p. ej. `rrhh.nanodev.com`)
+## 6. Dominio propio (p. ej. `rrhh.fhnano.com`)
 
 Con un túnel con nombre, la URL es fija, tienes HTTPS automático y **no hace falta abrir puertos** en el router del servidor.
 
-1. **Compra el dominio** (`nanodev.com`) en cualquier registrador.
-2. **Añádelo a Cloudflare** (plan gratis): *Add a site* → sigue los pasos y cambia los **nameservers** en tu registrador por los que te da Cloudflare. Puede tardar unas horas en activarse.
-3. **Crea el túnel**: Cloudflare → *Zero Trust* → *Networks* → *Tunnels* → *Create a tunnel* → tipo **Cloudflared** → nombre `rrhh`.
-4. En la pantalla de instalación, **copia el token**: el texto largo que empieza por `eyJ` dentro del comando que te muestra. No hace falta instalar nada, ya va en Docker.
-5. **Public hostname** del túnel:
-   - Subdomain: `rrhh` · Domain: `nanodev.com`
+Estado actual:
+
+| | |
+|---|---|
+| Dominio | `fhnano.com` (en Cloudflare) |
+| Subdominio del proyecto | `rrhh.fhnano.com` |
+| Tunnel ID | `7ce9c319-8846-4ba1-9aba-e37f3bf6bdf4` |
+
+> El **Tunnel ID no basta** para conectar: Docker necesita el **token** del túnel (`eyJ...`). El ID solo identifica el túnel; el token es la credencial secreta. No lo subas a git: va únicamente en el `.env` del servidor.
+
+1. **Dominio en Cloudflare**: `fhnano.com` debe aparecer como *Active* en el dashboard (nameservers ya cambiados en el registrador).
+2. **Obtener el token del túnel**: *Zero Trust* → *Networks* → *Tunnels* → tu túnel (`7ce9c319-…`) → *Configure* (o ⋯ → *Edit*) → en *Install and run a connector* elige cualquier sistema y copia el texto largo que empieza por `eyJ` del comando mostrado (`cloudflared ... --token eyJ...`). No hace falta instalar cloudflared: ya va en Docker.
+   - Alternativa por consola (si tienes cloudflared instalado y hecho `cloudflared tunnel login`): `cloudflared tunnel token 7ce9c319-8846-4ba1-9aba-e37f3bf6bdf4`
+3. **Public hostname** del túnel (pestaña *Public Hostname* → *Add a public hostname*):
+   - Subdomain: `rrhh` · Domain: `fhnano.com` · Path: vacío
    - Service: **HTTP** · URL: `gateway:80`
-6. En el `.env` del servidor:
+   - En el panel nuevo (*Published application routes*) hay un único campo **Service URL**: escribe `http://gateway:80` (con `http://`, no `https://`; el HTTPS lo pone Cloudflare).
+
+   Cloudflare crea solo el registro DNS `rrhh.fhnano.com` → túnel.
+
+4. En el `.env` del servidor:
 
    ```dotenv
    COMPOSE_PROFILES=tunnel-domain
    CLOUDFLARE_TUNNEL_TOKEN=eyJ...
-   PUBLIC_HOSTS=rrhh.nanodev.com
-   APP_URL=https://rrhh.nanodev.com
-   CORS_ALLOWED_ORIGINS=https://rrhh.nanodev.com
+   PUBLIC_HOSTS=rrhh.fhnano.com
+   APP_URL=https://rrhh.fhnano.com
+   CORS_ALLOWED_ORIGINS=https://rrhh.fhnano.com
    ```
 
-7. `docker compose up -d --build` y abre `https://rrhh.nanodev.com`.
+5. `docker compose up -d --build` y abre `https://rrhh.fhnano.com`.
 
-Para más proyectos en el mismo dominio, crea otro *Public hostname* (`otro.nanodev.com`) en su propio túnel o en el mismo.
+   Comprobar que el túnel conectó: `docker compose logs tunnel-domain` debe mostrar `Registered tunnel connection`.
+
+> ⚠️ **Usa el token en una sola máquina a la vez.** Si arrancas `tunnel-domain` con el mismo token en tu PC de desarrollo y en el servidor, Cloudflare reparte las visitas entre las dos (cada petición puede caer en una base de datos distinta). En tu PC de desarrollo sigue usando `COMPOSE_PROFILES=tunnel` (URL aleatoria).
+
+Para más proyectos en el mismo dominio, crea otro *Public hostname* (`otro.fhnano.com`) en su propio túnel o en el mismo.
 
 ---
 
@@ -444,6 +461,7 @@ Get-Content backup.sql | docker compose exec -T back_db sh -c 'mysql -uroot -p"$
 | `service "env-check" didn't complete successfully` | Falta algo en el `.env`. `docker compose logs env-check` te dice qué. |
 | `service "migrate" didn't complete successfully` | `docker compose logs migrate`. Lo normal es un error de migración o de conexión a la base de datos. |
 | `Access denied for user 'laravel'` | Cambiaste `DB_PASSWORD` después del primer arranque. Vuelve a poner la contraseña original o, **solo si no hay datos que conservar**, ejecuta `docker compose down -v` y arranca de nuevo. |
+| WebSocket con error `4001 Application does not exist` | El navegador recibe una `REVERB_APP_KEY` distinta a la de Reverb. Suele ser un `FRONT/.env` o `BACK/.env` de desarrollo copiado al servidor: bórralos (en producción solo existe el `.env` raíz) y ejecuta `docker compose up -d --force-recreate front back_reverb`. |
 | La web carga pero no llegan notificaciones en tiempo real | Revisa que `REVERB_APP_KEY` sea el mismo para back y front (en producción ya lo es) y `docker compose logs back_reverb`. |
 | `Blocked request. This host is not allowed` (desarrollo) | Añade el dominio a `PUBLIC_HOSTS` en el `.env` raíz y ejecuta `docker compose up -d front`. |
 | Error 502 en el gateway | Algún servicio no arrancó: `docker compose ps` y los logs del que esté caído. |

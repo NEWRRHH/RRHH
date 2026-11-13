@@ -87,6 +87,11 @@ services:
     user: node
     command: !reset null
     volumes: !reset []
+    # Only the root .env: a leftover FRONT/.env (dev values, e.g. another
+    # Reverb key) must never override production settings.
+    env_file: !override
+      - path: ./.env
+        required: true
     environment:
       - NODE_ENV=production
     depends_on:

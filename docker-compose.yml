@@ -179,7 +179,7 @@ services:
       - NUXT_PUBLIC_REVERB_PORT=6001
       # Hosts públicos aceptados por el dev server (Vite bloquea los demás).
       # Al tener dominio propio añadir el subdominio en el .env raíz, p.ej.:
-      #   PUBLIC_HOSTS=.trycloudflare.com,rrhh.nanodev.com
+      #   PUBLIC_HOSTS=.trycloudflare.com,rrhh.fhnano.com
       - PUBLIC_HOSTS=${PUBLIC_HOSTS:-.trycloudflare.com}
     ports:
       - "3000:3000"
@@ -218,9 +218,9 @@ services:
     depends_on:
       - gateway
 
-  # Named tunnel: dominio propio (p.ej. rrhh.nanodev.com), URL fija.
+  # Named tunnel: dominio propio (p.ej. rrhh.fhnano.com), URL fija.
   # En Cloudflare Zero Trust > Networks > Tunnels crear el túnel, copiar el
-  # token y en "Public hostname" poner rrhh.nanodev.com -> http://gateway:80.
+  # token y en "Public hostname" poner rrhh.fhnano.com -> http://gateway:80.
   # Activar con: COMPOSE_PROFILES=tunnel-domain y CLOUDFLARE_TUNNEL_TOKEN=...
   tunnel-domain:
     image: cloudflare/cloudflared:2024.12.2

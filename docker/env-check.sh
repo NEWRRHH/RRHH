@@ -50,8 +50,8 @@ ask SEED_SUPERADMIN_EMAIL "Email con el que entraras como super admin (se crea e
 case ",${COMPOSE_PROFILES:-}," in
   *,tunnel-domain,*)
     ask CLOUDFLARE_TUNNEL_TOKEN "Cloudflare Zero Trust > Networks > Tunnels > tu tunel > copiar el token (eyJ...). Public hostname -> http://gateway:80"
-    ask PUBLIC_HOSTS "Tu subdominio, p.ej. rrhh.nanodev.com"
-    ask APP_URL "URL publica, p.ej. https://rrhh.nanodev.com"
+    ask PUBLIC_HOSTS "Tu subdominio, p.ej. rrhh.fhnano.com"
+    ask APP_URL "URL publica, p.ej. https://rrhh.fhnano.com"
     ;;
   *,tunnel,*) ;;
   *) warn "COMPOSE_PROFILES no incluye 'tunnel' ni 'tunnel-domain': la app no sera accesible desde internet." ;;
