@@ -42,7 +42,7 @@ import { useAuth } from '../composables/useAuth'
 
 declare const $fetch: any
 
-const { token, apiBase, user } = useAuth()
+const { authenticated, apiBase, user } = useAuth()
 const emit = defineEmits<{
   changed: []
 }>()
@@ -103,10 +103,9 @@ function startTimer() {
 }
 
 async function checkStatus() {
-  if (!token.value) return
+  if (!authenticated.value) return
   try {
-    const res = await $fetch(`${apiBase || 'http://localhost:8000'}/api/attendance/info`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res = await $fetch(`/api/attendance/info`, {
     })
     schedule.value = res?.schedule || null
     if (res?.attendance && res.attendance.id) {
@@ -135,9 +134,8 @@ async function checkStatus() {
 const handleStart = async () => {
   loading.value = true
   try {
-    await $fetch(`${apiBase || 'http://localhost:8000'}/api/attendance/start`, {
+    await $fetch(`/api/attendance/start`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token.value}` },
     })
     await checkStatus()
     emit('changed')
@@ -152,9 +150,8 @@ const handleStop = async () => {
   if (!started.value) return
   loading.value = true
   try {
-    await $fetch(`${apiBase || 'http://localhost:8000'}/api/attendance/stop`, {
+    await $fetch(`/api/attendance/stop`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token.value}` },
     })
     attendance.value = null
     started.value = false
@@ -175,9 +172,8 @@ const togglePause = () => {
   if (!started.value || loading.value) return
   loading.value = true
   const endpoint = paused.value ? 'resume' : 'pause'
-  $fetch(`${apiBase || 'http://localhost:8000'}/api/attendance/${endpoint}`, {
+  $fetch(`/api/attendance/${endpoint}`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token.value}` },
   })
     .then(async () => {
       await checkStatus()

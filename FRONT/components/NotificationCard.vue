@@ -64,7 +64,7 @@ const props = defineProps({
   unreadCount: { type: Number as PropType<number>, default: 0 },
 })
 
-const { token, apiBase } = useAuth()
+const { authenticated, apiBase } = useAuth()
 
 const unreadNotes = computed(() =>
   (props.notifications || []).filter((n: any) => n.read === 0 || n.read === false || n.read === null)
@@ -82,8 +82,7 @@ async function openModal(note: any) {
   showModal.value = true
 
   try {
-    await $fetch(`${apiBase}/api/notifications/conversation/${note.sender_id}`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    await $fetch(`/api/notifications/conversation/${note.sender_id}`, {
     })
     note.read = true
     emit('notification-read', note.conversation_id || note.id)

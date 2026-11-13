@@ -135,25 +135,29 @@ onMounted(async () => {
 
 const route = useRoute()
 const router = useRouter()
-const { fetchUser, unreadNotifications, fetchUnread, user, token, apiBase, realtimeInstance, realtimeConnected } = useAuth()
+const { fetchUser, unreadNotifications, fetchUnread, user, authenticated, apiBase, realtimeInstance, realtimeConnected } = useAuth()
 
 const unreadCount = computed(() => unreadNotifications.value || 0)
 const userInitial = computed(() => String((user.value as any)?.name || '?').charAt(0).toUpperCase())
 const requestsCount = ref(0)
-const isHrTeam = computed(() => Boolean((user.value as any)?.is_hr_team))
-const isAdmin = computed(() => Boolean((user.value as any)?.is_admin) || Number((user.value as any)?.user_type_id || 0) === 1)
-const canAccessSettings = computed(() => Boolean((user.value as any)?.can_access_settings) || isAdmin.value || isHrTeam.value)
+// All flags come from the user's role (see GET /api/user).
+const isAdmin = computed(() => Boolean((user.value as any)?.is_admin))
+const canAccessSettings = computed(() => Boolean((user.value as any)?.can_access_settings) || isAdmin.value)
 const canSeeEmployees = computed(() => {
   const u: any = user.value || {}
-  return isHrTeam.value || Boolean(u?.can_view_employee_details) || (Array.isArray(u?.permissions) && u.permissions.includes('employees.view_details'))
+  return Boolean(u?.can_view_employee_details) || (Array.isArray(u?.permissions) && u.permissions.includes('employees.view_details'))
 })
 const canSeeAnnouncements = computed(() => {
   const u: any = user.value || {}
-  return isHrTeam.value || Boolean(u?.can_access_announcements) || Boolean(u?.can_manage_announcements) || (Array.isArray(u?.permissions) && u.permissions.includes('announcements.manage'))
+  return Boolean(u?.can_access_announcements) || Boolean(u?.can_manage_announcements) || (Array.isArray(u?.permissions) && u.permissions.includes('announcements.manage'))
 })
 const canSeeVacations = computed(() => {
   const u: any = user.value || {}
   return Boolean(u?.can_view_vacations) || (Array.isArray(u?.permissions) && u.permissions.includes('vacations.view'))
+})
+const canManageHolidays = computed(() => {
+  const u: any = user.value || {}
+  return Boolean(u?.can_manage_holidays) || (Array.isArray(u?.permissions) && u.permissions.includes('holidays.manage'))
 })
 const canSeeRequests = computed(() => {
   const u: any = user.value || {}
@@ -172,15 +176,19 @@ let reviewerRealtimeChannel: any = null
 let userRealtimeChannel: any = null
 
 async function fetchRequestsBadge() {
-  if (!token.value) return
+  if (!authenticated.value) return
   try {
-    const res: any = await $fetch(`${apiBase || 'http://localhost:8000'}/api/timeoff/requests?status=pending`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res: any = await $fetch(`/api/timeoff/requests?status=pending`, {
     })
     requestsCount.value = Array.isArray(res?.requests) ? res.requests.length : 0
   } catch (_e) {
     requestsCount.value = 0
   }
+}
+
+// Reviewers channel is per company (multi-tenant).
+function reviewersChannelName() {
+  return `company.${Number((user.value as any)?.company_id || 0)}.timeoff.reviewers`
 }
 
 function teardownRequestsRealtime() {
@@ -208,7 +216,7 @@ function setupRequestsRealtime() {
 
   const canReview = Array.isArray((user.value as any)?.permissions) && (user.value as any).permissions.includes('requests.review')
   if (canReview) {
-    reviewerRealtimeChannel = echo.private('timeoff.reviewers')
+    reviewerRealtimeChannel = echo.private(reviewersChannelName())
     reviewerRealtimeChannel.listen('.TimeOffRequestUpdated', () => {
       void fetchRequestsBadge()
     })
@@ -261,7 +269,14 @@ const navItems = computed(() => [
       <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3M4 11h16M6 5h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2z"/>
     </svg>`
   }] : []),
-  ...(canSeeRequests.value ? [{
+  ...(canManageHolidays.value ? [{
+    label: 'Festivos',
+    to: '/festivos',
+    active: route.path.startsWith('/festivos'),
+    icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3M4 11h16M6 5h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2zm6 9l1 2 2 .3-1.5 1.4.4 2.1-1.9-1-1.9 1 .4-2.1L9 16.3l2-.3 1-2z"/>
+    </svg>`
+  }] : []),  ...(canSeeRequests.value ? [{
     label: 'Solicitudes',
     to: '/solicitudes',
     active: route.path.startsWith('/solicitudes'),

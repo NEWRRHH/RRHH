@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Global base styles — fallback para asegurar estilos aunque HMR falle */
+/* Global base styles */
 * { box-sizing: border-box; }
 html,body { height:100%; }
 body {
@@ -13,12 +13,28 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
-nav { padding: 12px; border-bottom: 1px solid #eee; display:flex; gap:12px; align-items:center; }
-/* legacy class fallback for pages that used `.container` */
-.container { max-width:420px; margin:48px auto; padding:24px; border:1px solid #eee; border-radius:8px; background: #fff; }
-label { display:block; margin-bottom:6px; font-weight:600; }
-input { width:100%; padding:8px; margin-bottom:12px; border:1px solid #d1d5db; border-radius:6px; }
 button { font: inherit; }
-a { color: #0ea5a8; text-decoration: none; }
-a:hover { text-decoration: underline; }
-.header-link-active { font-weight:700; }
+
+/*
+ * Legacy form defaults kept for the existing screens (their spacing relies
+ * on them). :where() gives them zero specificity, so any Tailwind class on the
+ * element always wins, and checkboxes / radios / file inputs are left alone.
+ */
+:where(label):where(:not(:has(input[type="checkbox"], input[type="radio"]))) {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+:where(input):where(:not([type="checkbox"], [type="radio"], [type="file"], [type="hidden"])) {
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+}
+
+/* Dashboard card drag & drop (SortableJS, see composables/useDashboardDrag.ts) */
+.dash-drag-ghost { opacity: 0.35; }
+.dash-drag-dragging,
+.sortable-fallback { opacity: 0.95 !important; transform: rotate(1.5deg); box-shadow: 0 20px 40px -12px rgb(0 0 0 / 0.6); cursor: grabbing; }
+[data-dash-key] { touch-action: manipulation; -webkit-user-select: none; user-select: none; }

@@ -94,6 +94,8 @@
 </template>
 
 <script setup lang="ts">
+definePageMeta({ auth: false })
+
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 const { login } = useAuth()

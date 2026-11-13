@@ -2,6 +2,7 @@
 
 namespace App\Events;
 
+use App\Support\Tenancy\Tenant;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
@@ -14,20 +15,25 @@ class TimeOffRequestUpdated implements ShouldBroadcastNow
     public int $requestId;
     public int $requesterId;
     public string $action;
+    /** Company the request belongs to: reviewers only hear their own company. */
+    public ?int $companyId;
 
     public function __construct(int $requestId, int $requesterId, string $action)
     {
         $this->requestId = $requestId;
         $this->requesterId = $requesterId;
         $this->action = $action;
+        $this->companyId = Tenant::id();
     }
 
     public function broadcastOn(): array
     {
-        return [
-            new PrivateChannel('timeoff.reviewers'),
-            new PrivateChannel("user.{$this->requesterId}"),
-        ];
+        $channels = [new PrivateChannel("user.{$this->requesterId}")];
+        if ($this->companyId !== null) {
+            $channels[] = new PrivateChannel("company.{$this->companyId}.timeoff.reviewers");
+        }
+
+        return $channels;
     }
 
     public function broadcastAs(): string

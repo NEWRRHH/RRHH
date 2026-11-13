@@ -33,7 +33,6 @@ export function useRealtime() {
     port: string | number;
     appId: string;
     key: string;
-    token?: string;
     authEndpoint?: string;
   }) {
     // WebSockets only exist in the browser — skip silently during SSR.
@@ -54,15 +53,10 @@ export function useRealtime() {
       // Force WebSocket transport only — avoids falling back to HTTP long-polling
       // which would never reach Reverb and appear as no connection in logs.
       enabledTransports: ['ws', 'wss'],
-      // The auth endpoint must be reachable from the browser.
-      // Default: http://localhost:8000/broadcasting/auth
-      authEndpoint: config.authEndpoint || 'http://localhost:8000/broadcasting/auth',
-      auth: {
-        headers: {
-          Authorization: config.token ? `Bearer ${config.token}` : '',
-          Accept: 'application/json',
-        },
-      },
+      // Same-origin auth endpoint (Nitro proxy). It reads the httpOnly session
+      // cookie and forwards the Bearer token to /broadcasting/auth, so no
+      // token and no CORS are required from the browser.
+      authEndpoint: config.authEndpoint || '/api/broadcasting/auth',
     };
 
     echo = new Echo<'reverb'>(opts);

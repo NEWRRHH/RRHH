@@ -5,21 +5,14 @@
 </template>
 
 <script setup lang="ts">
-declare const process: any
+definePageMeta({ auth: false })
 
-const { token, setToken } = useAuth()
+// Public entry point: resolve the session from the httpOnly cookie and send
+// the visitor to the right place.
+const { fetchUser } = useAuth()
 
 onMounted(async () => {
-  if (!token.value && process.client) {
-    const saved = localStorage.getItem('rrhh_token')
-    if (saved) setToken(saved)
-  }
-
-  if (!token.value) {
-    await navigateTo('/login', { replace: true })
-    return
-  }
-
-  await navigateTo('/dashboard', { replace: true })
+  const u = await fetchUser()
+  await navigateTo(u ? '/dashboard' : '/login', { replace: true })
 })
 </script>
