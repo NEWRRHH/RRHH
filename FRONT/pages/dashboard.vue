@@ -25,7 +25,7 @@
         </div>
       </header>
 
-      <main class="relative z-10 flex-1 p-6 space-y-6 overflow-auto">
+      <main ref="boardRoot" class="relative z-10 flex-1 p-6 space-y-6 overflow-auto">
         <div class="flex flex-wrap items-center gap-3">
           <div class="bg-white/5 border border-white/5 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm">
             <div class="text-2xl text-blue-300 font-semibold">{{ data.stats?.users_count ?? 0 }}</div>
@@ -38,8 +38,8 @@
           <button
             class="ml-auto w-10 h-10 rounded-xl border inline-flex items-center justify-center transition"
             :class="isEditMode ? 'border-blue-500 bg-blue-600/20 text-blue-200' : 'border-gray-700 bg-gray-900 text-gray-200 hover:bg-gray-800'"
-            :title="isEditMode ? 'Salir de modificacion' : 'Activar modificacion'"
-            aria-label="Editar dashboard"
+            :title="isEditMode ? 'Terminar de personalizar' : 'Personalizar mi dashboard'"
+            aria-label="Personalizar mi dashboard"
             @click="toggleEditMode"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -48,29 +48,71 @@
           </button>
         </div>
 
+        <!-- Personal arrangement: hidden cards tray + back to the company layout -->
+        <div
+          v-if="isEditMode"
+          data-dash-drop="hidden"
+          class="rounded-2xl border-2 border-dashed p-4 transition"
+          :class="dashDragging ? 'border-red-400/60 bg-red-500/5' : 'border-blue-500/40 bg-blue-500/5'"
+        >
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p class="text-sm font-medium text-white">Estás personalizando tu dashboard</p>
+              <p class="text-xs text-gray-400 mt-0.5">
+                Arrastra las tarjetas para cambiarlas de lugar. Suéltalas aquí para ocultarlas o arrastra una oculta a cualquier posición.
+                En el celular, mantén pulsada la tarjeta para arrastrarla. Los cambios solo los ves tú.
+              </p>
+            </div>
+            <div class="flex gap-2">
+              <button
+                v-if="layoutSource === 'user'"
+                class="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-200 hover:bg-gray-800"
+                @click="resetToCompanyLayout"
+              >
+                Volver al diseño de la empresa
+              </button>
+              <button class="text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white" @click="toggleEditMode">Listo</button>
+            </div>
+          </div>
+          <div data-dash-list class="mt-3 flex flex-wrap gap-2 min-h-[36px]">
+            <div
+              v-for="key in hiddenCards"
+              :key="key"
+              :data-dash-key="key"
+              class="flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-900 px-2.5 py-1.5 cursor-grab active:cursor-grabbing"
+              :title="`Arrastra a una posición para mostrar ${DASHBOARD_WIDGETS[key].name}`"
+            >
+              <span class="w-6 h-6 rounded-md flex items-center justify-center" :class="DASHBOARD_WIDGETS[key].tone">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" :d="DASHBOARD_WIDGETS[key].icon" />
+                </svg>
+              </span>
+              <span class="text-xs text-gray-200">{{ DASHBOARD_WIDGETS[key].name }}</span>
+            </div>
+            <span v-if="!hiddenCards.length" class="pointer-events-none self-center text-xs text-gray-500">No tienes tarjetas ocultas.</span>
+          </div>
+        </div>
+
         <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
           <div v-for="(column, cIdx) in boardColumns" :key="`col-${cIdx}`" class="space-y-4">
             <div
               v-for="slotIndex in visibleSlots(column)"
               :key="`slot-${slotIndex}`"
               class="rounded-2xl border transition"
+              :data-dash-drop="isEditMode ? slotIndex : undefined"
+              :data-dash-list="isEditMode ? '' : undefined"
               :class="[
                 isEditMode ? 'min-h-40' : 'h-auto',
                 isEditMode
-                  ? (dragOverSlot === slotIndex ? 'border-blue-500 bg-blue-500/5 border-dashed' : 'border-gray-700 bg-gray-900/20 border-dashed')
+                  ? (dashDragging ? 'border-blue-500/60 bg-blue-500/5 border-dashed' : 'border-gray-700 bg-gray-900/20 border-dashed')
                   : 'border-gray-800 bg-transparent'
               ]"
-              @dragover.prevent="isEditMode ? onSlotDragOver(slotIndex) : null"
-              @dragleave="isEditMode ? onSlotDragLeave(slotIndex) : null"
-              @drop.prevent="isEditMode ? onSlotDrop(slotIndex) : null"
             >
               <div
                 v-if="boardLayout[slotIndex]"
                 class="rounded-2xl"
                 :class="isEditMode ? 'cursor-grab active:cursor-grabbing' : ''"
-                :draggable="isEditMode"
-                @dragstart="onCardDragStart(slotIndex)"
-                @dragend="onCardDragEnd"
+                :data-dash-key="isEditMode ? boardLayout[slotIndex] : undefined"
               >
                 <template v-if="boardLayout[slotIndex] === 'welcome'">
                   <div class="relative overflow-hidden bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-6 min-h-52 shadow-xl shadow-blue-900/40">
@@ -85,7 +127,7 @@
                         {{ todayLabel }}
                       </p>
                       <p class="mt-2 text-blue-200 text-xs sm:text-sm">
-                        {{ isEditMode ? 'Modo modificacion activo: puedes reorganizar tus cards.' : (welcomeSettings.subtitle || 'Aqui tenes un resumen de la actividad del sistema.') }}
+                        {{ welcomeSettings.subtitle || 'Aquí tienes un resumen de la actividad de la empresa.' }}
                       </p>
                     </div>
                   </div>
@@ -99,8 +141,8 @@
                 />
               </div>
 
-              <div v-else-if="isEditMode" class="h-full flex items-center justify-center text-xs text-gray-500">
-                Soltar card aqui
+              <div v-else-if="isEditMode" class="pointer-events-none h-full min-h-40 flex items-center justify-center text-xs text-gray-500">
+                Posición libre — suelta una tarjeta aquí
               </div>
             </div>
           </div>
@@ -112,7 +154,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onBeforeMount, watch, onBeforeUnmount } from 'vue'
+import { computed, ref, onBeforeMount, watch, onBeforeUnmount } from 'vue'
+import { DASHBOARD_COLUMNS, DASHBOARD_WIDGETS, DASHBOARD_WIDGET_KEYS, moveDashboardWidget, normalizeDashboardSlots } from '~/utils/dashboardWidgets'
+import { useDashboardDrag } from '~/composables/useDashboardDrag'
 
 definePageMeta({ auth: true })
 import { useRouter } from 'vue-router'
@@ -133,7 +177,7 @@ import AttendanceButton from '../components/AttendanceButton.vue'
 import UserMenu from '../components/UserMenu.vue'
 
 
-const { token, user, fetchUser, logout, apiBase, setToken, fetchUnread, unreadNotifications, lastReceivedMessage } = useAuth()
+const { authenticated, user, fetchUser, logout, apiBase, fetchUnread, unreadNotifications, lastReceivedMessage } = useAuth()
 
 type CardKey = 'welcome' | 'birthdays' | 'team' | 'vacation' | 'notifications' | 'worked_hours' | 'holidays' | 'announcements' | 'documents'
 
@@ -180,14 +224,15 @@ const vacationInfo = ref<{
 })
 
 const boardLayout = ref<Array<CardKey | null>>(['welcome', 'birthdays', 'team', 'vacation', 'notifications', 'worked_hours', 'holidays', 'announcements', 'documents'])
-const boardColumns = [[0, 1, 2], [3, 4, 5], [6, 7, 8]]
-const draggingSlot = ref<number | null>(null)
-const dragOverSlot = ref<number | null>(null)
+const boardColumns = DASHBOARD_COLUMNS
+// 'user' = personal arrangement, 'company' = layout defined by RRHH
+const layoutSource = ref<'user' | 'company'>('company')
+const hiddenCards = computed(() => DASHBOARD_WIDGET_KEYS.filter((k) => !boardLayout.value.includes(k)))
 const isEditMode = ref(false)
 const savingLayout = ref(false)
 const welcomeSettings = ref<{ title: string; subtitle: string; show_date: boolean }>({
   title: 'Bienvenido',
-  subtitle: 'Aqui tenes un resumen de la actividad del sistema.',
+  subtitle: 'Aquí tienes un resumen de la actividad de la empresa.',
   show_date: true,
 })
 const { $swal } = useNuxtApp()
@@ -245,83 +290,63 @@ const todayLabel = (() => {
 
 function toggleEditMode() {
   isEditMode.value = !isEditMode.value
-  if (!isEditMode.value) {
-    onCardDragEnd()
-  }
 }
+
+// Drag & drop (SortableJS: mouse + touch), only active in edit mode.
+const boardRoot = ref<HTMLElement | null>(null)
+const { dragging: dashDragging } = useDashboardDrag(boardRoot, (key, target) => {
+  if (target === 'hidden' ? !boardLayout.value.includes(key) : boardLayout.value[target] === key) return
+  boardLayout.value = moveDashboardWidget(boardLayout.value, key, target)
+  void saveDashboardLayout()
+}, isEditMode)
 
 function visibleSlots(column: number[]) {
   if (isEditMode.value) return column
   return column.filter((slotIndex) => boardLayout.value[slotIndex] !== null)
 }
 
-function onCardDragStart(slotIndex: number) {
-  if (!isEditMode.value) return
-  if (!boardLayout.value[slotIndex]) return
-  draggingSlot.value = slotIndex
-}
-
-function onCardDragEnd() {
-  draggingSlot.value = null
-  dragOverSlot.value = null
-}
-
-function onSlotDragOver(slotIndex: number) {
-  dragOverSlot.value = slotIndex
-}
-
-function onSlotDragLeave(slotIndex: number) {
-  if (dragOverSlot.value === slotIndex) dragOverSlot.value = null
-}
-
-function onSlotDrop(slotIndex: number) {
-  if (!isEditMode.value) return
-  if (draggingSlot.value === null) return
-  const from = draggingSlot.value
-  if (from === slotIndex) {
-    onCardDragEnd()
-    return
+async function resetToCompanyLayout() {
+  try {
+    const res: any = await $fetch('/api/dashboard/layout', { method: 'DELETE' })
+    applyLayout(res?.layout)
+    $swal.toast('success', 'Volviste al diseño de la empresa')
+  } catch (e) {
+    $swal.toast('error', 'No se pudo restablecer el dashboard')
   }
-  const tmp = boardLayout.value[slotIndex]
-  boardLayout.value[slotIndex] = boardLayout.value[from]
-  boardLayout.value[from] = tmp
-  onCardDragEnd()
-  void saveDashboardLayout()
+}
+
+function applyLayout(res: any) {
+  if (!res) return
+  boardLayout.value = normalizeDashboardSlots(res.slots)
+  layoutSource.value = res.source === 'user' ? 'user' : 'company'
+  const ws = res?.settings?.welcome || {}
+  welcomeSettings.value = {
+    title: typeof ws?.title === 'string' && ws.title.trim() ? ws.title.trim() : 'Bienvenido',
+    subtitle: typeof ws?.subtitle === 'string' && ws.subtitle.trim() ? ws.subtitle.trim() : 'Aquí tienes un resumen de la actividad de la empresa.',
+    show_date: ws?.show_date !== false,
+  }
 }
 
 async function loadDashboardLayout() {
-  if (!token.value) return
+  if (!authenticated.value) return
   try {
-    const res: any = await $fetch(`${apiBase || 'http://localhost:8000'}/api/dashboard/layout`, {
-      headers: { Authorization: `Bearer ${token.value}` },
-    })
-    if (Array.isArray(res?.slots)) {
-      const normalized = res.slots.slice(0, 9)
-      while (normalized.length < 9) normalized.push(null)
-      boardLayout.value = normalized as Array<CardKey | null>
-    }
-    const ws = res?.settings?.welcome || {}
-    welcomeSettings.value = {
-      title: typeof ws?.title === 'string' && ws.title.trim() ? ws.title.trim() : 'Bienvenido',
-      subtitle: typeof ws?.subtitle === 'string' && ws.subtitle.trim() ? ws.subtitle.trim() : 'Aqui tenes un resumen de la actividad del sistema.',
-      show_date: ws?.show_date !== false,
-    }
+    applyLayout(await $fetch(`/api/dashboard/layout`))
   } catch (e) {
     console.error('dashboard layout load failed', e)
   }
 }
 
 async function saveDashboardLayout() {
-  if (!token.value) return
+  if (!authenticated.value) return
   if (savingLayout.value) return
   savingLayout.value = true
   try {
-    await $fetch(`${apiBase || 'http://localhost:8000'}/api/dashboard/layout`, {
+    await $fetch(`/api/dashboard/layout`, {
       method: 'PUT',
-      headers: { Authorization: `Bearer ${token.value}` },
       body: { slots: boardLayout.value },
     })
-    $swal.toast('success', 'Dashboard guardado correctamente')
+    layoutSource.value = 'user'
+    $swal.toast('success', 'Tu dashboard se guardó')
   } catch (e) {
     console.error('dashboard layout save failed', e)
     $swal.toast('error', 'No se pudo guardar el dashboard')
@@ -331,27 +356,12 @@ async function saveDashboardLayout() {
 }
 
 onBeforeMount(async () => {
-  if (!token.value) {
-    if (process.client) {
-      const saved = localStorage.getItem('rrhh_token')
-      if (saved) {
-        setToken(saved)
-        await fetchUser()
-      } else {
-        return router.push('/login')
-      }
-    } else {
-      return
-    }
-  } else {
-    await fetchUser()
-  }
+  await fetchUser()
 
   await loadDashboardLayout()
 
   try {
-    data.value = await $fetch(`${apiBase || 'http://localhost:8000'}/api/dashboard`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    data.value = await $fetch(`/api/dashboard`, {
     })
   } catch (e) {
     console.error(e)
@@ -361,8 +371,7 @@ onBeforeMount(async () => {
 
   birthdaysLoading.value = true
   try {
-    const res = await $fetch(`${apiBase || 'http://localhost:8000'}/api/birthdays`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res = await $fetch(`/api/birthdays`, {
     })
     birthdays.value = res || []
   } catch (err) {
@@ -379,8 +388,7 @@ onBeforeMount(async () => {
 
   vacationLoading.value = true
   try {
-    const vac = await $fetch(`${apiBase || 'http://localhost:8000'}/api/vacations/me`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const vac = await $fetch(`/api/vacations/me`, {
     })
     vacationInfo.value = {
       daysUntilVacation: vac?.days_until_vacation != null ? Math.round(Number(vac.days_until_vacation)) : null,
@@ -398,8 +406,7 @@ onBeforeMount(async () => {
 async function refreshTeam() {
   teamLoading.value = true
   try {
-    const res = await $fetch(`${apiBase || 'http://localhost:8000'}/api/team/me`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res = await $fetch(`/api/team/me`, {
     })
     teamName.value = (typeof res?.team_name === 'string' && res.team_name.trim()) ? res.team_name.trim() : 'Sin equipo'
     teamMembers.value = Array.isArray(res?.members) ? res.members : []
@@ -415,8 +422,7 @@ async function refreshTeam() {
 async function handleAttendanceChanged() {
   await refreshTeam()
   try {
-    const fresh = await $fetch(`${apiBase || 'http://localhost:8000'}/api/dashboard`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const fresh = await $fetch(`/api/dashboard`, {
     })
     data.value.stats = fresh?.stats || data.value.stats
   } catch (e) {
@@ -427,8 +433,7 @@ async function handleAttendanceChanged() {
 async function refreshHolidays() {
   holidaysLoading.value = true
   try {
-    const res = await $fetch(`${apiBase || 'http://localhost:8000'}/api/holidays/upcoming`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res = await $fetch(`/api/holidays/upcoming`, {
     })
     holidays.value = res || []
   } catch (e) {
@@ -442,8 +447,7 @@ async function refreshHolidays() {
 async function refreshAnnouncements() {
   announcementsLoading.value = true
   try {
-    const res = await $fetch(`${apiBase || 'http://localhost:8000'}/api/announcements?limit=5`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res = await $fetch(`/api/announcements?limit=5`, {
     })
     announcements.value = res || []
   } catch (e) {
@@ -456,8 +460,7 @@ async function refreshAnnouncements() {
 
 async function refreshDocumentsSummary() {
   try {
-    const res = await $fetch(`${apiBase || 'http://localhost:8000'}/api/documents/summary`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res = await $fetch(`/api/documents/summary`, {
     })
     documentsSummary.value = {
       medical: Number(res?.medical || 0),
@@ -471,10 +474,9 @@ async function refreshDocumentsSummary() {
 }
 
 async function refreshDashboardNotifications() {
-  if (!token.value) return
+  if (!authenticated.value) return
   try {
-    const fresh = await $fetch(`${apiBase || 'http://localhost:8000'}/api/dashboard`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const fresh = await $fetch(`/api/dashboard`, {
     })
     data.value.notifications = fresh?.notifications || []
     data.value.unread_notifications = unreadNotifications.value || fresh?.unread_notifications || 0

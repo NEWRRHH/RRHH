@@ -132,7 +132,7 @@ definePageMeta({ auth: true })
 declare const process: any
 declare const $fetch: any
 
-const { token, fetchUser, logout, apiBase, setToken, user } = useAuth()
+const { authenticated, fetchUser, logout, apiBase, user } = useAuth()
 const router = useRouter()
 const sidebar = ref<{ open: boolean } | null>(null)
 
@@ -158,10 +158,9 @@ const onLogout = async () => {
 }
 
 async function loadTeams() {
-  if (!token.value) return
+  if (!authenticated.value) return
   try {
-    teams.value = await $fetch(`${apiBase || 'http://localhost:8000'}/api/announcements/teams`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    teams.value = await $fetch(`/api/announcements/teams`, {
     })
   } catch (e) {
     console.error('announcement teams load failed', e)
@@ -170,11 +169,10 @@ async function loadTeams() {
 }
 
 async function loadAnnouncements() {
-  if (!token.value) return
+  if (!authenticated.value) return
   loading.value = true
   try {
-    announcements.value = await $fetch(`${apiBase || 'http://localhost:8000'}/api/announcements?limit=100`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    announcements.value = await $fetch(`/api/announcements?limit=100`, {
     })
   } catch (e) {
     console.error('announcements load failed', e)
@@ -186,7 +184,7 @@ async function loadAnnouncements() {
 }
 
 async function createAnnouncement() {
-  if (!token.value) return
+  if (!authenticated.value) return
   if (!form.value.title.trim() || !form.value.body.trim()) {
     $swal.toast('error', 'Completa titulo y mensaje')
     return
@@ -198,9 +196,8 @@ async function createAnnouncement() {
 
   saving.value = true
   try {
-    await $fetch(`${apiBase || 'http://localhost:8000'}/api/announcements`, {
+    await $fetch(`/api/announcements`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token.value}` },
       body: {
         title: form.value.title.trim(),
         body: form.value.body.trim(),
@@ -229,21 +226,7 @@ function formatDate(dt?: string) {
 }
 
 onBeforeMount(async () => {
-  if (!token.value) {
-    if (process.client) {
-      const saved = localStorage.getItem('rrhh_token')
-      if (saved) {
-        setToken(saved)
-        await fetchUser()
-      } else {
-        return router.push('/login')
-      }
-    } else {
-      return
-    }
-  } else {
-    await fetchUser()
-  }
+  await fetchUser()
 
   const canAccess = Boolean((user.value as any)?.can_access_announcements) || Boolean((user.value as any)?.can_manage_announcements) || (Array.isArray((user.value as any)?.permissions) && (user.value as any).permissions.includes('announcements.manage'))
   if (!canAccess) {

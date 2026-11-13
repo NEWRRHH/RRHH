@@ -3,15 +3,22 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Traits\PermissionTrait;
 use App\Events\TimeOffRequestUpdated;
 use Carbon\Carbon;
+use App\Support\Tenancy\TenantRule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Models\Attendance;
+use App\Models\Event;
+use App\Models\EventType;
+use App\Services\ScheduleService;
+use App\Support\WorkTime;
 
 class TimeOffController extends Controller
 {
-    use PermissionTrait;
+    public function __construct(private ScheduleService $schedules)
+    {
+    }
     private function parseAttendanceRequestKindFromEvent(object $event): string
     {
         $description = strtolower(trim((string) ($event->description ?? '')));
@@ -30,15 +37,6 @@ class TimeOffController extends Controller
         return 'entry_exit';
     }
 
-    private function secondsToMysqlTime(int $seconds): string
-    {
-        $s = max(0, $seconds);
-        $h = intdiv($s, 3600);
-        $m = intdiv($s % 3600, 60);
-        $ss = $s % 60;
-        return sprintf('%02d:%02d:%02d', $h, $m, $ss);
-    }
-
     private function applyApprovedAttendanceRequest(object $event): void
     {
         $requestDate = Carbon::parse((string) $event->start_at)->toDateString();
@@ -46,7 +44,7 @@ class TimeOffController extends Controller
         $endAt = Carbon::parse((string) ($event->end_at ?: $event->start_at));
         $kind = $this->parseAttendanceRequestKindFromEvent($event);
 
-        $attendance = DB::table('attendances')
+        $attendance = Attendance::table()
             ->where('user_id', (int) $event->user_id)
             ->whereDate('date', $requestDate)
             ->orderBy('created_at', 'desc')
@@ -65,12 +63,12 @@ class TimeOffController extends Controller
                 if ($endDateTime->lte($startDateTime)) {
                     $endDateTime->addDay();
                 }
-                $worked = $this->secondsToMysqlTime($startDateTime->diffInSeconds($endDateTime));
+                $worked = WorkTime::secondsToMysqlTime($startDateTime->diffInSeconds($endDateTime));
                 $status = 'fuera_trabajo';
                 $endDate = $requestDate;
             }
 
-            DB::table('attendances')->insert([
+            Attendance::table()->insert([
                 'date' => $requestDate,
                 'user_id' => (int) $event->user_id,
                 'start_time' => $startTime,
@@ -116,14 +114,14 @@ class TimeOffController extends Controller
                 }
             }
 
-            $updates['hours_worked'] = $this->secondsToMysqlTime((int) $seconds);
+            $updates['hours_worked'] = WorkTime::secondsToMysqlTime((int) $seconds);
             $updates['status'] = 'fuera_trabajo';
             $updates['end_date'] = $requestDate;
         }
 
         if (!empty($updates)) {
             $updates['updated_at'] = now();
-            DB::table('attendances')->where('id', $attendance->id)->update($updates);
+            Attendance::table()->where('id', $attendance->id)->update($updates);
         }
     }
 
@@ -132,9 +130,9 @@ class TimeOffController extends Controller
         $yearStart = Carbon::create($year, 1, 1)->startOfDay();
         $yearEnd = Carbon::create($year, 12, 31)->endOfDay();
 
-        $rowsQuery = DB::table('events')
+        $rowsQuery = Event::table()
             ->where('user_id', $userId)
-            ->where('event_type_id', 2)
+            ->where('event_type_id', EventType::idFor(EventType::VACATION))
             ->whereNull('deleted_at')
             ->where(function ($q) {
                 $q->whereNull('approval_status')
@@ -157,7 +155,6 @@ class TimeOffController extends Controller
         }
 
         $rows = $rowsQuery->get(['start_at', 'end_at']);
-        $weekMap = [1 => 'L', 2 => 'M', 3 => 'X', 4 => 'J', 5 => 'V', 6 => 'S', 7 => 'D'];
         $set = [];
 
         foreach ($rows as $row) {
@@ -169,8 +166,7 @@ class TimeOffController extends Controller
 
             $cursor = $clampedStart->copy();
             while ($cursor->lte($clampedEnd)) {
-                $letter = $weekMap[$cursor->dayOfWeekIso] ?? 'L';
-                if (in_array($letter, $scheduleDays, true)) {
+                if ($this->schedules->isWorkingDate($cursor, $scheduleDays)) {
                     $set[$cursor->toDateString()] = true;
                 }
                 $cursor->addDay();
@@ -182,12 +178,10 @@ class TimeOffController extends Controller
 
     private function appendWorkingRangeToSet(array $set, Carbon $start, Carbon $end, array $scheduleDays): array
     {
-        $weekMap = [1 => 'L', 2 => 'M', 3 => 'X', 4 => 'J', 5 => 'V', 6 => 'S', 7 => 'D'];
         $cursor = $start->copy()->startOfDay();
         $last = $end->copy()->startOfDay();
         while ($cursor->lte($last)) {
-            $letter = $weekMap[$cursor->dayOfWeekIso] ?? 'L';
-            if (in_array($letter, $scheduleDays, true)) {
+            if ($this->schedules->isWorkingDate($cursor, $scheduleDays)) {
                 $set[$cursor->toDateString()] = true;
             }
             $cursor->addDay();
@@ -198,7 +192,7 @@ class TimeOffController extends Controller
     private function canReviewRequests(?object $user): bool
     {
         if (!$user) return false;
-        return $this->hasPermission($user, 'requests.review');
+        return $user->hasPermission('requests.review');
     }
 
     private function eventDisplayColor(?string $approvalStatus, ?string $selectedColor): string
@@ -218,97 +212,6 @@ class TimeOffController extends Controller
         return 'approved';
     }
 
-    private function loadScheduleForUser(int $userId): ?object
-    {
-        $templates = DB::table('user_schedules')
-            ->join('schedules', 'user_schedules.schedule_id', '=', 'schedules.id')
-            ->where('user_schedules.user_id', $userId)
-            ->whereNull('schedules.deleted_at')
-            ->orderBy('user_schedules.id', 'asc')
-            ->get(['schedules.start_time', 'schedules.end_time', 'schedules.days']);
-
-        if (!$templates->count()) {
-            return null;
-        }
-
-        $daysUnion = [];
-        $earliestStart = null;
-        $latestEnd = null;
-
-        foreach ($templates as $tpl) {
-            $daysUnion = array_values(array_unique(array_merge($daysUnion, $this->normalizeScheduleDays($tpl->days ?? null))));
-            $start = isset($tpl->start_time) ? substr((string) $tpl->start_time, 0, 5) : null;
-            $end = isset($tpl->end_time) ? substr((string) $tpl->end_time, 0, 5) : null;
-
-            if ($start && ($earliestStart === null || $start < $earliestStart)) {
-                $earliestStart = $start;
-            }
-            if ($end && ($latestEnd === null || $end > $latestEnd)) {
-                $latestEnd = $end;
-            }
-        }
-
-        return (object) [
-            'start_time' => $earliestStart,
-            'end_time' => $latestEnd,
-            'days' => $daysUnion,
-        ];
-    }
-
-    private function normalizeScheduleDays($days): array
-    {
-        $default = ['L', 'M', 'X', 'J', 'V'];
-        if (empty($days)) {
-            return $default;
-        }
-
-        $decoded = $days;
-        if (is_string($days)) {
-            $decoded = json_decode($days, true);
-        }
-
-        if (!is_array($decoded)) {
-            return $default;
-        }
-
-        $allowed = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
-        $normalized = array_values(array_intersect($allowed, array_map('strtoupper', $decoded)));
-        return count($normalized) ? $normalized : $default;
-    }
-
-    private function loadScheduleDaysForUser(int $userId): array
-    {
-        $schedule = $this->loadScheduleForUser($userId);
-        return $this->normalizeScheduleDays($schedule->days ?? null);
-    }
-
-    private function calculateWorkingDays(Carbon $start, Carbon $end, array $scheduleDays): int
-    {
-        $weekMap = [
-            1 => 'L',
-            2 => 'M',
-            3 => 'X',
-            4 => 'J',
-            5 => 'V',
-            6 => 'S',
-            7 => 'D',
-        ];
-
-        $count = 0;
-        $cursor = $start->copy()->startOfDay();
-        $last = $end->copy()->startOfDay();
-
-        while ($cursor->lte($last)) {
-            $letter = $weekMap[$cursor->dayOfWeekIso] ?? 'L';
-            if (in_array($letter, $scheduleDays, true)) {
-                $count++;
-            }
-            $cursor->addDay();
-        }
-
-        return $count;
-    }
-
     public function calendar(Request $request)
     {
         $user = $request->user();
@@ -316,7 +219,7 @@ class TimeOffController extends Controller
             return response()->json(['message' => 'Unauthenticated'], 401);
         }
 
-        if (!$this->canViewVacations($user)) {
+        if (!$user->hasPermission('vacations.view')) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
@@ -327,15 +230,15 @@ class TimeOffController extends Controller
 
         $start = Carbon::create($year, 1, 1)->startOfDay();
         $end = Carbon::create($year, 12, 31)->endOfDay();
-        $schedule = $this->loadScheduleForUser((int) $user->id);
-        $scheduleDays = $this->normalizeScheduleDays($schedule->days ?? null);
+        $schedule = $this->schedules->loadEffectiveScheduleForUser((int) $user->id);
+        $scheduleDays = $this->schedules->normalizeScheduleDays($schedule->days ?? null);
 
-        $eventTypes = DB::table('event_types')
+        $eventTypes = EventType::table()
             ->whereNull('deleted_at')
             ->orderBy('name', 'asc')
             ->get(['id', 'name']);
 
-        $events = DB::table('events')
+        $events = Event::table()
             ->join('event_types', 'events.event_type_id', '=', 'event_types.id')
             ->where('events.user_id', $user->id)
             ->whereNull('events.deleted_at')
@@ -403,7 +306,7 @@ class TimeOffController extends Controller
             ],
             'event_types' => $eventTypes,
             'events' => $events,
-        ])->header('Access-Control-Allow-Origin', '*');
+        ]);
     }
 
     public function create(Request $request)
@@ -413,14 +316,14 @@ class TimeOffController extends Controller
             return response()->json(['message' => 'Unauthenticated'], 401);
         }
 
-        if (!$this->canCreateVacations($user)) {
+        if (!$user->hasPermission('vacations.create')) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
         $data = $request->validate([
             'title' => 'required|string|max:100',
             'description' => 'nullable|string',
-            'event_type_id' => 'required|integer|exists:event_types,id',
+            'event_type_id' => ['required', 'integer', TenantRule::exists('event_types', 'id', true)],
             'start_date' => 'required|date_format:Y-m-d',
             'end_date' => 'required|date_format:Y-m-d',
             'all_day' => 'nullable|boolean',
@@ -453,7 +356,7 @@ class TimeOffController extends Controller
             if (!$startTime || !$endTime) {
                 return response()->json(['message' => 'Debes completar hora inicio y hora fin'], 422);
             }
-            $schedule = $this->loadScheduleForUser((int) $user->id);
+            $schedule = $this->schedules->loadEffectiveScheduleForUser((int) $user->id);
             if (!$schedule || empty($schedule->start_time) || empty($schedule->end_time)) {
                 return response()->json(['message' => 'No hay horario laboral configurado para este usuario'], 422);
             }
@@ -471,10 +374,10 @@ class TimeOffController extends Controller
             }
         }
 
-        $scheduleDays = $this->loadScheduleDaysForUser((int) $user->id);
-        $workingDays = $this->calculateWorkingDays($start->copy()->startOfDay(), $end->copy()->startOfDay(), $scheduleDays);
+        $scheduleDays = $this->schedules->loadScheduleDaysForUser((int) $user->id);
+        $workingDays = $this->schedules->calculateWorkingDays($start->copy()->startOfDay(), $end->copy()->startOfDay(), $scheduleDays);
 
-        if ((int) $data['event_type_id'] === 2) {
+        if ((int) $data['event_type_id'] === EventType::idFor(EventType::VACATION)) {
             $year = (int) $start->year;
             $existingSet = $this->vacationWorkingDaysSetForYear((int) $user->id, $year, $scheduleDays, null);
             $combinedSet = $this->appendWorkingRangeToSet($existingSet, $start, $end, $scheduleDays);
@@ -489,7 +392,7 @@ class TimeOffController extends Controller
             }
         }
 
-        $id = DB::table('events')->insertGetId([
+        $id = Event::table()->insertGetId([
             'title' => $data['title'],
             'description' => $data['description'] ?? null,
             'start_at' => $start->toDateTimeString(),
@@ -526,11 +429,11 @@ class TimeOffController extends Controller
             return response()->json(['message' => 'Unauthenticated'], 401);
         }
 
-        if (!$this->canEditVacations($user)) {
+        if (!$user->hasPermission('vacations.edit')) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
-        $event = DB::table('events')
+        $event = Event::table()
             ->where('id', $id)
             ->where('user_id', $user->id)
             ->whereNull('deleted_at')
@@ -543,7 +446,7 @@ class TimeOffController extends Controller
         $data = $request->validate([
             'title' => 'required|string|max:100',
             'description' => 'nullable|string',
-            'event_type_id' => 'required|integer|exists:event_types,id',
+            'event_type_id' => ['required', 'integer', TenantRule::exists('event_types', 'id', true)],
             'start_date' => 'required|date_format:Y-m-d',
             'end_date' => 'required|date_format:Y-m-d',
             'all_day' => 'nullable|boolean',
@@ -576,7 +479,7 @@ class TimeOffController extends Controller
             if (!$startTime || !$endTime) {
                 return response()->json(['message' => 'Debes completar hora inicio y hora fin'], 422);
             }
-            $schedule = $this->loadScheduleForUser((int) $user->id);
+            $schedule = $this->schedules->loadEffectiveScheduleForUser((int) $user->id);
             if (!$schedule || empty($schedule->start_time) || empty($schedule->end_time)) {
                 return response()->json(['message' => 'No hay horario laboral configurado para este usuario'], 422);
             }
@@ -594,10 +497,10 @@ class TimeOffController extends Controller
             }
         }
 
-        $scheduleDays = $this->loadScheduleDaysForUser((int) $user->id);
-        $workingDays = $this->calculateWorkingDays($start->copy()->startOfDay(), $end->copy()->startOfDay(), $scheduleDays);
+        $scheduleDays = $this->schedules->loadScheduleDaysForUser((int) $user->id);
+        $workingDays = $this->schedules->calculateWorkingDays($start->copy()->startOfDay(), $end->copy()->startOfDay(), $scheduleDays);
 
-        if ((int) $data['event_type_id'] === 2) {
+        if ((int) $data['event_type_id'] === EventType::idFor(EventType::VACATION)) {
             $year = (int) $start->year;
             $existingSet = $this->vacationWorkingDaysSetForYear((int) $user->id, $year, $scheduleDays, (int) $event->id);
             $combinedSet = $this->appendWorkingRangeToSet($existingSet, $start, $end, $scheduleDays);
@@ -612,7 +515,7 @@ class TimeOffController extends Controller
             }
         }
 
-        DB::table('events')
+        Event::table()
             ->where('id', $event->id)
             ->update([
                 'title' => $data['title'],
@@ -647,7 +550,7 @@ class TimeOffController extends Controller
         $user = $request->user();
         if (!$user) return response()->json(['message' => 'Unauthenticated'], 401);
 
-        if (!$this->canViewRequests($user)) {
+        if (!$user->hasPermission('requests.view')) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
@@ -659,7 +562,7 @@ class TimeOffController extends Controller
             $statusFilter = 'pending';
         }
 
-        $query = DB::table('events')
+        $query = Event::table()
             ->join('event_types', 'events.event_type_id', '=', 'event_types.id')
             ->join('users', 'events.user_id', '=', 'users.id')
             ->leftJoin('users as reviewer', 'events.reviewed_by_user_id', '=', 'reviewer.id')
@@ -735,7 +638,7 @@ class TimeOffController extends Controller
             'can_review' => $canReview,
             'status_filter' => $statusFilter,
             'requests' => $rows,
-        ])->header('Access-Control-Allow-Origin', '*');
+        ]);
     }
 
     public function review(Request $request, int $id)
@@ -757,7 +660,7 @@ class TimeOffController extends Controller
             return response()->json(['message' => 'Debes agregar un comentario al desaprobar'], 422);
         }
 
-        $event = DB::table('events')
+        $event = Event::table()
             ->join('event_types', 'events.event_type_id', '=', 'event_types.id')
             ->where('events.id', $id)
             ->whereNull('events.deleted_at')
@@ -777,7 +680,7 @@ class TimeOffController extends Controller
         }
 
         DB::transaction(function () use ($id, $decision, $comment, $user, $event) {
-            DB::table('events')
+            Event::table()
                 ->where('id', $id)
                 ->update([
                     'approval_status' => $decision,
@@ -798,6 +701,6 @@ class TimeOffController extends Controller
             'status' => 'ok',
             'event_id' => $id,
             'decision' => $decision,
-        ])->header('Access-Control-Allow-Origin', '*');
+        ]);
     }
 }

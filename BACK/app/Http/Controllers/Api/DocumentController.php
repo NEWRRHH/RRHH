@@ -3,15 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Traits\PermissionTrait;
+use App\Models\Document;
+use App\Services\PlanLimits;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class DocumentController extends Controller
 {
-    use PermissionTrait;
     private function allowedCategories(): array
     {
         return ['medical', 'receipt', 'payroll'];
@@ -22,12 +21,12 @@ class DocumentController extends Controller
         $user = $request->user();
         if (!$user) return response()->json(['message' => 'Unauthenticated'], 401);
 
-        if (!$this->hasPermission($user, 'documents.view')) {
+        if (!$user->hasPermission('documents.view')) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
         $category = (string) $request->query('category', '');
-        $query = DB::table('documents')
+        $query = Document::table()
             ->where('user_id', $user->id)
             ->whereNull('deleted_at')
             ->orderBy('created_at', 'desc');
@@ -47,15 +46,15 @@ class DocumentController extends Controller
             'created_at',
         ]);
 
-        return response()->json(['documents' => $rows])->header('Access-Control-Allow-Origin', '*');
+        return response()->json(['documents' => $rows]);
     }
 
-    public function upload(Request $request)
+    public function upload(Request $request, PlanLimits $limits)
     {
         $user = $request->user();
         if (!$user) return response()->json(['message' => 'Unauthenticated'], 401);
 
-        if (!$this->hasPermission($user, 'documents.upload')) {
+        if (!$user->hasPermission('documents.upload')) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
@@ -66,10 +65,15 @@ class DocumentController extends Controller
         ]);
 
         $file = $request->file('file');
-        $safeName = Str::random(24) . '.' . $file->getClientOriginalExtension();
-        $storedPath = $file->storeAs("documents/{$user->id}", $safeName, 'local');
 
-        $id = DB::table('documents')->insertGetId([
+        // plan limit (storage)
+        if ($user->company && ($limitError = $limits->canStore($user->company, (int) $file->getSize()))) {
+            return response()->json(['message' => $limitError], 422);
+        }
+        $safeName = Str::random(24) . '.' . $file->getClientOriginalExtension();
+        $storedPath = $file->storeAs("documents/{$user->company_id}/{$user->id}", $safeName, 'local');
+
+        $id = Document::table()->insertGetId([
             'description' => $data['description'] ?? '',
             'user_id' => $user->id,
             'filename' => $storedPath,
@@ -83,7 +87,7 @@ class DocumentController extends Controller
             'updated_at' => now(),
         ]);
 
-        return response()->json(['status' => 'ok', 'document_id' => $id])->header('Access-Control-Allow-Origin', '*');
+        return response()->json(['status' => 'ok', 'document_id' => $id]);
     }
 
     public function download(Request $request, int $id)
@@ -91,11 +95,11 @@ class DocumentController extends Controller
         $user = $request->user();
         if (!$user) return response()->json(['message' => 'Unauthenticated'], 401);
 
-        if (!$this->hasPermission($user, 'documents.view')) {
+        if (!$user->hasPermission('documents.view')) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
-        $doc = DB::table('documents')
+        $doc = Document::table()
             ->where('id', $id)
             ->where('user_id', $user->id)
             ->whereNull('deleted_at')

@@ -24,6 +24,10 @@ nul
 **/storage/*.key
 /back_vendor
 
+# Local scratch scripts (create users/tokens, broadcast tests) must never
+# end up in the repository or in CI artifacts.
+BACK/_scripts/
+
 # IDEs / editors
 /.idea
 /.vscode

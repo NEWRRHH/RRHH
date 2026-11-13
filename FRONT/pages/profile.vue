@@ -161,6 +161,8 @@
 </template>
 
 <script setup lang="ts">
+definePageMeta({ auth: true })
+
 import { ref, onBeforeMount, onBeforeUnmount, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
@@ -171,7 +173,7 @@ import UserMenu from '../components/UserMenu.vue'
 
 declare const $fetch: any
 
-const { token, apiBase, user, fetchUser, logout } = useAuth()
+const { authenticated, apiBase, user, fetchUser, logout } = useAuth()
 const { $swal } = useNuxtApp()
 const router = useRouter()
 const sidebar = ref<{ open: boolean } | null>(null)
@@ -217,12 +219,8 @@ const displayScheduleTemplates = computed(() => {
 })
 
 onBeforeMount(async () => {
-  if (token.value) {
-    await fetchUser()
-    if (user.value) fillForm()
-  } else if (user.value) {
-    fillForm()
-  }
+  await fetchUser()
+  if (user.value) fillForm()
 })
 
 function fillForm() {
@@ -250,8 +248,7 @@ function normalizeTimeToHm(value?: string | null) {
 
 const fetchSchedule = async () => {
   try {
-    const res = await $fetch(`${apiBase}/api/attendance/info`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res = await $fetch(`/api/attendance/info`, {
     })
     if (res?.schedule) {
       form.value.start_time = normalizeTimeToHm(res.schedule.start_time || '')
@@ -281,7 +278,7 @@ const onPhotoChange = (e: Event) => {
 }
 
 const save = async () => {
-  if (!token.value) return
+  if (!authenticated.value) return
   loading.value = true
   try {
     const data = new FormData()
@@ -292,9 +289,8 @@ const save = async () => {
     data.append('social_security_number', form.value.social_security_number || '')
     if (form.value.photo) data.append('photo', form.value.photo)
     // update profile
-    const res: any = await $fetch(`${apiBase}/api/user`, {
+    const res: any = await $fetch(`/api/user`, {
       method: 'PUT',
-      headers: { Authorization: `Bearer ${token.value}` },
       body: data,
     })
     user.value = res
@@ -302,9 +298,8 @@ const save = async () => {
     // password change?
     if (form.value.password) {
       try {
-        await $fetch(`${apiBase}/api/user/password`, {
+        await $fetch(`/api/user/password`, {
           method: 'PUT',
-          headers: { Authorization: `Bearer ${token.value}` },
           body: {
             current_password: form.value.current_password,
             password: form.value.password,

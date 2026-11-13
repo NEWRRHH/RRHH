@@ -20,12 +20,17 @@ class DeleteAccountTest extends TestCase
         }
 
         $this->actingAs($user = User::factory()->create());
+        $user->createToken('api-token');
 
-        $component = Livewire::test(DeleteUserForm::class)
+        Livewire::test(DeleteUserForm::class)
             ->set('password', 'password')
             ->call('deleteUser');
 
-        $this->assertNull($user->fresh());
+        // Accounts are soft deleted on purpose: attendances, documents and
+        // requests of the person stay linked for the company's HR history.
+        $this->assertSoftDeleted($user);
+        $this->assertNull(User::find($user->id));
+        $this->assertSame(0, $user->tokens()->count());
     }
 
     public function test_correct_password_must_be_provided_before_account_can_be_deleted(): void

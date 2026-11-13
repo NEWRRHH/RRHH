@@ -167,7 +167,7 @@ declare const process: any
 declare function useRuntimeConfig(): any
 
 const router = useRouter()
-const { token, apiBase, fetchUser, logout, setToken, user, realtimeInstance, connectRealtime } = useAuth()
+const { authenticated, apiBase, fetchUser, logout, user, realtimeInstance, connectRealtime } = useAuth()
 const config = useRuntimeConfig()
 const sidebar = ref<{ open: boolean } | null>(null)
 
@@ -242,11 +242,10 @@ function statusBadgeClass(status: string): string {
 }
 
 async function loadRequests() {
-  if (!token.value) return
+  if (!authenticated.value) return
   loading.value = true
   try {
-    const res: any = await $fetch(`${apiBase}/api/timeoff/requests?status=${statusFilter.value}`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res: any = await $fetch(`/api/timeoff/requests?status=${statusFilter.value}`, {
     })
     canReview.value = !!res?.can_review
     requests.value = Array.isArray(res?.requests) ? res.requests : []
@@ -269,6 +268,11 @@ async function handleRealtimeUpdate(payload?: any, source = 'unknown') {
   } finally {
     realtimeRefreshing.value = false
   }
+}
+
+// Reviewers channel is per company (multi-tenant).
+function reviewersChannelName() {
+  return `company.${Number((user.value as any)?.company_id || 0)}.timeoff.reviewers`
 }
 
 function teardownRealtimeListeners() {
@@ -302,9 +306,9 @@ function setupRealtimeListeners() {
   })
 
   if (canReview.value) {
-    reviewerRealtimeChannel = echo.private('timeoff.reviewers')
+    reviewerRealtimeChannel = echo.private(reviewersChannelName())
     reviewerRealtimeChannel.listen('.TimeOffRequestUpdated', (e: any) => {
-      void handleRealtimeUpdate(e, 'timeoff.reviewers')
+      void handleRealtimeUpdate(e, reviewersChannelName())
     })
   }
 }
@@ -324,13 +328,12 @@ function closeReject() {
 }
 
 async function review(id: number, decision: 'approved' | 'rejected', comment = '') {
-  if (!token.value) return
+  if (!authenticated.value) return
   savingId.value = id
   actionError.value = ''
   try {
-    await $fetch(`${apiBase}/api/timeoff/requests/${id}/review`, {
+    await $fetch(`/api/timeoff/requests/${id}/review`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token.value}` },
       body: { decision, comment: comment || null },
     })
     closeReject()
@@ -348,17 +351,6 @@ async function confirmReject() {
 }
 
 onBeforeMount(async () => {
-  if (!token.value) {
-    if (process.client) {
-      const saved = localStorage.getItem('rrhh_token')
-      if (saved) {
-        setToken(saved)
-      } else {
-        return router.push('/login')
-      }
-    }
-  }
-
   await fetchUser()
 
   const currentUser: any = user.value || {}
@@ -367,14 +359,12 @@ onBeforeMount(async () => {
     return router.push('/dashboard')
   }
 
-  if (!realtimeInstance?.() && token.value) {
+  if (!realtimeInstance?.() && authenticated.value) {
     connectRealtime({
       host: config.public.reverbHost,
       port: config.public.reverbPort,
       appId: config.public.reverbAppId,
       key: config.public.reverbAppKey,
-      token: token.value,
-      authEndpoint: `${config.public.apiBase}/broadcasting/auth`,
     })
   }
   canReview.value = canReviewRequests()

@@ -119,7 +119,7 @@
                   </thead>
                   <tbody>
                     <tr v-for="r in attendanceRows" :key="r.date" class="border-t border-gray-800 text-gray-200">
-                      <td class="px-3 py-2">{{ formatDate(r.date) }}</td>
+                      <td class="px-3 py-2">{{ formatDate(r.date) }}<span v-if="r.holiday" class="block text-[10px] text-blue-300">Festivo: {{ r.holiday }}</span></td>
                       <td class="px-3 py-2">{{ r.start_time || '--:--' }}</td>
                       <td class="px-3 py-2">{{ r.pause_time || '--:--' }}</td>
                       <td class="px-3 py-2">{{ r.resume_time || '--:--' }}</td>
@@ -253,6 +253,19 @@
                         <option :value="null">Sin equipo</option>
                         <option v-for="team in teams" :key="team.id" :value="team.id">{{ team.name }}</option>
                       </select>
+                    </div>
+                    <div>
+                      <label class="block text-xs text-gray-400 mb-1">Rol</label>
+                      <select
+                        v-model="form.role_id"
+                        :disabled="!canChangeRole"
+                        class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white disabled:opacity-60"
+                      >
+                        <option :value="null">Sin rol (sin permisos)</option>
+                        <option v-for="role in roles" :key="role.id" :value="role.id">{{ role.name }}</option>
+                        <option v-if="currentRoleHidden" :value="form.role_id">{{ currentRoleName }}</option>
+                      </select>
+                      <p v-if="!canChangeRole" class="text-[11px] text-gray-500 mt-1">No puedes cambiar el rol de este usuario.</p>
                     </div>
                     <div>
                       <label class="block text-xs text-gray-400 mb-1">Fecha de ingreso</label>
@@ -401,6 +414,8 @@
 </template>
 
 <script setup lang="ts">
+definePageMeta({ auth: true })
+
 import { computed, ref, watch, onBeforeMount, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuth } from '../../composables/useAuth'
@@ -422,7 +437,7 @@ const tabs: Array<{ id: TabId; label: string }> = [
   { id: 'documentos', label: 'Documentos' },
 ]
 
-const { token, fetchUser, logout, apiBase, setToken, user } = useAuth()
+const { authenticated, fetchUser, logout, apiBase, user } = useAuth()
 const router = useRouter()
 const route = useRoute()
 const sidebar = ref<{ open: boolean } | null>(null)
@@ -443,6 +458,11 @@ const attendanceSummary = ref<any>({
 })
 const employeeDocuments = ref<any[]>([])
 const teams = ref<any[]>([])
+const roles = ref<Array<{ id: number; name: string; is_admin: boolean }>>([])
+const canChangeRole = ref(false)
+const currentRoleName = ref('')
+// the employee's current role may not be in the assignable list (e.g. Admin for a non-admin viewer)
+const currentRoleHidden = computed(() => form.value.role_id !== null && !roles.value.some((r) => r.id === form.value.role_id))
 const scheduleTemplates = ref<any[]>([])
 const preview = ref<string | null>(null)
 const downloadingDocId = ref<number | null>(null)
@@ -453,6 +473,7 @@ const form = ref<any>({
   name: '',
   email: '',
   team_id: null,
+  role_id: null,
   phone: '',
   hire_date: '',
   birth_date: '',
@@ -629,14 +650,15 @@ async function loadEmployee() {
   error.value = null
   loadingEmployee.value = true
   try {
-    const res = await $fetch(`${apiBase || 'http://localhost:8000'}/api/employees/${employeeId.value}`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res = await $fetch(`/api/employees/${employeeId.value}`, {
     })
 
     const employee = res?.employee || {}
     form.value.name = employee.name || ''
     form.value.email = employee.email || ''
     form.value.team_id = employee.team_id ?? null
+    form.value.role_id = employee.role_id ?? null
+    currentRoleName.value = employee.role?.name || 'Rol actual'
     form.value.phone = employee.phone || ''
     form.value.hire_date = employee.hire_date || ''
     form.value.birth_date = employee.birth_date || ''
@@ -658,6 +680,8 @@ async function loadEmployee() {
     scheduleSelectionError.value = ''
 
     teams.value = res?.teams || []
+    roles.value = res?.roles || []
+    canChangeRole.value = Boolean(res?.can_change_role)
   } catch (e: any) {
     console.error('employee load failed', e)
     error.value = e?.data?.message || 'No se pudo cargar el empleado'
@@ -667,10 +691,9 @@ async function loadEmployee() {
 }
 
 async function loadAttendance() {
-  if (!token.value || !employeeId.value) return
+  if (!authenticated.value || !employeeId.value) return
   try {
-    const res = await $fetch(`${apiBase || 'http://localhost:8000'}/api/employees/${employeeId.value}/attendance-month?month=${selectedMonth.value}`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res = await $fetch(`/api/employees/${employeeId.value}/attendance-month?month=${selectedMonth.value}`, {
     })
     attendanceRows.value = res?.rows || []
     attendanceSummary.value = res?.summary || attendanceSummary.value
@@ -681,10 +704,9 @@ async function loadAttendance() {
 }
 
 async function loadDocuments() {
-  if (!token.value || !employeeId.value) return
+  if (!authenticated.value || !employeeId.value) return
   try {
-    const res = await $fetch(`${apiBase || 'http://localhost:8000'}/api/employees/${employeeId.value}/documents`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res = await $fetch(`/api/employees/${employeeId.value}/documents`, {
     })
     employeeDocuments.value = res?.documents || []
   } catch (e) {
@@ -694,7 +716,7 @@ async function loadDocuments() {
 }
 
 async function saveProfile() {
-  if (!token.value || !employeeId.value) return
+  if (!authenticated.value || !employeeId.value) return
   if (scheduleSelectionError.value) {
     $swal.toast('error', scheduleSelectionError.value)
     return
@@ -706,6 +728,7 @@ async function saveProfile() {
     data.append('name', form.value.name || '')
     data.append('email', form.value.email || '')
     if (form.value.team_id !== null && form.value.team_id !== '') data.append('team_id', String(form.value.team_id))
+    if (canChangeRole.value) data.append('role_id', form.value.role_id === null ? '' : String(form.value.role_id))
     data.append('phone', form.value.phone || '')
     data.append('hire_date', form.value.hire_date || '')
     data.append('birth_date', form.value.birth_date || '')
@@ -723,12 +746,8 @@ async function saveProfile() {
     }
     if (form.value.photo) data.append('photo', form.value.photo)
 
-    await $fetch(`${apiBase || 'http://localhost:8000'}/api/employees/${employeeId.value}`, {
+    await $fetch(`/api/employees/${employeeId.value}`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token.value}`,
-        Accept: 'application/json',
-      },
       body: data,
     })
 
@@ -745,11 +764,10 @@ async function saveProfile() {
 }
 
 async function downloadEmployeeDocument(d: any) {
-  if (!token.value || !employeeId.value || !d?.id) return
+  if (!authenticated.value || !employeeId.value || !d?.id) return
   downloadingDocId.value = Number(d.id)
   try {
-    const res = await fetch(`${apiBase || 'http://localhost:8000'}/api/employees/${employeeId.value}/documents/${d.id}/download`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res = await fetch(`/api/employees/${employeeId.value}/documents/${d.id}/download`, {
     })
     if (!res.ok) throw new Error('download_failed')
 
@@ -792,21 +810,7 @@ watch(activeTab, (tab) => {
 })
 
 onBeforeMount(async () => {
-  if (!token.value) {
-    if (process.client) {
-      const saved = localStorage.getItem('rrhh_token')
-      if (saved) {
-        setToken(saved)
-        await fetchUser()
-      } else {
-        return router.push('/login')
-      }
-    } else {
-      return
-    }
-  } else {
-    await fetchUser()
-  }
+  await fetchUser()
   if (!canViewEmployeeDetails.value) {
     return router.push('/dashboard')
   }

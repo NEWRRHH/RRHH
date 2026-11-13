@@ -1,7 +1,6 @@
 <?php
 
 use Illuminate\Support\Facades\Broadcast;
-use Illuminate\Support\Facades\DB;
 
 /*
 |--------------------------------------------------------------------------
@@ -19,12 +18,10 @@ Broadcast::channel('user.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
 });
 
-Broadcast::channel('timeoff.reviewers', function ($user) {
-    if (!$user) return false;
+// Request reviewers of ONE company (multi-tenant: never a global channel).
+Broadcast::channel('company.{companyId}.timeoff.reviewers', function ($user, $companyId) {
+    if (!$user || $user->isSuperAdmin()) return false;
 
-    return DB::table('team_permision')
-        ->join('permisions', 'team_permision.permision_id', '=', 'permisions.id')
-        ->where('team_permision.team_id', (int) ($user->team_id ?? 0))
-        ->where('permisions.code', 'requests.review')
-        ->exists();
+    return (int) $user->company_id === (int) $companyId
+        && $user->hasPermission('requests.review');
 });

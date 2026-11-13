@@ -33,23 +33,19 @@ import { useRouter } from 'vue-router'
 
 declare const process: any
 
-const { user, logout, apiBase, token, fetchUser } = useAuth()
+const { user, logout, apiBase, authenticated, fetchUser } = useAuth()
 
 const attendanceWorking = ref<boolean | null>(null)
 
 async function loadAttendanceStatus() {
   try {
-    if (!token.value) {
+    if (!authenticated.value) {
       attendanceWorking.value = false
       return
     }
 
     await fetchUser()
-    const res: any = await $fetch(`${apiBase}/api/attendance/status`, {
-      headers: {
-        Authorization: `Bearer ${token.value}`,
-        Accept: 'application/json'
-      }
+    const res: any = await $fetch(`/api/attendance/status`, {
     })
     attendanceWorking.value = res.working
   } catch (e) {

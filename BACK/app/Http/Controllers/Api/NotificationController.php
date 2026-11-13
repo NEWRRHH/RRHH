@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Support\Tenancy\TenantRule;
 use Illuminate\Http\Request;
 use App\Models\User;
 use App\Models\Notification;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class NotificationController extends Controller
@@ -24,7 +24,7 @@ class NotificationController extends Controller
         $userId = $user->id;
 
         // query distinct other user ids from sender/receiver
-        $ids = DB::table('notifications')
+        $ids = Notification::table()
             ->selectRaw("CASE WHEN sender_id = ? THEN receiver_id ELSE sender_id END as other_id", [$userId])
             ->where(function ($q) use ($userId) {
                 $q->where('sender_id', $userId)
@@ -107,16 +107,18 @@ class NotificationController extends Controller
      */
     public function send(Request $request)
     {
-        try {
-            $user = $request->user();
-            if (! $user) {
-                return response()->json(['message' => 'Unauthenticated'], 401);
-            }
-            $data = $request->validate([
-                'receiver_id' => 'required|integer|exists:users,id',
-                'content' => 'required|string|max:500',
-            ]);
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+        // validate outside the try/catch below: a ValidationException must
+        // reach the client as 422, not be swallowed into a 500.
+        $data = $request->validate([
+            'receiver_id' => ['required', 'integer', TenantRule::exists('users', 'id', true)],
+            'content' => 'required|string|max:500',
+        ]);
 
+        try {
             $recipient = $data['receiver_id'];
             $userId = $user->id;
 

@@ -143,7 +143,7 @@ import AttendanceButton from '../components/AttendanceButton.vue'
 import UserMenu from '../components/UserMenu.vue'
 import AppSidebar from '../components/AppSidebar.vue'
 
-const { user, token, apiBase, fetchUser, fetchUnread, logout, lastReceivedMessage, lastReadReceipt } = useAuth()
+const { user, authenticated, apiBase, fetchUser, fetchUnread, logout, lastReceivedMessage, lastReadReceipt } = useAuth()
 const router = useRouter()
 const sidebar = ref<{ open: boolean } | null>(null)
 
@@ -166,8 +166,7 @@ function openSidebar() {
 async function loadConversations() {
   try {
     await fetchUser()
-    const res: any = await $fetch(`${apiBase}/api/notifications/conversations`, {
-      headers: { Authorization: `Bearer ${token.value}` }
+    const res: any = await $fetch(`/api/notifications/conversations`, {
     })
     conversations.value = res.conversations || []
     // exclude those already conversados
@@ -180,8 +179,7 @@ async function loadConversations() {
 
 async function loadConversation(userId: number) {
   try {
-    const res: any = await $fetch(`${apiBase}/api/notifications/conversation/${userId}`, {
-      headers: { Authorization: `Bearer ${token.value}` }
+    const res: any = await $fetch(`/api/notifications/conversation/${userId}`, {
     })
     messages.value = res
     // scroll to bottom
@@ -219,9 +217,8 @@ function selectConversation(user: any) {
 async function sendMessage() {
   if (!currentPartner.value || newMessage.value.trim() === '') return
   try {
-    const res: any = await $fetch(`${apiBase}/api/notifications/send`, {
+    const res: any = await $fetch(`/api/notifications/send`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token.value}` },
       body: {
         receiver_id: currentPartner.value.id,
         content: newMessage.value.trim(),
@@ -353,11 +350,10 @@ const showUserPanel = ref(false)
 let resizeHandler: (() => void) | null = null
 
 async function markConversationReadRealtime(userId: number) {
-  if (!token.value || markingReadFor.has(userId)) return
+  if (!authenticated.value || markingReadFor.has(userId)) return
   markingReadFor.add(userId)
   try {
-    await $fetch(`${apiBase}/api/notifications/conversation/${userId}`, {
-      headers: { Authorization: `Bearer ${token.value}` }
+    await $fetch(`/api/notifications/conversation/${userId}`, {
     })
     await fetchUnread()
   } catch (e) {

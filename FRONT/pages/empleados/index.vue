@@ -97,7 +97,10 @@
                     </button>
                   </td>
                   <td class="px-4 py-3 text-gray-300">{{ employee.email }}</td>
-                  <td class="px-4 py-3 text-gray-300">{{ employee.team_name || 'Sin equipo' }}</td>
+                  <td class="px-4 py-3 text-gray-300">
+                    <div>{{ employee.team_name || 'Sin equipo' }}</div>
+                    <span v-if="employee.role_name" class="mt-1 inline-block text-[11px] px-2 py-0.5 rounded-full border border-violet-500/40 bg-violet-500/10 text-violet-200">{{ employee.role_name }}</span>
+                  </td>
                   <td class="px-4 py-3">
                     <div v-if="employee.assigned_schedule_templates?.length" class="flex flex-wrap gap-1.5">
                       <span
@@ -195,15 +198,11 @@
               </select>
             </div>
             <div>
-              <label class="block text-xs text-gray-400 mb-1">Tipo de usuario</label>
-              <select v-model="createForm.user_type_id" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white">
-                <option :value="null">Sin tipo</option>
-                <option v-for="type in userTypes" :key="type.id" :value="type.id">{{ type.name }}</option>
-              </select>
-            </div>
-            <div>
               <label class="block text-xs text-gray-400 mb-1">Rol</label>
-              <input v-model="createForm.role" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
+              <select v-model="createForm.role_id" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white">
+                <option :value="null">Sin rol (sin permisos)</option>
+                <option v-for="role in roles" :key="role.id" :value="role.id">{{ role.name }}</option>
+              </select>
             </div>
             <div>
               <label class="block text-xs text-gray-400 mb-1">DNI</label>
@@ -320,14 +319,14 @@ const { $swal } = useNuxtApp()
 declare const process: any
 declare const $fetch: any
 
-const { token, fetchUser, logout, apiBase, setToken, user } = useAuth()
+const { authenticated, fetchUser, logout, apiBase, user } = useAuth()
 const router = useRouter()
 const sidebar = ref<{ open: boolean } | null>(null)
 
 const loadingEmployees = ref(true)
 const employees = ref<any[]>([])
 const teams = ref<any[]>([])
-const userTypes = ref<any[]>([])
+const roles = ref<Array<{ id: number; name: string; is_admin: boolean }>>([])
 const scheduleTemplates = ref<any[]>([])
 const openMenuId = ref<number | null>(null)
 const selectedTeam = ref('Todos')
@@ -347,9 +346,8 @@ const createForm = ref<any>({
   birth_date: '',
   hire_date: '',
   phone: '',
-  user_type_id: null,
+  role_id: null,
   team_id: null,
-  role: '',
   dni: '',
   social_security_number: '',
   contract_type: '',
@@ -410,10 +408,6 @@ const canCreateEmployee = computed(() => {
   const permissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : []
   return permissions.includes('employees.create')
 })
-const isHrTeam = computed(() => {
-  const currentUser: any = user.value || {}
-  return Boolean(currentUser?.is_hr_team)
-})
 
 function resolvePhotoUrl(path?: string | null) {
   if (!path) return ''
@@ -449,9 +443,8 @@ function resetCreateForm() {
     birth_date: '',
     hire_date: '',
     phone: '',
-    user_type_id: null,
+    role_id: null,
     team_id: null,
-    role: '',
     dni: '',
     social_security_number: '',
     contract_type: '',
@@ -525,9 +518,8 @@ async function removeEmployee(employee: any) {
   openMenuId.value = null
   const ok = await $swal.confirm('Confirmar eliminación', `¿Estás seguro de eliminar a <strong>${employee.name}</strong>? Esta acción no se puede deshacer.`, 'Eliminar', 'Cancelar')
   if (!ok) return
-  await $fetch(`${apiBase || 'http://localhost:8000'}/api/employees/${employee.id}`, {
+  await $fetch(`/api/employees/${employee.id}`, {
     method: 'DELETE',
-    headers: { Authorization: `Bearer ${token.value}` },
   })
   await loadEmployees()
 }
@@ -535,12 +527,11 @@ async function removeEmployee(employee: any) {
 async function loadEmployees() {
   loadingEmployees.value = true
   try {
-    const res = await $fetch(`${apiBase || 'http://localhost:8000'}/api/employees`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res = await $fetch(`/api/employees`, {
     })
     employees.value = res?.employees || []
     teams.value = res?.teams || []
-    userTypes.value = res?.user_types || []
+    roles.value = res?.roles || []
     scheduleTemplates.value = res?.schedule_templates || []
   } catch (e: any) {
     if (e?.status === 403 || e?.data?.message === 'Forbidden') {
@@ -549,7 +540,7 @@ async function loadEmployees() {
     }
     employees.value = []
     teams.value = []
-    userTypes.value = []
+    roles.value = []
     scheduleTemplates.value = []
   } finally {
     loadingEmployees.value = false
@@ -557,7 +548,7 @@ async function loadEmployees() {
 }
 
 async function submitCreateEmployee() {
-  if (!canCreateEmployee.value || !token.value) return
+  if (!canCreateEmployee.value || !authenticated.value) return
 
   creatingEmployee.value = true
   createError.value = ''
@@ -587,7 +578,6 @@ async function submitCreateEmployee() {
     data.append('birth_date', createForm.value.birth_date || '')
     data.append('hire_date', createForm.value.hire_date || '')
     data.append('phone', createForm.value.phone || '')
-    data.append('role', createForm.value.role || '')
     data.append('dni', createForm.value.dni || '')
     data.append('social_security_number', createForm.value.social_security_number || '')
     data.append('contract_type', createForm.value.contract_type || '')
@@ -604,16 +594,15 @@ async function submitCreateEmployee() {
     if (createForm.value.team_id !== null && createForm.value.team_id !== '') {
       data.append('team_id', String(createForm.value.team_id))
     }
-    if (createForm.value.user_type_id !== null && createForm.value.user_type_id !== '') {
-      data.append('user_type_id', String(createForm.value.user_type_id))
+    if (createForm.value.role_id !== null && createForm.value.role_id !== '') {
+      data.append('role_id', String(createForm.value.role_id))
     }
     if (createForm.value.photo) {
       data.append('photo', createForm.value.photo)
     }
 
-    await $fetch(`${apiBase || 'http://localhost:8000'}/api/employees`, {
+    await $fetch(`/api/employees`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token.value}` },
       body: data,
     })
 
@@ -647,23 +636,9 @@ onMounted(() => {
 })
 
 onBeforeMount(async () => {
-  if (!token.value) {
-    if (process.client) {
-      const saved = localStorage.getItem('rrhh_token')
-      if (saved) {
-        setToken(saved)
-        await fetchUser()
-      } else {
-        return router.push('/login')
-      }
-    } else {
-      return
-    }
-  } else {
-    await fetchUser()
-  }
+  await fetchUser()
   const currentUser: any = user.value || {}
-  const canViewEmployees = Boolean(currentUser?.is_hr_team) || Boolean(currentUser?.can_view_employee_details) || (Array.isArray(currentUser?.permissions) && currentUser.permissions.includes('employees.view_details'))
+  const canViewEmployees = Boolean(currentUser?.can_view_employee_details) || (Array.isArray(currentUser?.permissions) && currentUser.permissions.includes('employees.view_details'))
   if (!canViewEmployees) {
     return router.push('/dashboard')
   }

@@ -54,6 +54,18 @@
           </div>
         </div>
 
+        <div
+          v-if="tapStartIso"
+          class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-sm text-blue-100"
+        >
+          <span>
+            Inicio: <strong>{{ tapStartIso }}</strong> — toca el dia fin para cerrar el rango (o el mismo dia para un solo dia).
+          </span>
+          <button class="text-xs border border-blue-400/40 rounded-lg px-2 py-1.5 hover:bg-blue-500/20" @click="cancelTapSelection">
+            Cancelar
+          </button>
+        </div>
+
         <div v-if="loading" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           <div v-for="i in 12" :key="'skel-' + i" class="rounded-2xl border border-gray-800 bg-gray-900 p-3 space-y-2">
             <div class="h-4 w-24 rounded bg-gray-800 animate-pulse"></div>
@@ -132,9 +144,21 @@
         </div>
 
         <section class="rounded-2xl border border-gray-800 bg-gray-900 p-4">
-          <h2 class="text-sm font-semibold text-white mb-3">Estado de mis solicitudes</h2>
-          <div v-if="!recentRequests.length" class="text-sm text-gray-500">Todavia no hay solicitudes en este periodo.</div>
-          <div v-else class="space-y-2">
+          <h2>
+            <button
+              type="button"
+              class="w-full flex items-center justify-between gap-2 text-left"
+              @click="toggleRequests"
+            >
+              <span class="text-sm font-semibold text-white">Estado de mis solicitudes</span>
+              <svg class="w-4 h-4 shrink-0 text-gray-400 transition-transform" :class="{ 'rotate-180': requestsOpen }" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06z" clip-rule="evenodd" />
+              </svg>
+            </button>
+          </h2>
+          <div v-if="requestsOpen" class="mt-3">
+            <div v-if="!recentRequests.length" class="text-sm text-gray-500">Todavia no hay solicitudes en este periodo.</div>
+            <div v-else class="space-y-2">
             <div
               v-for="req in recentRequests"
               :key="`req-${req.id}`"
@@ -149,6 +173,7 @@
               <p class="text-xs text-gray-400">{{ req.start_date }} a {{ req.end_date }} · {{ req.event_type_name }}</p>
               <p v-if="!req.all_day" class="text-xs text-blue-300">Horario: {{ req.start_time }} - {{ req.end_time }}</p>
               <p v-if="req.approval_comment" class="text-xs text-amber-200 mt-1">Motivo RRHH: {{ req.approval_comment }}</p>
+            </div>
             </div>
           </div>
         </section>
@@ -286,7 +311,7 @@ type CalendarEvent = {
 }
 
 const router = useRouter()
-const { token, apiBase, fetchUser, logout, user } = useAuth()
+const { authenticated, apiBase, fetchUser, logout, user } = useAuth()
 const sidebar = ref<{ open: boolean } | null>(null)
 
 const loading = ref(true)
@@ -308,6 +333,17 @@ const editingEventId = ref<number | null>(null)
 const dragStartIso = ref('')
 const dragEndIso = ref('')
 const isDragging = ref(false)
+const tapStartIso = ref('')
+const pendingTapIso = ref('')
+const touchDownPt = ref<{ x: number; y: number } | null>(null)
+const requestsOpen = ref(true)
+
+function toggleRequests() {
+  requestsOpen.value = !requestsOpen.value
+  try {
+    localStorage.setItem('rrhh_vac_requests_open', requestsOpen.value ? '1' : '0')
+  } catch {}
+}
 
 const form = ref({
   event_type_id: 0,
@@ -585,6 +621,11 @@ function onDayPointerDown(iso: string, e: PointerEvent) {
   if (e.button !== 0) return
   if (isPastIso(iso)) return
   if (!isWorkingIso(iso)) return
+  if (e.pointerType === 'touch') {
+    pendingTapIso.value = iso
+    touchDownPt.value = { x: e.clientX, y: e.clientY }
+    return
+  }
   isDragging.value = true
   dragStartIso.value = iso
   dragEndIso.value = iso
@@ -597,22 +638,54 @@ function onDayPointerEnter(iso: string) {
   dragEndIso.value = iso
 }
 
-function onDayPointerUp() {
-  if (!isDragging.value) return
-  isDragging.value = false
-  if (!dragStartIso.value || !dragEndIso.value) return
-  const range = sortRange(dragStartIso.value, dragEndIso.value)
-  const sourceDayEvent = firstEventForDay(dragStartIso.value)
-
-  if (dragStartIso.value === dragEndIso.value) {
-    const ev = sourceDayEvent
-    if (ev) {
-      openEditModal(ev)
-      return
+function onDayPointerUp(e?: PointerEvent) {
+  if (isDragging.value) {
+    isDragging.value = false
+    if (dragStartIso.value && dragEndIso.value) {
+      finishSelection(dragStartIso.value, dragEndIso.value)
     }
+    return
   }
 
-  // If user starts the drag on an existing event day, treat it as extending/
+  const iso = pendingTapIso.value
+  const startPt = touchDownPt.value
+  pendingTapIso.value = ''
+  touchDownPt.value = null
+  if (!iso || !startPt || !e) return
+  if (Math.hypot(e.clientX - startPt.x, e.clientY - startPt.y) > 10) return
+  handleDayTap(iso)
+}
+
+function handleDayTap(iso: string) {
+  if (!tapStartIso.value) {
+    tapStartIso.value = iso
+    dragStartIso.value = iso
+    dragEndIso.value = iso
+    return
+  }
+  const start = tapStartIso.value
+  tapStartIso.value = ''
+  const range = sortRange(start, iso)
+  dragStartIso.value = range.start
+  dragEndIso.value = range.end
+  finishSelection(range.start, range.end)
+}
+
+function finishSelection(startIso: string, endIso: string) {
+  tapStartIso.value = ''
+  const range = sortRange(startIso, endIso)
+  const sourceDayEvent = firstEventForDay(startIso)
+
+  if (startIso === endIso) {
+    if (sourceDayEvent) {
+      openEditModal(sourceDayEvent)
+      return
+    }
+    openCreateModal()
+    return
+  }
+
+  // If user starts the selection on an existing event day, treat it as extending/
   // shrinking that same event instead of creating a new one.
   if (sourceDayEvent) {
     openEditModal(sourceDayEvent, range)
@@ -622,8 +695,25 @@ function onDayPointerUp() {
   openCreateModal()
 }
 
-function onGlobalPointerUp() {
-  if (isDragging.value) onDayPointerUp()
+function cancelTapSelection() {
+  tapStartIso.value = ''
+  pendingTapIso.value = ''
+  touchDownPt.value = null
+  dragStartIso.value = ''
+  dragEndIso.value = ''
+}
+
+function onGlobalPointerUp(e: PointerEvent) {
+  if (isDragging.value) {
+    onDayPointerUp()
+    return
+  }
+  if (pendingTapIso.value) onDayPointerUp(e)
+}
+
+function onGlobalPointercancel() {
+  pendingTapIso.value = ''
+  touchDownPt.value = null
 }
 
 function changeYear(delta: number) {
@@ -642,11 +732,10 @@ function changeMonth(delta: number) {
 }
 
 async function loadCalendar() {
-  if (!token.value) return
+  if (!authenticated.value) return
   loading.value = true
   try {
-    const res: any = await $fetch(`${apiBase}/api/timeoff/calendar?year=${selectedYear.value}`, {
-      headers: { Authorization: `Bearer ${token.value}` },
+    const res: any = await $fetch(`/api/timeoff/calendar?year=${selectedYear.value}`, {
     })
     scheduleDays.value = Array.isArray(res?.schedule_days) && res.schedule_days.length ? res.schedule_days : ['L', 'M', 'X', 'J', 'V']
     scheduleStartTime.value = res?.schedule?.start_time || null
@@ -665,19 +754,18 @@ async function loadCalendar() {
 }
 
 async function saveEvent() {
-  if (!canSave.value || !token.value) return
+  if (!canSave.value || !authenticated.value) return
   saving.value = true
   errorMessage.value = ''
   const wasEdit = isEditMode.value
   try {
     const method = wasEdit ? 'PUT' : 'POST'
     const url = wasEdit
-      ? `${apiBase}/api/timeoff/events/${editingEventId.value}`
-      : `${apiBase}/api/timeoff/events`
+      ? `/api/timeoff/events/${editingEventId.value}`
+      : `/api/timeoff/events`
 
     await $fetch(url, {
       method,
-      headers: { Authorization: `Bearer ${token.value}` },
       body: {
         title: form.value.title.trim(),
         description: form.value.description?.trim() || null,
@@ -702,6 +790,11 @@ async function saveEvent() {
 }
 
 onMounted(async () => {
+  try {
+    const saved = localStorage.getItem('rrhh_vac_requests_open')
+    if (saved !== null) requestsOpen.value = saved === '1'
+  } catch {}
+
   await fetchUser()
 
   const currentUser: any = user.value || {}
@@ -713,6 +806,7 @@ onMounted(async () => {
 
   await loadCalendar()
   window.addEventListener('pointerup', onGlobalPointerUp)
+  window.addEventListener('pointercancel', onGlobalPointercancel)
 })
 
 watch(
@@ -734,5 +828,6 @@ watch(canChooseHours, (singleDay) => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('pointerup', onGlobalPointerUp)
+  window.removeEventListener('pointercancel', onGlobalPointercancel)
 })
 </script>
