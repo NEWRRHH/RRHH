@@ -2,6 +2,8 @@
 
 Monorepo con backend **Laravel 12** y frontend **Nuxt 3**, orquestados con **Docker Compose**.
 
+> 📘 **Guía completa para levantar el proyecto (desarrollo y producción), qué poner en cada `.env`, dominio con Cloudflare e instalación de dependencias: [DEPLOY.md](DEPLOY.md).**
+
 ---
 
 ## Estructura del repositorio

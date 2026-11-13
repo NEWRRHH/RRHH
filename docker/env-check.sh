@@ -43,6 +43,8 @@ gen DB_PASSWORD        "$(rand_hex 24)"
 gen DB_ROOT_PASSWORD   "$(rand_hex 24)"
 gen REVERB_APP_KEY     "$(rand_hex 16)"
 gen REVERB_APP_SECRET  "$(rand_hex 32)"
+gen SEED_SUPERADMIN_PASSWORD "$(rand_hex 12)"
+ask SEED_SUPERADMIN_EMAIL "Email con el que entraras como super admin (se crea en el primer arranque)"
 
 # --- values only you know --------------------------------------------------------
 case ",${COMPOSE_PROFILES:-}," in
@@ -94,7 +96,7 @@ fi
 echo "$line"
 echo " RRHH - .env de produccion OK"
 echo "$line"
-for v in APP_KEY DB_PASSWORD DB_ROOT_PASSWORD REVERB_APP_KEY REVERB_APP_SECRET; do
+for v in APP_KEY DB_PASSWORD DB_ROOT_PASSWORD REVERB_APP_KEY REVERB_APP_SECRET SEED_SUPERADMIN_PASSWORD; do
   echo "  ok  $v"
 done
 [ -n "${APP_URL:-}" ] && echo "  url $APP_URL"
