@@ -14,6 +14,11 @@ services:
       - ./BACK:/var/www/html:delegated
       - back_vendor:/var/www/html/vendor
       - back_node_modules:/var/www/html/node_modules
+    # Root .env (single file on the server, see .env.production.example).
+    # In dev Laravel also reads BACK/.env; variables set here take precedence.
+    env_file:
+      - path: ./.env
+        required: false
     environment:
       # APP_DEBUG defaults to false so a forgotten production deploy does not
       # expose debug pages (env/stack traces). Create a root .env with
@@ -83,7 +88,8 @@ services:
       - ./BACK:/var/www/html:delegated
       - back_vendor:/var/www/html/vendor
     env_file:
-      - ./BACK/.env
+      - path: ./.env
+        required: false
     environment:
       - REVERB_SERVER_HOST=0.0.0.0
       - REVERB_SERVER_PORT=6001
@@ -116,6 +122,9 @@ services:
     volumes:
       - ./BACK:/var/www/html:delegated
       - back_vendor:/var/www/html/vendor
+    env_file:
+      - path: ./.env
+        required: false
     environment:
       - APP_ENV=${APP_ENV:-local}
       - APP_DEBUG=${APP_DEBUG:-false}
@@ -142,9 +151,12 @@ services:
     restart: unless-stopped
     working_dir: /app
     user: root
-    # load frontend‑specific variables (not the backend .env)
+    # Root .env (server) and, in dev, FRONT/.env on top of it.
     env_file:
-      - ./FRONT/.env
+      - path: ./.env
+        required: false
+      - path: ./FRONT/.env
+        required: false
     environment:
       - NODE_ENV=development
       - HOST=0.0.0.0
