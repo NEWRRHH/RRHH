@@ -159,9 +159,15 @@ services:
       # Solo para assets estáticos (/storage/avatares...): URL base que el
       # navegador sí debe alcanzar directamente.
       - NUXT_PUBLIC_API_BASE=http://localhost:8000
-      # Reverb: el navegador se conecta al puerto 6001 expuesto en el host.
+      # Reverb: en acceso directo (localhost:3000) el navegador usa el puerto
+      # 6001 expuesto en el host. Detrás del gateway/túnel se usa el mismo
+      # origen (wss://<dominio>/app/...), ver composables/useRealtime.ts.
       - NUXT_PUBLIC_REVERB_HOST=localhost
       - NUXT_PUBLIC_REVERB_PORT=6001
+      # Hosts públicos aceptados por el dev server (Vite bloquea los demás).
+      # Al tener dominio propio añadir el subdominio en el .env raíz, p.ej.:
+      #   PUBLIC_HOSTS=.trycloudflare.com,rrhh.nanodev.com
+      - PUBLIC_HOSTS=${PUBLIC_HOSTS:-.trycloudflare.com}
     ports:
       - "3000:3000"
     command: sh -c "npm install --no-audit --no-fund && npx nuxi dev /app --hostname 0.0.0.0 --port 3000"
@@ -170,6 +176,48 @@ services:
       - front_node_modules:/app/node_modules
     depends_on:
       - back_nginx
+
+  # Punto de entrada público único: front + Reverb (WebSocket) + /storage en
+  # el mismo origen. Es a donde apunta el túnel de Cloudflare.
+  # Local: http://localhost:8080 (todo por el mismo origen, igual que en el túnel).
+  gateway:
+    image: nginx:1.25-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:80"
+    volumes:
+      - ./docker/gateway/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - front
+      - back_reverb
+      - back_nginx
+
+  # --- Cloudflare tunnel (se activa con COMPOSE_PROFILES en el .env raíz) ---
+  # Quick tunnel: sin cuenta ni dominio, URL aleatoria *.trycloudflare.com
+  # que cambia en cada arranque. Ver la URL:
+  #   docker compose logs tunnel | Select-String trycloudflare
+  # Activar con: COMPOSE_PROFILES=tunnel
+  tunnel:
+    image: cloudflare/cloudflared:2024.12.2
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://gateway:80
+    depends_on:
+      - gateway
+
+  # Named tunnel: dominio propio (p.ej. rrhh.nanodev.com), URL fija.
+  # En Cloudflare Zero Trust > Networks > Tunnels crear el túnel, copiar el
+  # token y en "Public hostname" poner rrhh.nanodev.com -> http://gateway:80.
+  # Activar con: COMPOSE_PROFILES=tunnel-domain y CLOUDFLARE_TUNNEL_TOKEN=...
+  tunnel-domain:
+    image: cloudflare/cloudflared:2024.12.2
+    profiles: ["tunnel-domain"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - gateway
 
 volumes:
   back_vendor:

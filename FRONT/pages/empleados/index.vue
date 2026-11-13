@@ -413,7 +413,7 @@ function resolvePhotoUrl(path?: string | null) {
   if (!path) return ''
   const raw = String(path)
   if (/^https?:\/\//i.test(raw)) return raw
-  const base = String(apiBase || 'http://localhost:8000').replace(/\/+$/, '')
+  const base = String(apiBase).replace(/\/+$/, '')
   return raw.startsWith('/') ? `${base}${raw}` : `${base}/${raw}`
 }
 

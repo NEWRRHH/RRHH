@@ -15,7 +15,11 @@ export const useAuth = () => {
   const config = useRuntimeConfig()
 
   // Browser-facing base URL, only used for static assets (/storage/avatars...).
-  const apiBase: string = String(config.public.apiBase || 'http://localhost:8000')
+  // Behind the gateway / Cloudflare tunnel (default port) /storage is served
+  // on the same origin, so a relative base ('') is used instead.
+  const apiBase: string = useRequestURL().port
+    ? String(config.public.apiBase || 'http://localhost:8000')
+    : ''
 
   const authenticated = useState<boolean>('auth_authenticated', () => false)
   const user = useState<any | null>('auth_user', () => null)

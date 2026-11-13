@@ -41,14 +41,23 @@ export function useRealtime() {
       return echo;
     }
 
+    // Page served on a default port (80/443) means it came through the
+    // gateway / Cloudflare tunnel, which proxies /app/* to Reverb on the same
+    // origin. Otherwise (e.g. localhost:3000) talk to Reverb's port directly.
+    const loc = window.location;
+    const sameOrigin = !loc.port;
+    const secure = loc.protocol === 'https:';
+    const host = sameOrigin ? loc.hostname : (config.host || loc.hostname);
+    const port = sameOrigin ? (secure ? 443 : 80) : Number(config.port);
+
     const opts = {
       broadcaster: 'reverb' as const,
       key: config.key,
       appId: config.appId,
-      wsHost: config.host,
-      wsPort: Number(config.port),
-      wssPort: Number(config.port),
-      forceTLS: false,
+      wsHost: host,
+      wsPort: port,
+      wssPort: port,
+      forceTLS: sameOrigin && secure,
       disableStats: true,
       // Force WebSocket transport only — avoids falling back to HTTP long-polling
       // which would never reach Reverb and appear as no connection in logs.

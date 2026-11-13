@@ -6,6 +6,10 @@ export default defineNuxtConfig({
   // con polling el hot-reload vuelve a funcionar sin reiniciar el contenedor.
   vite: {
     server: {
+      // Public hostnames served through the gateway/Cloudflare tunnel
+      // (comma separated; a leading dot allows every subdomain).
+      allowedHosts: (process.env.PUBLIC_HOSTS || '.trycloudflare.com')
+        .split(',').map(h => h.trim()).filter(Boolean),
       watch: {
         usePolling: true,
         interval: 1000,
