@@ -78,7 +78,9 @@ const started = ref(false)
 const paused = ref(false)
 const attendance = ref<any>(null)
 const schedule = ref<any>(null)
-const elapsed = ref(0) // minutes
+const elapsed = ref(0) // seconds worked today (pauses excluded)
+// Shared with UserMenu so the avatar status dot follows clock-in/pause/out live.
+const sharedStatus = useState<'idle' | 'working' | 'paused' | null>('attendance_status', () => null)
 let timer: ReturnType<typeof setInterval> | null = null
 
 const { $swal } = useNuxtApp()
@@ -103,15 +105,24 @@ const targetMinutes = computed(() => {
   return Math.round(diff)
 })
 
-const elapsedText = computed(() => formatMinutes(elapsed.value))
+// "2:05:09" (hours:minutes:seconds)
+const formatSeconds = (secs: number) => {
+  const safe = Math.max(0, Math.floor(secs || 0))
+  const h = Math.floor(safe / 3600)
+  const m = Math.floor((safe % 3600) / 60)
+  const s = safe % 60
+  return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+}
+
+const elapsedText = computed(() => formatSeconds(elapsed.value))
 const targetText = computed(() => formatMinutes(targetMinutes.value))
 const progressPercent = computed(() =>
-  targetMinutes.value > 0 ? Math.min(100, Math.round((elapsed.value / targetMinutes.value) * 100)) : 0,
+  targetMinutes.value > 0 ? Math.min(100, Math.round((elapsed.value / 60 / targetMinutes.value) * 100)) : 0,
 )
 
-// Worked minutes today, without the pause (same rule as the API's dashboard):
+// Worked seconds today, without the pause (same rule as the API's dashboard):
 // paused span = pause_time .. resume_time, or .. now while still paused.
-function workedMinutesNow(): number {
+function workedSecondsNow(): number {
   const att = attendance.value
   const start = att?.start_time ? parseTimeString(att.start_time) : null
   if (!start) return 0
@@ -123,7 +134,7 @@ function workedMinutesNow(): number {
     const pauseEnd = resume && resume > pauseStart ? Math.min(resume.getTime(), now) : now
     paused = Math.max(0, pauseEnd - pauseStart.getTime())
   }
-  return Math.max(0, Math.floor((now - start.getTime() - paused) / 60000))
+  return Math.max(0, Math.floor((now - start.getTime() - paused) / 1000))
 }
 
 function parseTimeString(timeStr: string) {
@@ -138,7 +149,7 @@ function parseTimeString(timeStr: string) {
 function startTimer() {
   if (timer) clearInterval(timer)
   timer = setInterval(() => {
-    if (attendance.value?.start_time) elapsed.value = workedMinutesNow()
+    if (attendance.value?.start_time) elapsed.value = workedSecondsNow()
   }, 1000)
 }
 
@@ -155,12 +166,14 @@ async function checkStatus() {
       const p = res.attendance.pause_time || null
       const r = res.attendance.resume_time || null
       paused.value = !!p && (!r || p > r)
-      elapsed.value = workedMinutesNow()
+      elapsed.value = workedSecondsNow()
       startTimer()
     } else {
       started.value = false
+      paused.value = false
       elapsed.value = 0
     }
+    sharedStatus.value = status.value
   } catch (e) {
     console.error('attendance info error', e)
   }
@@ -195,6 +208,7 @@ const handleStop = async () => {
     started.value = false
     paused.value = false
     elapsed.value = 0
+    sharedStatus.value = 'idle'
     if (timer) clearInterval(timer)
     // refresh in case schedule or working status changed
     await checkStatus()

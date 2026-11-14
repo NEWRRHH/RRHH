@@ -31,8 +31,9 @@
         <span v-else>{{ initial }}</span>
       </div>
       <span
-        v-if="attendanceWorking !== null"
-        :class="['absolute bottom-0 right-0 w-2 h-2 border-2 border-gray-800 rounded-full', attendanceWorking ? 'bg-green-400' : 'bg-red-400']"
+        v-if="attendanceStatus !== null"
+        :class="['absolute bottom-0 right-0 w-2.5 h-2.5 border-2 border-gray-900 rounded-full transition-colors duration-300', statusDotClass]"
+        :title="statusDotLabel"
       ></span>
     </button>
     <div
@@ -74,22 +75,27 @@ watch(lastReceivedMessage, (msg) => {
 })
 onBeforeUnmount(() => { if (ringTimer) clearTimeout(ringTimer) })
 
-const attendanceWorking = ref<boolean | null>(null)
+// Shared with AttendanceButton: it updates this the moment you clock in,
+// pause, resume or clock out, so the dot changes colour live.
+const attendanceStatus = useState<'idle' | 'working' | 'paused' | null>('attendance_status', () => null)
+const statusDotClass = computed(() =>
+  attendanceStatus.value === 'working' ? 'bg-green-400' : attendanceStatus.value === 'paused' ? 'bg-amber-400' : 'bg-red-400',
+)
+const statusDotLabel = computed(() =>
+  attendanceStatus.value === 'working' ? 'Trabajando' : attendanceStatus.value === 'paused' ? 'En pausa' : 'Sin fichar',
+)
 
+// Fallback for pages without the attendance pill: load the status once.
 async function loadAttendanceStatus() {
+  if (attendanceStatus.value !== null) return
   try {
-    if (!authenticated.value) {
-      attendanceWorking.value = false
-      return
-    }
-
+    if (!authenticated.value) return
     await fetchUser()
-    const res: any = await $fetch(`/api/attendance/status`, {
-    })
-    attendanceWorking.value = res.working
+    const res: any = await $fetch(`/api/attendance/status`)
+    // the pill may have answered first (it also knows about pauses)
+    if (attendanceStatus.value === null) attendanceStatus.value = res?.working ? 'working' : 'idle'
   } catch (e) {
     console.error('failed to load attendance status', e)
-    attendanceWorking.value = false
   }
 }
 
@@ -116,6 +122,7 @@ function toggle() {
 
 function logoutAndClose() {
   open.value = false
+  attendanceStatus.value = null // don't carry it over to the next user
   logout().then(() => router.push('/login'))
 }
 
