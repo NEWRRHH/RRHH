@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Events\AttendanceStatusChanged;
 use App\Events\TimeOffRequestUpdated;
 use App\Models\Attendance;
 use App\Models\Document;
@@ -25,6 +26,19 @@ class AttendanceController extends Controller
         private ScheduleService $schedules,
         private AttendanceService $attendance,
     ) {
+    }
+
+    /**
+     * Tell the user's other tabs/devices that their clock-in status changed.
+     * The change is already saved: a WebSocket hiccup must not turn it into an error.
+     */
+    private function broadcastStatus(int $userId, string $status): void
+    {
+        try {
+            event(new AttendanceStatusChanged($userId, $status));
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     /**
@@ -106,6 +120,8 @@ class AttendanceController extends Controller
             ]);
         }
 
+        $this->broadcastStatus((int) $user->id, AttendanceStatusChanged::WORKING);
+
         return response()->json(['status' => 'ok']);
     }
 
@@ -181,6 +197,7 @@ class AttendanceController extends Controller
                     'status' => 'fuera_trabajo',
                     'updated_at' => now(),
                 ]);
+            $this->broadcastStatus((int) $user->id, AttendanceStatusChanged::IDLE);
         } else {
             // no open attendance found: maybe token changed or already closed
         }
@@ -216,6 +233,8 @@ class AttendanceController extends Controller
                 'updated_at' => now(),
             ]);
 
+        $this->broadcastStatus((int) $user->id, AttendanceStatusChanged::PAUSED);
+
         return response()->json(['status' => 'paused', 'pause_time' => $now]);
     }
 
@@ -247,6 +266,8 @@ class AttendanceController extends Controller
                 'resume_time' => $now,
                 'updated_at' => now(),
             ]);
+
+        $this->broadcastStatus((int) $user->id, AttendanceStatusChanged::WORKING);
 
         return response()->json(['status' => 'resumed', 'resume_time' => $now]);
     }

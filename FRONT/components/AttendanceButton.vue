@@ -64,12 +64,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, onBeforeUnmount } from 'vue'
+import { ref, onMounted, computed, onBeforeUnmount, watch } from 'vue'
 import { useAuth } from '../composables/useAuth'
 
 declare const $fetch: any
 
-const { authenticated, apiBase, user } = useAuth()
+const { authenticated, apiBase, user, attendanceStatus: sharedStatus, lastAttendanceChange } = useAuth()
 const emit = defineEmits<{
   changed: []
 }>()
@@ -79,8 +79,8 @@ const paused = ref(false)
 const attendance = ref<any>(null)
 const schedule = ref<any>(null)
 const elapsed = ref(0) // seconds worked today (pauses excluded)
-// Shared with UserMenu so the avatar status dot follows clock-in/pause/out live.
-const sharedStatus = useState<'idle' | 'working' | 'paused' | null>('attendance_status', () => null)
+// sharedStatus (useAuth): read by the avatar and sidebar dots; also updated
+// over WebSocket when this user clocks in/out from another tab or device.
 let timer: ReturnType<typeof setInterval> | null = null
 
 const { $swal } = useNuxtApp()
@@ -240,6 +240,12 @@ const togglePause = () => {
 }
 
 onMounted(checkStatus)
+
+// Clocked in/out from another tab or device: reload start/pause times.
+watch(lastAttendanceChange, () => {
+  if (!loading.value) void checkStatus()
+})
+
 onBeforeUnmount(() => {
   if (timer) clearInterval(timer)
 })

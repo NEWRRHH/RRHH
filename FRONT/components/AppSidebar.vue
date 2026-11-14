@@ -20,18 +20,18 @@
         <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
         </svg>
-        <!-- Connection status dot for collapsed mode -->
+        <!-- Clock-in status dot (collapsed mode); pulses while live updates are connected -->
         <span
           v-if="collapsed"
-          :class="['absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-gray-900', realtimeConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500']"
-          :title="realtimeConnected ? 'WebSocket conectado' : 'WebSocket desconectado'"
+          :class="['absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-gray-900 transition-colors duration-300', statusDotClass]"
+          :title="statusDotTitle"
         />
       </div>
       <div v-if="!collapsed" class="flex items-center gap-2 min-w-0">
         <span class="text-white font-bold text-base tracking-tight truncate">RRHH</span>
         <span
-          :class="['inline-block w-2 h-2 rounded-full shrink-0', realtimeConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500']"
-          :title="realtimeConnected ? 'WebSocket conectado' : 'WebSocket desconectado'"
+          :class="['inline-block w-2 h-2 rounded-full shrink-0 transition-colors duration-300', statusDotClass]"
+          :title="statusDotTitle"
         />
       </div>
     </div>
@@ -138,6 +138,20 @@ const router = useRouter()
 const { fetchUser, unreadNotifications, fetchUnread, user, authenticated, apiBase, realtimeInstance, realtimeConnected } = useAuth()
 
 const unreadCount = computed(() => unreadNotifications.value || 0)
+
+// Logo dot = clock-in status (same colours as the avatar dot), updated live
+// over WebSocket. It pulses while live updates are connected.
+const { attendanceStatus } = useAuth()
+const statusDotClass = computed(() => {
+  const colour = attendanceStatus.value === 'working'
+    ? 'bg-green-500'
+    : attendanceStatus.value === 'paused' ? 'bg-amber-400' : 'bg-red-500'
+  return realtimeConnected.value ? `${colour} animate-pulse motion-reduce:animate-none` : colour
+})
+const statusDotTitle = computed(() => {
+  const label = attendanceStatus.value === 'working' ? 'Trabajando' : attendanceStatus.value === 'paused' ? 'En pausa' : 'Sin fichar'
+  return `${label} · ${realtimeConnected.value ? 'tiempo real conectado' : 'tiempo real desconectado'}`
+})
 const userInitial = computed(() => String((user.value as any)?.name || '?').charAt(0).toUpperCase())
 const requestsCount = ref(0)
 // All flags come from the user's role (see GET /api/user).

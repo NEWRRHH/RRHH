@@ -75,9 +75,9 @@ watch(lastReceivedMessage, (msg) => {
 })
 onBeforeUnmount(() => { if (ringTimer) clearTimeout(ringTimer) })
 
-// Shared with AttendanceButton: it updates this the moment you clock in,
-// pause, resume or clock out, so the dot changes colour live.
-const attendanceStatus = useState<'idle' | 'working' | 'paused' | null>('attendance_status', () => null)
+// Shared clock-in status (useAuth): updated by the clock-in pill and over
+// WebSocket from the user's other tabs/devices, so the dot changes live.
+const { attendanceStatus } = useAuth()
 const statusDotClass = computed(() =>
   attendanceStatus.value === 'working' ? 'bg-green-400' : attendanceStatus.value === 'paused' ? 'bg-amber-400' : 'bg-red-400',
 )
@@ -122,8 +122,7 @@ function toggle() {
 
 function logoutAndClose() {
   open.value = false
-  attendanceStatus.value = null // don't carry it over to the next user
-  logout().then(() => router.push('/login'))
+  logout().then(() => router.push('/login')) // resetSession() clears the status
 }
 
 </script>
