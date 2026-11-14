@@ -284,8 +284,25 @@ class AttendanceController extends Controller
             'schedule' => null,
             'schedule_template_ids' => [],
             'assigned_schedule_templates' => [],
+            // today's day already clocked out (startAttendance refuses a second one)
+            'closed_today' => null,
         ];
         if ($user) {
+            $closed = Attendance::table()
+                ->where('user_id', $user->id)
+                ->whereDate('date', Carbon::today()->toDateString())
+                ->whereNotNull('start_time')
+                ->whereNotNull('end_time')
+                ->orderBy('created_at', 'desc')
+                ->first(['start_time', 'end_time', 'hours_worked']);
+            if ($closed) {
+                $info['closed_today'] = [
+                    'start_time' => $closed->start_time,
+                    'end_time' => $closed->end_time,
+                    'hours_worked' => $closed->hours_worked,
+                ];
+            }
+
             $info['working'] = Attendance::table()
                 ->where('user_id', $user->id)
                 ->where('status', 'en_trabajo')

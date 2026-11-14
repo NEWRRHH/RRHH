@@ -48,6 +48,13 @@ class AttendanceStatusBroadcastTest extends TestCase
             return true;
         });
         $this->assertSame(['working', 'paused', 'working', 'idle'], $sent);
+
+        // the day is closed: info says so, and a second clock-in is refused with a reason
+        $this->getJson('/api/attendance/info')->assertOk()
+            ->assertJsonPath('attendance', null)
+            ->assertJsonPath('closed_today.start_time', '11:00:00');
+        $this->postJson('/api/attendance/start')->assertStatus(422)
+            ->assertJsonPath('message', 'Ya registraste entrada y salida hoy.');
     }
 
     public function test_pause_without_an_open_day_broadcasts_nothing(): void

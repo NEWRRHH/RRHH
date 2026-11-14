@@ -14,6 +14,7 @@
     <div class="flex flex-col justify-center leading-tight">
       <span class="tabular-nums whitespace-nowrap">
         <span v-if="status === 'paused'" class="text-amber-300 mr-1 hidden sm:inline">En pausa</span>
+        <span v-else-if="status === 'closed'" class="text-gray-400 mr-1 hidden sm:inline">Jornada cerrada</span>
         <span class="font-semibold">{{ elapsedText }}</span>
         <span class="text-gray-500 hidden sm:inline"> / {{ targetText }}</span>
       </span>
@@ -34,6 +35,16 @@
       <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 001.5.86l10.5-6.5a1 1 0 000-1.72L9.5 4.64A1 1 0 008 5.5z"/></svg>
       Fichar
     </button>
+
+    <!-- already clocked out today: nothing left to do until tomorrow -->
+    <span
+      v-else-if="status === 'closed'"
+      class="inline-flex items-center justify-center w-8 h-8 rounded-full text-emerald-300"
+      :title="closedTitle"
+      :aria-label="closedTitle"
+    >
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+    </span>
 
     <!-- clocked in: pause/resume + clock out -->
     <div v-else class="flex items-center gap-1">
@@ -85,10 +96,33 @@ let timer: ReturnType<typeof setInterval> | null = null
 
 const { $swal } = useNuxtApp()
 
-const status = computed<'idle' | 'working' | 'paused'>(() => (!started.value ? 'idle' : paused.value ? 'paused' : 'working'))
-const statusLabel = computed(() => ({ idle: 'Sin fichar', working: 'Trabajando', paused: 'En pausa' })[status.value])
-const dotClass = computed(() => ({ idle: 'bg-gray-500', working: 'bg-emerald-400', paused: 'bg-amber-400' })[status.value])
+// Today's day already clocked out: { start_time, end_time, hours_worked } or null.
+const closedToday = ref<{ start_time: string; end_time: string; hours_worked: string | null } | null>(null)
+
+const status = computed<'idle' | 'working' | 'paused' | 'closed'>(() => {
+  if (started.value) return paused.value ? 'paused' : 'working'
+  return closedToday.value ? 'closed' : 'idle'
+})
+const statusLabel = computed(() => ({ idle: 'Sin fichar', working: 'Trabajando', paused: 'En pausa', closed: 'Jornada cerrada' })[status.value])
+const dotClass = computed(() => ({ idle: 'bg-gray-500', working: 'bg-emerald-400', paused: 'bg-amber-400', closed: 'bg-gray-500' })[status.value])
 const barClass = computed(() => (status.value === 'paused' ? 'bg-amber-400' : 'bg-emerald-500'))
+const closedTitle = computed(() => {
+  const c = closedToday.value
+  if (!c) return ''
+  return `Jornada cerrada: entrada ${String(c.start_time).slice(0, 5)}, salida ${String(c.end_time).slice(0, 5)}`
+})
+
+// "08:02:15" -> seconds
+function timeToSeconds(t?: string | null): number {
+  const [h, m, s] = String(t || '').split(':').map((x) => parseInt(x, 10))
+  return [h, m].some(isNaN) ? 0 : h * 3600 + m * 60 + (isNaN(s) ? 0 : s)
+}
+
+// Show the API's reason (e.g. "Solo puedes fichar entrada hasta 15 minutos antes...")
+function showError(e: any, fallback: string) {
+  const msg = e?.data?.message || e?.response?._data?.message
+  $swal.toast('error', typeof msg === 'string' && msg ? msg : fallback)
+}
 
 // "2:05" (hours:minutes)
 const formatMinutes = (mins: number) => {
@@ -168,12 +202,16 @@ async function checkStatus() {
       paused.value = !!p && (!r || p > r)
       elapsed.value = workedSecondsNow()
       startTimer()
+      closedToday.value = null
     } else {
       started.value = false
       paused.value = false
-      elapsed.value = 0
+      if (timer) clearInterval(timer)
+      closedToday.value = res?.closed_today || null
+      elapsed.value = timeToSeconds(closedToday.value?.hours_worked)
     }
-    sharedStatus.value = status.value
+    // the dots only know working / paused / not working
+    sharedStatus.value = status.value === 'closed' ? 'idle' : status.value
   } catch (e) {
     console.error('attendance info error', e)
   }
@@ -187,8 +225,11 @@ const handleStart = async () => {
     })
     await checkStatus()
     emit('changed')
-  } catch (e) {
+  } catch (e: any) {
     console.error('start attendance failed', e)
+    showError(e, 'No se pudo fichar la entrada')
+    // e.g. the day was closed from another device: show the real state
+    await checkStatus()
   } finally {
     loading.value = false
   }
@@ -213,8 +254,9 @@ const handleStop = async () => {
     // refresh in case schedule or working status changed
     await checkStatus()
     emit('changed')
-  } catch (e) {
+  } catch (e: any) {
     console.error('stop attendance failed', e)
+    showError(e, 'No se pudo fichar la salida')
   } finally {
     loading.value = false
   }
@@ -233,6 +275,7 @@ const togglePause = () => {
     })
     .catch((e: any) => {
       console.error(`${endpoint} attendance failed`, e)
+      showError(e, endpoint === 'pause' ? 'No se pudo pausar' : 'No se pudo reanudar')
     })
     .finally(() => {
       loading.value = false
