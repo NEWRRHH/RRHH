@@ -69,18 +69,35 @@ class AttendanceController extends Controller
         $effectiveSchedule = $this->schedules->loadEffectiveScheduleForUser((int) $user->id);
         if ($effectiveSchedule && !empty($effectiveSchedule->start_time)) {
             $weekMap = [1 => 'L', 2 => 'M', 3 => 'X', 4 => 'J', 5 => 'V', 6 => 'S', 7 => 'D'];
+            $dayNames = [1 => 'lunes', 2 => 'martes', 3 => 'miércoles', 4 => 'jueves', 5 => 'viernes', 6 => 'sábado', 7 => 'domingo'];
             $dayLetter = $weekMap[$now->dayOfWeekIso] ?? 'L';
             $scheduleDays = $this->schedules->normalizeScheduleDays($effectiveSchedule->days ?? null);
 
-            if (in_array($dayLetter, $scheduleDays, true)) {
-                $scheduleStart = substr((string) $effectiveSchedule->start_time, 0, 5);
-                $allowedFrom = Carbon::parse($today . ' ' . $scheduleStart)->subMinutes(15);
-                if ($now->lt($allowedFrom)) {
-                    return response()->json([
-                        'message' => 'Solo puedes fichar entrada hasta 15 minutos antes de tu horario.',
-                        'allowed_from' => $allowedFrom->format('H:i'),
-                    ], 422);
-                }
+            // No clocking in on a day outside the user's schedule (e.g. weekends)...
+            if (! in_array($dayLetter, $scheduleDays, true)) {
+                return response()->json([
+                    'message' => "Hoy ({$dayNames[$now->dayOfWeekIso]}) no es un día laboral en tu jornada, no puedes fichar.",
+                    'reason' => 'non_working_day',
+                ], 422);
+            }
+
+            // ...nor on a company holiday.
+            $holiday = $this->schedules->holidayName($now);
+            if ($holiday !== null) {
+                return response()->json([
+                    'message' => "Hoy es festivo ({$holiday}), no puedes fichar.",
+                    'reason' => 'holiday',
+                ], 422);
+            }
+
+            // ...nor more than 15 minutes before the schedule starts.
+            $scheduleStart = substr((string) $effectiveSchedule->start_time, 0, 5);
+            $allowedFrom = Carbon::parse($today . ' ' . $scheduleStart)->subMinutes(15);
+            if ($now->lt($allowedFrom)) {
+                return response()->json([
+                    'message' => "Solo puedes fichar entrada desde las {$allowedFrom->format('H:i')} (15 minutos antes de tu horario).",
+                    'allowed_from' => $allowedFrom->format('H:i'),
+                ], 422);
             }
         }
 

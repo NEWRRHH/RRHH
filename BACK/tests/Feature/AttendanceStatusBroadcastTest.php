@@ -57,6 +57,37 @@ class AttendanceStatusBroadcastTest extends TestCase
             ->assertJsonPath('message', 'Ya registraste entrada y salida hoy.');
     }
 
+    public function test_cannot_clock_in_on_a_non_working_day_or_a_holiday(): void
+    {
+        ['admin' => $user] = app(CompanyProvisioner::class)
+            ->provision('Acme', ['name' => 'Ana', 'email' => 'ana@acme.test', 'password' => 'Secreta123!']);
+        Sanctum::actingAs($user);
+        Event::fake([AttendanceStatusChanged::class]);
+
+        // Saturday and Sunday are outside the default L-V schedule
+        $this->travelTo(now()->next('Saturday')->setTime(11, 0));
+        $this->postJson('/api/attendance/start')->assertStatus(422)
+            ->assertJsonPath('reason', 'non_working_day')
+            ->assertJsonPath('message', 'Hoy (sábado) no es un día laboral en tu jornada, no puedes fichar.');
+        $this->travelTo(now()->next('Sunday')->setTime(11, 0));
+        $this->postJson('/api/attendance/start')->assertStatus(422)->assertJsonPath('reason', 'non_working_day');
+
+        // a company holiday on a Monday
+        $monday = now()->next('Monday')->setTime(11, 0);
+        $this->postJson('/api/holidays', ['date' => $monday->toDateString(), 'name' => 'Fiesta local'])->assertCreated();
+        $this->travelTo($monday);
+        $this->postJson('/api/attendance/start')->assertStatus(422)
+            ->assertJsonPath('reason', 'holiday')
+            ->assertJsonPath('message', 'Hoy es festivo (Fiesta local), no puedes fichar.');
+
+        // a regular working day still works
+        $this->travelTo($monday->copy()->addDay());
+        $this->postJson('/api/attendance/start')->assertOk();
+
+        $this->assertDatabaseCount('attendances', 1);
+        Event::assertDispatchedTimes(AttendanceStatusChanged::class, 1);
+    }
+
     public function test_pause_without_an_open_day_broadcasts_nothing(): void
     {
         ['admin' => $user] = app(CompanyProvisioner::class)
