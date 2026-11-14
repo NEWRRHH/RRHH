@@ -115,15 +115,18 @@
                   </td>
                   <td class="px-4 py-3 text-right">
                     <div v-if="canViewEmployeeDetails || canDeleteEmployee" class="relative inline-block action-menu">
-                      <button @click.stop="toggleMenu(employee.id)" class="p-2 rounded hover:bg-gray-800">
+                      <button @click.stop="toggleMenu(employee.id, $event)" class="p-2 rounded hover:bg-gray-800">
                         <svg class="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" d="M12 6h.01M12 12h.01M12 18h.01"/>
                         </svg>
                       </button>
 
+                      <!-- Teleported + fixed so the table's overflow containers don't clip it -->
+                      <Teleport to="body">
                       <div
                         v-if="openMenuId === employee.id"
-                        class="absolute right-0 mt-1 w-40 bg-white text-gray-800 rounded-lg shadow-xl overflow-hidden divide-y divide-gray-200 z-[70]"
+                        class="action-menu fixed w-40 bg-white text-gray-800 rounded-lg shadow-xl overflow-hidden divide-y divide-gray-200 z-[70]"
+                        :style="menuStyle"
                       >
                         <button v-if="canEditEmployee" @click="goToEdit(employee)" class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2">
                           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -138,6 +141,7 @@
                           Eliminar
                         </button>
                       </div>
+                      </Teleport>
                     </div>
                   </td>
                 </tr>
@@ -306,7 +310,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onBeforeMount, onMounted } from 'vue'
+import { ref, computed, watch, onBeforeMount, onMounted, onBeforeUnmount } from 'vue'
 
 definePageMeta({ auth: true })
 import { useRouter } from 'vue-router'
@@ -421,8 +425,25 @@ function openSidebar() {
   if (sidebar.value) sidebar.value.open = true
 }
 
-function toggleMenu(id: number) {
-  openMenuId.value = openMenuId.value === id ? null : id
+const menuStyle = ref<Record<string, string>>({})
+const MENU_HEIGHT_ESTIMATE = 96
+
+function toggleMenu(id: number, event: MouseEvent) {
+  if (openMenuId.value === id) {
+    openMenuId.value = null
+    return
+  }
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  const right = `${Math.max(8, window.innerWidth - rect.right)}px`
+  // open upwards when there's not enough room below the button
+  menuStyle.value = window.innerHeight - rect.bottom < MENU_HEIGHT_ESTIMATE
+    ? { bottom: `${window.innerHeight - rect.top + 4}px`, right }
+    : { top: `${rect.bottom + 4}px`, right }
+  openMenuId.value = id
+}
+
+function closeMenu() {
+  openMenuId.value = null
 }
 
 function goToEdit(employee: any) {
@@ -626,13 +647,24 @@ const onLogout = async () => {
   router.push('/login')
 }
 
+function onDocumentClick(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  if (!target.closest('.action-menu')) {
+    closeMenu()
+  }
+}
+
 onMounted(() => {
-  document.addEventListener('click', (e: MouseEvent) => {
-    const target = e.target as HTMLElement
-    if (!target.closest('.action-menu')) {
-      openMenuId.value = null
-    }
-  })
+  document.addEventListener('click', onDocumentClick)
+  // the menu is position:fixed, so close it instead of letting it drift
+  window.addEventListener('scroll', closeMenu, true)
+  window.addEventListener('resize', closeMenu)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocumentClick)
+  window.removeEventListener('scroll', closeMenu, true)
+  window.removeEventListener('resize', closeMenu)
 })
 
 onBeforeMount(async () => {

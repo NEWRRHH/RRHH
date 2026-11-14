@@ -622,8 +622,9 @@ class AttendanceController extends Controller
             $isScheduledDay = in_array($dayLetter, $scheduleDays, true);
             $holidayName = $isScheduledDay ? $this->schedules->holidayName($cursor) : null;
             $isWorkingDay = $isScheduledDay && $holidayName === null;
+            $isEmployed = $hireDateKey === null || $key >= $hireDateKey;
 
-            if ($isWorkingDay) {
+            if ($isWorkingDay && $isEmployed) {
                 $targetMinutes += $dailyTargetMinutes;
             }
 
@@ -642,7 +643,6 @@ class AttendanceController extends Controller
             $hasVacation = isset($vacationsByDate[$key]);
             $hasReceipt = isset($receiptDocsByDate[$key]);
             $isPastOrToday = $key <= $todayKey;
-            $isEmployed = $hireDateKey === null || $key >= $hireDateKey;
 
             if ($isWorkingDay && $isPastOrToday && $isEmployed && ! $hasAttendance && ! $hasVacation && ! $hasReceipt) {
                 $absences[] = [
