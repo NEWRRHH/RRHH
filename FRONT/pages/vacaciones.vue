@@ -43,6 +43,31 @@
             <button class="w-8 h-8 rounded-lg text-gray-300 hover:bg-gray-800" @click="changeYear(1)">&#62;</button>
           </div>
 
+          <div
+            v-if="canHidePastMonths"
+            class="px-3 py-1.5 rounded-xl bg-gray-900 border border-gray-700 inline-flex items-center gap-2 text-sm text-gray-300 select-none"
+          >
+            <span>Ver meses pasados</span>
+            <button
+              type="button"
+              role="switch"
+              :aria-checked="showPastMonths"
+              @click="showPastMonths = !showPastMonths"
+              :class="[
+                'relative inline-flex h-5 w-10 items-center rounded-full transition',
+                showPastMonths ? 'bg-blue-600' : 'bg-gray-600'
+              ]"
+              aria-label="Ver meses pasados"
+            >
+              <span
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white transition',
+                  showPastMonths ? 'translate-x-5' : 'translate-x-1'
+                ]"
+              />
+            </button>
+          </div>
+
           <div v-if="viewMode === 'month'" class="inline-flex items-center gap-2 rounded-xl border border-gray-700 px-2 py-1 bg-gray-900">
             <button class="w-8 h-8 rounded-lg text-gray-300 hover:bg-gray-800" @click="changeMonth(-1)">&#60;</button>
             <span class="text-white font-semibold w-40 text-center">{{ monthLabel(selectedYear, selectedMonth) }}</span>
@@ -67,7 +92,7 @@
         </div>
 
         <div v-if="loading" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          <div v-for="i in 12" :key="'skel-' + i" class="rounded-2xl border border-gray-800 bg-gray-900 p-3 space-y-2">
+          <div v-for="i in visibleYearMonths.length" :key="'skel-' + i" class="rounded-2xl border border-gray-800 bg-gray-900 p-3 space-y-2">
             <div class="h-4 w-24 rounded bg-gray-800 animate-pulse"></div>
             <div class="grid grid-cols-7 gap-1">
               <div v-for="j in 7" :key="'skhd-' + j" class="h-3 rounded bg-gray-800 animate-pulse"></div>
@@ -80,7 +105,7 @@
 
         <div v-else-if="viewMode === 'year'" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           <div
-            v-for="month in yearMonths"
+            v-for="month in visibleYearMonths"
             :key="month.key"
             class="rounded-2xl border border-gray-800 bg-gray-900 p-3"
           >
@@ -416,6 +441,41 @@ const yearMonths = computed(() =>
     cells: buildMonthCells(selectedYear.value, m),
   })),
 )
+
+// Annual view of the current year starts at the current month so users
+// (especially on mobile) don't have to scroll past already-gone months.
+// Past/future years always show all 12 months.
+const SHOW_PAST_MONTHS_KEY = 'vacaciones:showPastMonths'
+const showPastMonths = ref(false)
+
+// Remember the switch across reloads (read on mount: localStorage is client-only).
+onMounted(() => {
+  try {
+    showPastMonths.value = localStorage.getItem(SHOW_PAST_MONTHS_KEY) === '1'
+  } catch {
+    // storage blocked (private mode, etc.): keep the default
+  }
+})
+
+watch(showPastMonths, (value) => {
+  try {
+    localStorage.setItem(SHOW_PAST_MONTHS_KEY, value ? '1' : '0')
+  } catch {
+    // storage blocked: the switch still works for this visit
+  }
+})
+
+const canHidePastMonths = computed(() => {
+  const now = new Date()
+  return viewMode.value === 'year'
+    && selectedYear.value === now.getFullYear()
+    && now.getMonth() > 0
+})
+const visibleYearMonths = computed(() => {
+  if (!canHidePastMonths.value || showPastMonths.value) return yearMonths.value
+  const currentMonth = new Date().getMonth()
+  return yearMonths.value.slice(currentMonth)
+})
 
 const eventsByDate = computed<Record<string, CalendarEvent[]>>(() => {
   const map: Record<string, CalendarEvent[]> = {}
