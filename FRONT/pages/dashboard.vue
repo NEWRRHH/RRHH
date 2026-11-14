@@ -132,13 +132,50 @@
                     </div>
                   </div>
                 </template>
-                <component
-                  v-else
-                  :is="cardComponent(boardLayout[slotIndex])"
-                  v-bind="cardProps(boardLayout[slotIndex])"
-                  v-on="cardListeners(boardLayout[slotIndex])"
-                  class="w-full max-w-none"
-                />
+                <!-- Empty card collapsed to a slim bar (click to expand) -->
+                <button
+                  v-else-if="isCardCollapsed(boardLayout[slotIndex])"
+                  type="button"
+                  class="w-full flex items-center gap-3 rounded-2xl border border-gray-800 bg-gray-900 px-4 py-3 text-left hover:bg-gray-800/70 transition"
+                  :aria-expanded="false"
+                  :title="`Mostrar ${DASHBOARD_WIDGETS[boardLayout[slotIndex]!].name}`"
+                  @click="toggleEmptyCard(boardLayout[slotIndex]!)"
+                >
+                  <span class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" :class="DASHBOARD_WIDGETS[boardLayout[slotIndex]!].tone">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" :d="DASHBOARD_WIDGETS[boardLayout[slotIndex]!].icon" />
+                    </svg>
+                  </span>
+                  <span class="min-w-0 flex-1">
+                    <span class="block text-xs text-gray-300 uppercase tracking-wide">{{ DASHBOARD_WIDGETS[boardLayout[slotIndex]!].name }}</span>
+                    <span class="block text-xs text-gray-500 truncate">{{ EMPTY_CARD_TEXT[boardLayout[slotIndex]!] }}</span>
+                  </span>
+                  <svg class="w-4 h-4 text-gray-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                <div v-else class="relative">
+                  <component
+                    :is="cardComponent(boardLayout[slotIndex])"
+                    v-bind="cardProps(boardLayout[slotIndex])"
+                    v-on="cardListeners(boardLayout[slotIndex])"
+                    class="w-full max-w-none"
+                  />
+                  <!-- Empty card the user expanded: let them collapse it again -->
+                  <button
+                    v-if="!isEditMode && isCardEmpty(boardLayout[slotIndex])"
+                    type="button"
+                    class="absolute top-3 right-3 z-10 w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-800 transition"
+                    title="Contraer"
+                    aria-label="Contraer tarjeta"
+                    :aria-expanded="true"
+                    @click="toggleEmptyCard(boardLayout[slotIndex]!)"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7" />
+                    </svg>
+                  </button>
+                </div>
               </div>
 
               <div v-else-if="isEditMode" class="pointer-events-none h-full min-h-40 flex items-center justify-center text-xs text-gray-500">
@@ -154,7 +191,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onBeforeMount, watch, onBeforeUnmount } from 'vue'
+import { computed, ref, onBeforeMount, onMounted, watch, onBeforeUnmount } from 'vue'
 import { DASHBOARD_COLUMNS, DASHBOARD_WIDGETS, DASHBOARD_WIDGET_KEYS, moveDashboardWidget, normalizeDashboardSlots } from '~/utils/dashboardWidgets'
 import { useDashboardDrag } from '~/composables/useDashboardDrag'
 
@@ -248,6 +285,59 @@ const cardLimits = ref<Record<ListCardKey, number>>({
   team: DEFAULT_CARD_LIMIT,
 })
 const limitList = <T,>(list: T[] | null | undefined, key: ListCardKey): T[] => (list || []).slice(0, cardLimits.value[key])
+
+// ── Empty cards collapse to a slim bar ──
+// Only cards that render a list/summary can be "empty"; vacation, worked hours
+// and welcome always have something to show. A card counts as empty only once
+// its data has loaded, so nothing collapses and re-opens while loading.
+const documentsLoaded = ref(false)
+const EMPTY_CARD_TEXT: Partial<Record<CardKey, string>> = {
+  notifications: 'No hay notificaciones',
+  announcements: 'Sin comunicados',
+  birthdays: 'Sin próximos cumpleaños',
+  holidays: 'Sin próximos festivos',
+  team: 'Sin compañeros de equipo',
+  documents: 'Sin documentos',
+}
+
+function isCardEmpty(key: CardKey | null): boolean {
+  if (key === 'notifications') return !loading.value && !(data.value.notifications || []).length
+  if (key === 'announcements') return !announcementsLoading.value && !announcements.value.length
+  if (key === 'birthdays') return !birthdaysLoading.value && !birthdays.value.length
+  if (key === 'holidays') return !holidaysLoading.value && !holidays.value.length
+  if (key === 'team') return !teamLoading.value && !teamMembers.value.length
+  if (key === 'documents') return documentsLoaded.value && !documentsSummary.value.total
+  return false
+}
+
+// Empty cards the viewer chose to keep open (remembered in this browser).
+const EXPANDED_EMPTY_KEY = 'dashboard:expandedEmptyCards'
+const expandedEmptyCards = ref<CardKey[]>([])
+
+function isCardCollapsed(key: CardKey | null): boolean {
+  return !!key && !isEditMode.value && isCardEmpty(key) && !expandedEmptyCards.value.includes(key)
+}
+
+function toggleEmptyCard(key: CardKey) {
+  expandedEmptyCards.value = expandedEmptyCards.value.includes(key)
+    ? expandedEmptyCards.value.filter((k) => k !== key)
+    : [...expandedEmptyCards.value, key]
+  try {
+    localStorage.setItem(EXPANDED_EMPTY_KEY, JSON.stringify(expandedEmptyCards.value))
+  } catch {
+    // storage blocked: the toggle still works for this visit
+  }
+}
+
+onMounted(() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(EXPANDED_EMPTY_KEY) || '[]')
+    if (Array.isArray(saved)) expandedEmptyCards.value = saved.filter((k) => k in EMPTY_CARD_TEXT)
+  } catch {
+    // no saved state: every empty card starts collapsed
+  }
+})
+// ── End empty cards ──
 
 const cardComponent = (key: CardKey | null) => {
   if (key === 'birthdays') return BirthdayCard
@@ -485,6 +575,8 @@ async function refreshDocumentsSummary() {
     }
   } catch (e) {
     console.error('documents summary fetch failed', e)
+  } finally {
+    documentsLoaded.value = true
   }
 }
 
