@@ -455,6 +455,10 @@ class AttendanceController extends Controller
         $scheduleDays = $this->schedules->normalizeScheduleDays($schedule->days ?? null);
         $dailyTargetMinutes = $this->schedules->scheduleDailyMinutes($schedule);
 
+        // Days before the employee's hire date never count as absences.
+        $hireDate = User::table()->where('id', $selectedUserId)->value('hire_date');
+        $hireDateKey = $hireDate ? Carbon::parse($hireDate)->toDateString() : null;
+
         $rawRows = Attendance::table()
             ->where('user_id', $selectedUserId)
             ->whereDate('date', '>=', $monthStart->toDateString())
@@ -638,8 +642,9 @@ class AttendanceController extends Controller
             $hasVacation = isset($vacationsByDate[$key]);
             $hasReceipt = isset($receiptDocsByDate[$key]);
             $isPastOrToday = $key <= $todayKey;
+            $isEmployed = $hireDateKey === null || $key >= $hireDateKey;
 
-            if ($isWorkingDay && $isPastOrToday && ! $hasAttendance && ! $hasVacation && ! $hasReceipt) {
+            if ($isWorkingDay && $isPastOrToday && $isEmployed && ! $hasAttendance && ! $hasVacation && ! $hasReceipt) {
                 $absences[] = [
                     'date' => $key,
                     'weekday' => $dayLetter,
