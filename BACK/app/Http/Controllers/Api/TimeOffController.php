@@ -297,9 +297,28 @@ class TimeOffController extends Controller
             })
             ->values();
 
+        // Company holidays of the year: the front needs them to count vacation
+        // days exactly like create()/update() do (holidays never consume days).
+        $holidays = [];
+        $cursor = $start->copy();
+        while ($cursor->lte($end)) {
+            $name = $this->schedules->holidayName($cursor);
+            if ($name !== null) {
+                $holidays[$cursor->toDateString()] = $name;
+            }
+            $cursor->addDay();
+        }
+
         return response()->json([
             'year' => $year,
             'schedule_days' => $scheduleDays,
+            'holidays' => (object) $holidays,
+            // Lets the calendar flag the days that exceed the yearly allowance
+            // while selecting, before the request ever reaches the API.
+            'vacation' => [
+                'event_type_id' => EventType::idFor(EventType::VACATION),
+                'limit' => (int) ($user->vacation_days_total ?? 0),
+            ],
             'schedule' => [
                 'start_time' => isset($schedule->start_time) ? substr((string) $schedule->start_time, 0, 5) : null,
                 'end_time' => isset($schedule->end_time) ? substr((string) $schedule->end_time, 0, 5) : null,
@@ -385,7 +404,7 @@ class TimeOffController extends Controller
             $limit = (int) ($user->vacation_days_total ?? 0);
             if ($requestedTotal > $limit) {
                 return response()->json([
-                    'message' => "No puedes solicitar mas de {$limit} dias de vacaciones al ano",
+                    'message' => "No puedes solicitar más de {$limit} días de vacaciones al año",
                     'requested_days' => $requestedTotal,
                     'available_days' => max(0, $limit - count($existingSet)),
                 ], 422);
@@ -508,7 +527,7 @@ class TimeOffController extends Controller
             $limit = (int) ($user->vacation_days_total ?? 0);
             if ($requestedTotal > $limit) {
                 return response()->json([
-                    'message' => "No puedes solicitar mas de {$limit} dias de vacaciones al ano",
+                    'message' => "No puedes solicitar más de {$limit} días de vacaciones al año",
                     'requested_days' => $requestedTotal,
                     'available_days' => max(0, $limit - count($existingSet)),
                 ], 422);

@@ -84,7 +84,11 @@
           class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-sm text-blue-100"
         >
           <span>
-            Inicio: <strong>{{ tapStartIso }}</strong> — toca el dia fin para cerrar el rango (o el mismo dia para un solo dia).
+            Inicio: <strong>{{ tapStartIso }}</strong> — mueve el ratón y haz clic (o toca) en el día fin para cerrar el rango (o en el mismo día para un solo día).
+            <span class="block text-xs mt-0.5" :class="excessDates.size ? 'text-red-300' : 'text-blue-200'">
+              Días de vacaciones seleccionados: {{ selectionVacationDays }} · Disponibles: {{ vacationAvailableDays }}
+              <template v-if="excessDates.size"> · Excedes en {{ excessDates.size }}</template>
+            </span>
           </span>
           <button class="text-xs border border-blue-400/40 rounded-lg px-2 py-1.5 hover:bg-blue-500/20" @click="cancelTapSelection">
             Cancelar
@@ -121,7 +125,7 @@
                 :class="dayCellClass(cell.iso, cell.currentMonth)"
                 :disabled="isPastIso(cell.iso) || !isWorkingIso(cell.iso)"
                 @pointerdown="onDayPointerDown(cell.iso, $event)"
-                @pointerenter="onDayPointerEnter(cell.iso)"
+                @pointerenter="onDayPointerEnter(cell.iso, $event)"
                 @pointerup="onDayPointerUp"
               >
                 {{ cell.day }}
@@ -147,7 +151,7 @@
               :class="dayCellClass(cell.iso, cell.currentMonth)"
               :disabled="isPastIso(cell.iso) || !isWorkingIso(cell.iso)"
               @pointerdown="onDayPointerDown(cell.iso, $event)"
-              @pointerenter="onDayPointerEnter(cell.iso)"
+              @pointerenter="onDayPointerEnter(cell.iso, $event)"
               @pointerup="onDayPointerUp"
             >
               <div class="text-sm">{{ cell.day }}</div>
@@ -355,9 +359,11 @@ const scheduleEndTime = ref<string | null>(null)
 
 const showModal = ref(false)
 const editingEventId = ref<number | null>(null)
+const holidays = ref<Record<string, string>>({})
+const vacationTypeId = ref<number | null>(null)
+const vacationLimit = ref(0)
 const dragStartIso = ref('')
 const dragEndIso = ref('')
-const isDragging = ref(false)
 const tapStartIso = ref('')
 const pendingTapIso = ref('')
 const touchDownPt = ref<{ x: number; y: number } | null>(null)
@@ -599,6 +605,59 @@ function statusBadgeClass(status: string): string {
   return 'border-gray-500/40 text-gray-200 bg-gray-500/20'
 }
 
+// --- Vacation allowance (mirrors TimeOffController::create/update) --------
+// A day consumes allowance when it is a schedule day and not a company holiday.
+function isVacationCountableIso(iso: string): boolean {
+  return isWorkingIso(iso) && !holidays.value[iso]
+}
+
+function eachIso(startIso: string, endIso: string, fn: (iso: string) => void) {
+  let cursor = toDateFromIso(startIso)
+  const end = toDateFromIso(endIso)
+  while (cursor <= end) {
+    fn(toIsoDate(cursor))
+    cursor = new Date(cursor)
+    cursor.setDate(cursor.getDate() + 1)
+  }
+}
+
+// Event being extended/edited by the current selection: the API excludes its
+// own days from the "already used" count, so we do the same.
+const selectionSourceEventId = computed<number | null>(() => {
+  if (editingEventId.value !== null) return editingEventId.value
+  const startIso = tapStartIso.value || dragStartIso.value
+  return startIso ? (firstEventForDay(startIso)?.id ?? null) : null
+})
+
+// Vacation days already requested (pending/approved) in the selection's year.
+const usedVacationDates = computed(() => {
+  const set = new Set<string>()
+  const year = (selectedRange.value.start || todayIso).slice(0, 4)
+  for (const ev of events.value) {
+    if (ev.event_type_id !== vacationTypeId.value) continue
+    if (ev.approval_status === 'rejected') continue
+    if (ev.id === selectionSourceEventId.value) continue
+    eachIso(ev.start_date, ev.end_date, (iso) => {
+      if (iso.startsWith(year) && isVacationCountableIso(iso)) set.add(iso)
+    })
+  }
+  return set
+})
+
+const vacationAvailableDays = computed(() => Math.max(0, vacationLimit.value - usedVacationDates.value.size))
+
+// New vacation days in the selection, and those beyond the allowance (in date order).
+const selectionNewVacationDates = computed(() => {
+  const list: string[] = []
+  if (!selectedRange.value.start || !selectedRange.value.end) return list
+  eachIso(selectedRange.value.start, selectedRange.value.end, (iso) => {
+    if (isVacationCountableIso(iso) && !usedVacationDates.value.has(iso)) list.push(iso)
+  })
+  return list
+})
+const selectionVacationDays = computed(() => selectionNewVacationDates.value.length)
+const excessDates = computed(() => new Set(selectionNewVacationDates.value.slice(vacationAvailableDays.value)))
+
 function isInSelectedRange(iso: string): boolean {
   if (!selectedRange.value.start || !selectedRange.value.end) return false
   if (!isWorkingIso(iso)) return false
@@ -611,6 +670,7 @@ function dayCellClass(iso: string, currentMonth: boolean): string {
   }
   const inRange = isInSelectedRange(iso)
   const base = currentMonth ? 'bg-gray-900 text-gray-100 hover:bg-gray-800' : 'bg-gray-950 text-gray-600 hover:bg-gray-900'
+  if (inRange && excessDates.value.has(iso)) return 'bg-red-600/40 text-white border border-red-500'
   if (inRange) return 'bg-blue-600/35 text-white border border-blue-500'
   if (!isWorkingIso(iso)) return `${base} border border-gray-800/60`
   return `${base} border border-gray-800`
@@ -682,31 +742,23 @@ function onDayPointerDown(iso: string, e: PointerEvent) {
   if (isPastIso(iso)) return
   if (!isWorkingIso(iso)) return
   if (e.pointerType === 'touch') {
+    // decided on pointerup, so a scroll gesture is not taken as a tap
     pendingTapIso.value = iso
     touchDownPt.value = { x: e.clientX, y: e.clientY }
     return
   }
-  isDragging.value = true
-  dragStartIso.value = iso
-  dragEndIso.value = iso
+  // Mouse: click the first day, move the mouse (range previews), click the last day.
+  handleDayTap(iso)
 }
 
-function onDayPointerEnter(iso: string) {
-  if (!isDragging.value) return
+function onDayPointerEnter(iso: string, e: PointerEvent) {
+  if (!tapStartIso.value || e.pointerType === 'touch') return
   if (isPastIso(iso)) return
   if (!isWorkingIso(iso)) return
   dragEndIso.value = iso
 }
 
 function onDayPointerUp(e?: PointerEvent) {
-  if (isDragging.value) {
-    isDragging.value = false
-    if (dragStartIso.value && dragEndIso.value) {
-      finishSelection(dragStartIso.value, dragEndIso.value)
-    }
-    return
-  }
-
   const iso = pendingTapIso.value
   const startPt = touchDownPt.value
   pendingTapIso.value = ''
@@ -732,9 +784,18 @@ function handleDayTap(iso: string) {
 }
 
 function finishSelection(startIso: string, endIso: string) {
-  tapStartIso.value = ''
   const range = sortRange(startIso, endIso)
   const sourceDayEvent = firstEventForDay(startIso)
+
+  // Over the allowance: keep the range on screen with the excess in red and
+  // do not open the confirmation modal. (Computed before clearing tapStartIso,
+  // which identifies the event being extended.)
+  const excess = excessDates.value.size
+  tapStartIso.value = ''
+  if (excess > 0) {
+    $swal.toast('error', `Superas tus días de vacaciones en ${excess} ${excess === 1 ? 'día' : 'días'} (disponibles: ${vacationAvailableDays.value})`)
+    return
+  }
 
   if (startIso === endIso) {
     if (sourceDayEvent) {
@@ -764,10 +825,6 @@ function cancelTapSelection() {
 }
 
 function onGlobalPointerUp(e: PointerEvent) {
-  if (isDragging.value) {
-    onDayPointerUp()
-    return
-  }
   if (pendingTapIso.value) onDayPointerUp(e)
 }
 
@@ -800,6 +857,9 @@ async function loadCalendar() {
     scheduleDays.value = Array.isArray(res?.schedule_days) && res.schedule_days.length ? res.schedule_days : ['L', 'M', 'X', 'J', 'V']
     scheduleStartTime.value = res?.schedule?.start_time || null
     scheduleEndTime.value = res?.schedule?.end_time || null
+    holidays.value = res?.holidays || {}
+    vacationTypeId.value = res?.vacation?.event_type_id ?? null
+    vacationLimit.value = Number(res?.vacation?.limit || 0)
     eventTypes.value = res?.event_types || []
     events.value = res?.events || []
     if (!form.value.event_type_id && eventTypes.value.length) {
@@ -867,7 +927,12 @@ onMounted(async () => {
   await loadCalendar()
   window.addEventListener('pointerup', onGlobalPointerUp)
   window.addEventListener('pointercancel', onGlobalPointercancel)
+  window.addEventListener('keydown', onSelectionKeydown)
 })
+
+function onSelectionKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && tapStartIso.value) cancelTapSelection()
+}
 
 watch(
   () => form.value.event_type_id,
@@ -889,5 +954,6 @@ watch(canChooseHours, (singleDay) => {
 onBeforeUnmount(() => {
   window.removeEventListener('pointerup', onGlobalPointerUp)
   window.removeEventListener('pointercancel', onGlobalPointercancel)
+  window.removeEventListener('keydown', onSelectionKeydown)
 })
 </script>

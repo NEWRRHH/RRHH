@@ -35,7 +35,7 @@
             <div class="min-w-0">
               <p class="text-white font-semibold truncate">{{ birthdays[0].full_name || birthdays[0].first_name }}</p>
               <p class="text-xs text-rose-100/90">{{ formatDate(birthdays[0].next_birthday) }}</p>
-              <p class="text-[11px] text-gray-300">Cumple {{ birthdays[0].age }} anos</p>
+              <p class="text-[11px] text-gray-300">Cumple {{ birthdays[0].age }} años</p>
             </div>
           </div>
         </div>
