@@ -174,7 +174,7 @@ class DashboardController extends Controller
         }
 
         $rules = ['limits' => 'required|array'];
-        foreach (DashboardLayoutService::LIST_WIDGETS as $key) {
+        foreach (array_keys(DashboardLayoutService::LIST_WIDGETS) as $key) {
             $rules["limits.$key"] = 'required|integer|min:1|max:' . DashboardLayoutService::MAX_LIMIT;
         }
         $data = $request->validate($rules, [

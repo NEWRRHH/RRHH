@@ -274,9 +274,13 @@ const welcomeSettings = ref<{ title: string; subtitle: string; show_date: boolea
 })
 const { $swal } = useNuxtApp()
 
-// Items per list card, set by the company in Configuración > Límites de tarjetas.
+// Company setting (Configuración > Límites de tarjetas):
+// - birthdays: how many birthdays the card shows;
+// - the other lists: how many items are visible before the list scrolls
+//   (the whole list is still there, scrolling).
 type ListCardKey = 'notifications' | 'announcements' | 'birthdays' | 'holidays' | 'team'
-const DEFAULT_CARD_LIMIT = 10
+const DEFAULT_CARD_LIMIT = 5
+const MAX_LIST_ITEMS = 50
 const cardLimits = ref<Record<ListCardKey, number>>({
   notifications: DEFAULT_CARD_LIMIT,
   announcements: DEFAULT_CARD_LIMIT,
@@ -352,7 +356,7 @@ const cardComponent = (key: CardKey | null) => {
 
 const cardProps = (key: CardKey | null) => {
   if (key === 'birthdays') return { birthdays: limitList(birthdays.value, 'birthdays'), loading: birthdaysLoading.value }
-  if (key === 'team') return { members: limitList(teamMembers.value, 'team'), teamName: teamName.value, loading: teamLoading.value }
+  if (key === 'team') return { members: teamMembers.value, teamName: teamName.value, loading: teamLoading.value, visibleRows: cardLimits.value.team }
   if (key === 'vacation') {
     return {
       daysUntilVacation: vacationInfo.value.daysUntilVacation,
@@ -369,12 +373,12 @@ const cardProps = (key: CardKey | null) => {
       monthTargetHHMM: data.value?.worked_hours?.target_month_hhmm || null,
     }
   }
-  if (key === 'holidays') return { holidays: limitList(holidays.value, 'holidays'), loading: holidaysLoading.value }
-  if (key === 'announcements') return { items: limitList(announcements.value, 'announcements'), loading: announcementsLoading.value }
+  if (key === 'holidays') return { holidays: holidays.value, loading: holidaysLoading.value, visibleRows: cardLimits.value.holidays }
+  if (key === 'announcements') return { items: announcements.value, loading: announcementsLoading.value, visibleRows: cardLimits.value.announcements }
   if (key === 'documents') return { summary: documentsSummary.value }
   return {
-    // the badge keeps the real unread total; only the list is capped
-    notifications: limitList(data.value.notifications, 'notifications'),
+    notifications: data.value.notifications || [],
+    visibleRows: cardLimits.value.notifications,
     unreadCount: unreadNotifications.value || 0,
   }
 }
@@ -540,7 +544,7 @@ async function handleAttendanceChanged() {
 async function refreshHolidays() {
   holidaysLoading.value = true
   try {
-    const res = await $fetch(`/api/holidays/upcoming?limit=${cardLimits.value.holidays}`)
+    const res = await $fetch(`/api/holidays/upcoming?limit=${MAX_LIST_ITEMS}`)
     holidays.value = res || []
   } catch (e) {
     console.error('holidays fetch failed', e)
@@ -553,7 +557,7 @@ async function refreshHolidays() {
 async function refreshAnnouncements() {
   announcementsLoading.value = true
   try {
-    const res = await $fetch(`/api/announcements?limit=${cardLimits.value.announcements}`)
+    const res = await $fetch(`/api/announcements?limit=${MAX_LIST_ITEMS}`)
     announcements.value = res || []
   } catch (e) {
     console.error('announcements fetch failed', e)

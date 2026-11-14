@@ -18,7 +18,7 @@
         <div v-for="i in 4" :key="i" class="h-9 rounded-lg bg-gray-800 animate-pulse"></div>
       </div>
       <div v-else>
-        <div v-if="members && members.length" class="space-y-2 max-h-40 overflow-y-auto pr-1 team-scroll">
+        <div v-if="members && members.length" v-visible-rows="visibleRows" class="space-y-2 pr-1 team-scroll">
           <div v-for="m in members" :key="m.id" class="flex items-center gap-2 p-2 rounded-lg bg-gray-800/70">
             <div class="w-8 h-8 rounded-full overflow-hidden bg-gray-700 flex items-center justify-center text-xs text-gray-300">
               <img v-if="m.photo" :src="m.photo" class="w-full h-full object-cover" />
@@ -39,6 +39,8 @@ defineProps({
   members: { type: Array as PropType<Array<Record<string, any>>>, default: () => [] },
   teamName: { type: String as PropType<string>, default: 'Sin equipo' },
   loading: { type: Boolean as PropType<boolean>, default: false },
+  // members visible before the list scrolls (company setting)
+  visibleRows: { type: Number as PropType<number>, default: 5 },
 })
 </script>
 

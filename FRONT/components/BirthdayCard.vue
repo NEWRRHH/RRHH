@@ -11,10 +11,10 @@
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v13m0-13a3 3 0 013-3h1a2 2 0 012 2v1a3 3 0 01-3 3m-3-3a3 3 0 00-3-3H8a2 2 0 00-2 2v1a3 3 0 003 3m0 0v2m0 0h6"/>
             </svg>
           </div>
-          <h3 class="text-xs text-gray-300 uppercase tracking-wide font-medium">Cumpleanos</h3>
+          <h3 class="text-xs text-gray-300 uppercase tracking-wide font-medium">Cumpleaños</h3>
         </div>
         <span class="text-[11px] px-2 py-1 rounded-full border border-rose-400/30 bg-rose-500/10 text-rose-200">
-          {{ birthdays?.length || 0 }} proximos
+          {{ birthdays?.length || 0 }} próximos
         </span>
       </div>
 
@@ -62,7 +62,7 @@
       </div>
 
       <div v-else class="flex-1 rounded-xl border border-gray-800 bg-gray-950/60 p-5 text-center text-gray-400 flex items-center justify-center">
-        No hay cumpleanos proximos
+        No hay cumpleaños próximos
       </div>
     </div>
   </div>

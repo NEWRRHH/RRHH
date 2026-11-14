@@ -14,7 +14,7 @@
       <div v-if="loading" class="space-y-2">
         <div v-for="i in 3" :key="i" class="h-14 rounded-lg bg-gray-800 animate-pulse"></div>
       </div>
-      <div v-else class="space-y-2 max-h-40 overflow-y-auto pr-1 announcements-scroll">
+      <div v-else v-visible-rows="visibleRows" class="space-y-2 pr-1 announcements-scroll">
         <button
           v-for="a in items"
           :key="a.id"
@@ -63,6 +63,8 @@ declare const $fetch: any
 defineProps({
   items: { type: Array as PropType<Array<Record<string, any>>>, default: () => [] },
   loading: { type: Boolean as PropType<boolean>, default: false },
+  // announcements visible before the list scrolls (company setting)
+  visibleRows: { type: Number as PropType<number>, default: 5 },
 })
 
 const { authenticated, apiBase } = useAuth()

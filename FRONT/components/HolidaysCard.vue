@@ -8,17 +8,17 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3M4 11h16M6 5h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2z"/>
           </svg>
         </div>
-        <h3 class="text-xs text-gray-300 uppercase tracking-wide font-medium">Proximos festivos</h3>
+        <h3 class="text-xs text-gray-300 uppercase tracking-wide font-medium">Próximos festivos</h3>
       </div>
       <div v-if="loading" class="space-y-2">
         <div v-for="i in 4" :key="i" class="h-10 rounded-lg bg-gray-800 animate-pulse"></div>
       </div>
-      <div v-else class="holiday-scroll space-y-2 pr-1 max-h-40 overflow-y-auto">
+      <div v-else v-visible-rows="visibleRows" class="holiday-scroll space-y-2 pr-1">
         <div v-for="h in holidays" :key="`${h.date}-${h.name}`" class="rounded-lg bg-gray-800/70 px-3 py-2">
           <div class="text-sm text-white">{{ h.name }}</div>
           <div class="text-xs text-gray-400">{{ formatDate(h.date) }}</div>
         </div>
-        <div v-if="!holidays?.length" class="text-sm text-gray-400">No hay festivos proximos</div>
+        <div v-if="!holidays?.length" class="text-sm text-gray-400">No hay festivos próximos</div>
       </div>
     </div>
   </div>
@@ -29,6 +29,8 @@ import type { PropType } from 'vue'
 const props = defineProps({
   holidays: { type: Array as PropType<Array<{ date: string; name: string }>>, default: () => [] },
   loading: { type: Boolean as PropType<boolean>, default: false },
+  // holidays visible before the list scrolls (company setting)
+  visibleRows: { type: Number as PropType<number>, default: 5 },
 })
 const formatDate = (iso: string) => {
   try {

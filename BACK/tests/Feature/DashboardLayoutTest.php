@@ -111,14 +111,14 @@ class DashboardLayoutTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors('welcome.title');
     }
 
-    public function test_card_limits_default_to_ten_and_rrhh_can_change_them(): void
+    public function test_card_limits_default_to_five_and_rrhh_can_change_them(): void
     {
         Sanctum::actingAs($this->employee);
         $this->getJson('/api/dashboard/layout')->assertOk()
-            ->assertJsonPath('settings.limits.notifications', 10)
-            ->assertJsonPath('settings.limits.announcements', 10);
+            ->assertJsonPath('settings.limits.notifications', 5)
+            ->assertJsonPath('settings.limits.birthdays', 5);
 
-        $limits = ['notifications' => 5, 'announcements' => 3, 'birthdays' => 10, 'holidays' => 50, 'team' => 1];
+        $limits = ['notifications' => 5, 'announcements' => 3, 'birthdays' => 3, 'holidays' => 50, 'team' => 1];
         $this->putJson('/api/settings/dashboard/limits', ['limits' => $limits])->assertForbidden();
 
         Sanctum::actingAs($this->hr);
@@ -133,6 +133,17 @@ class DashboardLayoutTest extends TestCase
             ->assertJsonPath('slots', self::COMPANY_SLOTS)
             ->assertJsonPath('settings.welcome.title', 'Hola 2')
             ->assertJsonPath('settings.limits', $limits);
+    }
+
+    public function test_birthdays_endpoint_honours_the_limit(): void
+    {
+        foreach ([$this->admin, $this->hr, $this->employee] as $i => $u) {
+            $u->forceFill(['birth_date' => now()->addDays($i + 1)->subYears(30)->toDateString()])->save();
+        }
+
+        Sanctum::actingAs($this->employee);
+        $this->getJson('/api/birthdays?limit=2')->assertOk()->assertJsonCount(2);
+        $this->getJson('/api/birthdays?limit=3')->assertOk()->assertJsonCount(3);
     }
 
     public function test_card_limits_validation(): void

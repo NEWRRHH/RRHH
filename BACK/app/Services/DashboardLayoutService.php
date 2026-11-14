@@ -35,10 +35,20 @@ class DashboardLayoutService
         'documents' => 'Documentos',
     ];
 
-    /** Cards that render a list: how many items each shows is set by the company. */
-    public const LIST_WIDGETS = ['notifications', 'announcements', 'birthdays', 'holidays', 'team'];
+    /**
+     * Cards that render a list, with what their number means:
+     * 'max'     = how many items the card shows (birthdays);
+     * 'visible' = how many items are visible before the list scrolls.
+     */
+    public const LIST_WIDGETS = [
+        'notifications' => 'visible',
+        'announcements' => 'visible',
+        'birthdays' => 'max',
+        'holidays' => 'visible',
+        'team' => 'visible',
+    ];
 
-    public const DEFAULT_LIMIT = 10;
+    public const DEFAULT_LIMIT = 5;
 
     public const MAX_LIMIT = 50;
 
@@ -156,10 +166,14 @@ class DashboardLayoutService
         return $this->companyLayout();
     }
 
-    /** @return array<int, array{key: string, name: string}> */
+    /** @return array<int, array{key: string, name: string, mode: string}> */
     public function limitCatalog(): array
     {
-        return array_map(fn ($key) => ['key' => $key, 'name' => self::WIDGETS[$key]], self::LIST_WIDGETS);
+        return array_map(
+            fn ($key, $mode) => ['key' => $key, 'name' => self::WIDGETS[$key], 'mode' => $mode],
+            array_keys(self::LIST_WIDGETS),
+            self::LIST_WIDGETS,
+        );
     }
 
     /**
@@ -170,7 +184,7 @@ class DashboardLayoutService
     public function limits(?array $input): array
     {
         $out = [];
-        foreach (self::LIST_WIDGETS as $key) {
+        foreach (array_keys(self::LIST_WIDGETS) as $key) {
             $value = is_numeric($input[$key] ?? null) ? (int) $input[$key] : self::DEFAULT_LIMIT;
             $out[$key] = max(1, min(self::MAX_LIMIT, $value));
         }

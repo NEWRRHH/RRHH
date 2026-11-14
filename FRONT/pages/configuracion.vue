@@ -558,7 +558,7 @@
             <div>
               <h2 class="text-white font-semibold">Límites de tarjetas</h2>
               <p class="text-sm text-gray-400 mt-1">
-                Cuántos elementos muestra como máximo cada tarjeta con lista del dashboard. Se aplica a todos los empleados de la empresa.
+                Controla el tamaño de las tarjetas con lista del dashboard. Se aplica a todos los empleados de la empresa.
               </p>
             </div>
 
@@ -572,7 +572,12 @@
                 :key="w.key"
                 class="flex items-center justify-between gap-4 rounded-lg border border-gray-800 bg-gray-800/40 px-4 py-3"
               >
-                <label :for="`limit-${w.key}`" class="!mb-0 text-sm text-gray-200">{{ w.name }}</label>
+                <label :for="`limit-${w.key}`" class="!mb-0 min-w-0">
+                  <span class="block text-sm text-gray-200">{{ w.name }}</span>
+                  <span class="block text-xs text-gray-500">
+                    {{ w.mode === 'max' ? 'Cantidad máxima que se muestra' : 'Visibles antes de que aparezca el scroll' }}
+                  </span>
+                </label>
                 <div class="flex items-center gap-2">
                   <input
                     :id="`limit-${w.key}`"
@@ -920,10 +925,10 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnloa
 // ── End company dashboard ──
 
 // ── Card limits (items per list card on the dashboard) ──
-const limitWidgets = ref<Array<{ key: string; name: string }>>([])
+const limitWidgets = ref<Array<{ key: string; name: string; mode: 'max' | 'visible' }>>([])
 const cardLimits = ref<Record<string, number>>({})
 const savedCardLimits = ref('')
-const defaultCardLimit = ref(10)
+const defaultCardLimit = ref(5)
 const maxCardLimit = ref(50)
 const limitsSaving = ref(false)
 const limitsDirty = computed(() => JSON.stringify(cardLimits.value) !== savedCardLimits.value)

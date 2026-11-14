@@ -32,9 +32,9 @@
         <div class="h-6 bg-gray-800 animate-pulse rounded"></div>
       </div>
 
-      <div v-else class="max-h-44 overflow-y-auto pr-1 notification-scroll">
+      <div v-else>
         <div v-if="unreadNotes && unreadNotes.length">
-          <ul class="space-y-2">
+          <ul v-visible-rows="visibleRows" class="space-y-2 pr-1 notification-scroll">
             <li v-for="note in unreadNotes" :key="note.message_id || note.id">
               <div
                 @click="openModal(note)"
@@ -62,6 +62,8 @@ const props = defineProps({
   notifications: { type: Array as PropType<Array<Record<string, any>>>, default: () => [] },
   loading: { type: Boolean as PropType<boolean>, default: false },
   unreadCount: { type: Number as PropType<number>, default: 0 },
+  // notifications visible before the list scrolls (company setting)
+  visibleRows: { type: Number as PropType<number>, default: 5 },
 })
 
 const { authenticated, apiBase } = useAuth()
