@@ -18,7 +18,11 @@ export default defineNuxtConfig({
   },
   app: {
     head: {
-      title: 'RRHH - Front (Nuxt)'
+      title: 'RRHH - Front (Nuxt)',
+      meta: [
+        // browser toolbar matches the dark app (Safari iOS, Chrome Android)
+        { name: 'theme-color', content: '#030712' },
+      ],
     }
   },
   runtimeConfig: {

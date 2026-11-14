@@ -243,8 +243,8 @@ async function sendMessage() {
 
 // helper for date formatting
 function formatDate(dt: string) {
-  const d = new Date(dt)
-  return d.toLocaleString()
+  const d = parseDate(dt)
+  return d ? d.toLocaleString() : ''
 }
 
 onMounted(() => {

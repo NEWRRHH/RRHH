@@ -33,11 +33,8 @@ const props = defineProps({
   visibleRows: { type: Number as PropType<number>, default: 5 },
 })
 const formatDate = (iso: string) => {
-  try {
-    return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })
-  } catch {
-    return iso
-  }
+  const d = parseDate(iso)
+  return d ? d.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' }) : iso
 }
 </script>
 

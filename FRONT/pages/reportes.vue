@@ -508,7 +508,7 @@ const summary = ref<{ worked_hhmm: string; target_hhmm: string; worked_minutes: 
 })
 const selectedUserId = ref<number | null>(null)
 const teamFilter = ref('')
-const selectedMonth = ref(new Date().toISOString().slice(0, 7))
+const selectedMonth = ref(localIsoDate().slice(0, 7))
 const includeNonWorkingDays = ref(false)
 
 const canViewAllWhoIsIn = ref(false)
@@ -542,7 +542,7 @@ const monthLabel = computed(() => {
   return d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
 })
 const currentUserId = computed(() => Number((user.value as any)?.id || 0))
-const todayIso = computed(() => new Date().toISOString().slice(0, 10))
+const todayIso = computed(() => localIsoDate())
 const isOwnSelectedUser = computed(() => Number(selectedUserId.value || 0) === currentUserId.value)
 const requestModal = ref<{ open: boolean; date: string; entry_time: string; exit_time: string; error: string }>({
   open: false,
@@ -572,8 +572,8 @@ function openSidebar() {
 }
 
 function shortDate(dateIso: string) {
-  const d = new Date(dateIso)
-  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const d = parseDate(dateIso)
+  return d ? d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : dateIso
 }
 
 function toMinutes(v?: string | null) {

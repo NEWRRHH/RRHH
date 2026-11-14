@@ -132,7 +132,7 @@
                 <DashboardLayoutEditor v-model="companySlots" />
               </div>
 
-              <p v-if="layoutUpdatedAt" class="text-xs text-gray-600">Última modificación: {{ new Date(layoutUpdatedAt).toLocaleString('es-ES') }}</p>
+              <p v-if="layoutUpdatedAt" class="text-xs text-gray-600">Última modificación: {{ parseDate(layoutUpdatedAt)?.toLocaleString('es-ES') }}</p>
             </template>
 
             <!-- Sticky save bar: only when there are unsaved changes -->

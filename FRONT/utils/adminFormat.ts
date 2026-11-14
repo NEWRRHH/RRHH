@@ -1,23 +1,22 @@
 // Formatting helpers for the super admin panel (auto-imported by Nuxt).
 
 export function formatDate(value?: string | null): string {
-  if (!value) return '—'
-  const d = new Date(value)
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const d = parseDate(value)
+  return !d ? '—' : d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
 export function formatDateTime(value?: string | null): string {
-  if (!value) return '—'
-  const d = new Date(value)
-  return Number.isNaN(d.getTime())
+  const d = parseDate(value)
+  return !d
     ? '—'
     : d.toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
 export function timeAgo(value?: string | null): string {
   if (!value) return 'nunca'
-  const diff = (Date.now() - new Date(value).getTime()) / 1000
-  if (Number.isNaN(diff)) return '—'
+  const d = parseDate(value)
+  if (!d) return '—'
+  const diff = (Date.now() - d.getTime()) / 1000
   if (diff < 60) return 'hace un momento'
   if (diff < 3600) return `hace ${Math.floor(diff / 60)} min`
   if (diff < 86400) return `hace ${Math.floor(diff / 3600)} h`

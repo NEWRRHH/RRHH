@@ -446,7 +446,7 @@ const activeTab = ref<TabId>('fichajes')
 const loadingEmployee = ref(false)
 const savingProfile = ref(false)
 const error = ref<string | null>(null)
-const selectedMonth = ref(new Date().toISOString().slice(0, 7))
+const selectedMonth = ref(localIsoDate().slice(0, 7))
 const attendanceRows = ref<any[]>([])
 const attendanceSummary = ref<any>({
   worked_hhmm: '00:00',
@@ -575,11 +575,8 @@ function changeMonth(delta: number) {
 
 function formatDate(dt?: string) {
   if (!dt) return '-'
-  try {
-    return new Date(dt).toLocaleDateString('es-AR')
-  } catch {
-    return dt
-  }
+  const d = parseDate(dt)
+  return d ? d.toLocaleDateString('es-AR') : dt
 }
 
 function formatSize(size?: number) {

@@ -299,11 +299,8 @@ async function downloadDocument(d: any) {
 
 function formatDate(dt?: string) {
   if (!dt) return '-'
-  try {
-    return new Date(dt).toLocaleDateString('es-AR')
-  } catch {
-    return dt
-  }
+  const d = parseDate(dt)
+  return d ? d.toLocaleDateString('es-AR') : dt
 }
 
 function formatSize(size?: number) {

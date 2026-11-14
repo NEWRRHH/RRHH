@@ -77,13 +77,8 @@ defineProps({
 })
 
 const formatDate = (iso?: string) => {
-  if (!iso) return ''
-  try {
-    const d = new Date(iso)
-    return d.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
-  } catch (e) {
-    return iso || ''
-  }
+  const d = parseDate(iso)
+  return d ? d.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' }) : (iso || '')
 }
 
 const initials = (b: Record<string, any>) => {

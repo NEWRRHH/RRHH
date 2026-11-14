@@ -84,11 +84,8 @@ function openAnnouncement(a: Record<string, any>) {
 
 function formatDate(dt?: string) {
   if (!dt) return '-'
-  try {
-    return new Date(dt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-  } catch {
-    return dt
-  }
+  const d = parseDate(dt)
+  return d ? d.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : dt
 }
 
 function onKeydown(e: KeyboardEvent) {
