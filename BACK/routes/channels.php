@@ -18,6 +18,13 @@ Broadcast::channel('user.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
 });
 
+// Everyone in ONE company: "someone clocked in/out" pings for the dashboard counters.
+Broadcast::channel('company.{companyId}.attendance', function ($user, $companyId) {
+    if (!$user || $user->isSuperAdmin()) return false;
+
+    return (int) $user->company_id === (int) $companyId;
+});
+
 // Request reviewers of ONE company (multi-tenant: never a global channel).
 Broadcast::channel('company.{companyId}.timeoff.reviewers', function ($user, $companyId) {
     if (!$user || $user->isSuperAdmin()) return false;

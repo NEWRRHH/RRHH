@@ -214,7 +214,7 @@ import AttendanceButton from '../components/AttendanceButton.vue'
 import UserMenu from '../components/UserMenu.vue'
 
 
-const { authenticated, user, fetchUser, logout, apiBase, fetchUnread, unreadNotifications, lastReceivedMessage } = useAuth()
+const { authenticated, user, fetchUser, logout, apiBase, fetchUnread, unreadNotifications, lastReceivedMessage, realtimeInstance } = useAuth()
 
 type CardKey = 'welcome' | 'birthdays' | 'team' | 'vacation' | 'notifications' | 'worked_hours' | 'holidays' | 'announcements' | 'documents'
 
@@ -467,8 +467,44 @@ async function saveDashboardLayout() {
   }
 }
 
+// ── Live "Asistencias hoy": anyone in the company clocks in/out ──
+let companyAttendanceChannel: any = null
+let statsRefreshTimer: ReturnType<typeof setTimeout> | null = null
+
+async function refreshStats() {
+  try {
+    const fresh: any = await $fetch('/api/dashboard')
+    data.value.stats = fresh?.stats || data.value.stats
+  } catch (e) {
+    console.error('dashboard stats refresh failed', e)
+  }
+}
+
+function subscribeCompanyAttendance() {
+  const echo: any = realtimeInstance?.()
+  const companyId = Number((user.value as any)?.company_id || 0)
+  if (!echo || !companyId || companyAttendanceChannel) return
+  companyAttendanceChannel = echo.private(`company.${companyId}.attendance`)
+  companyAttendanceChannel.listen('.CompanyAttendanceChanged', () => {
+    // several people clocking in at 9:00 -> one request
+    if (statsRefreshTimer) clearTimeout(statsRefreshTimer)
+    statsRefreshTimer = setTimeout(() => { void refreshStats() }, 400)
+  })
+}
+
+onBeforeUnmount(() => {
+  if (statsRefreshTimer) clearTimeout(statsRefreshTimer)
+  try {
+    companyAttendanceChannel?.stopListening?.('.CompanyAttendanceChanged')
+  } catch {
+    // ignore
+  }
+  companyAttendanceChannel = null
+})
+
 onBeforeMount(async () => {
   await fetchUser()
+  subscribeCompanyAttendance()
 
   await loadDashboardLayout()
 
@@ -532,13 +568,7 @@ async function refreshTeam() {
 
 async function handleAttendanceChanged() {
   await refreshTeam()
-  try {
-    const fresh = await $fetch(`/api/dashboard`, {
-    })
-    data.value.stats = fresh?.stats || data.value.stats
-  } catch (e) {
-    console.error('dashboard stats refresh failed', e)
-  }
+  await refreshStats()
 }
 
 async function refreshHolidays() {

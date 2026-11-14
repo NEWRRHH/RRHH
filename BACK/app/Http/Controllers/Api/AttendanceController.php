@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Events\AttendanceStatusChanged;
+use App\Events\CompanyAttendanceChanged;
+use App\Support\Tenancy\Tenant;
 use App\Events\TimeOffRequestUpdated;
 use App\Models\Attendance;
 use App\Models\Document;
@@ -32,10 +34,14 @@ class AttendanceController extends Controller
      * Tell the user's other tabs/devices that their clock-in status changed.
      * The change is already saved: a WebSocket hiccup must not turn it into an error.
      */
-    private function broadcastStatus(int $userId, string $status): void
+    private function broadcastStatus(int $userId, string $status, bool $companyCountChanged = false): void
     {
         try {
             event(new AttendanceStatusChanged($userId, $status));
+            // clock-in / clock-out change "who is working today" for the whole company
+            if ($companyCountChanged && Tenant::id() !== null) {
+                event(new CompanyAttendanceChanged((int) Tenant::id()));
+            }
         } catch (\Throwable $e) {
             report($e);
         }
@@ -137,7 +143,7 @@ class AttendanceController extends Controller
             ]);
         }
 
-        $this->broadcastStatus((int) $user->id, AttendanceStatusChanged::WORKING);
+        $this->broadcastStatus((int) $user->id, AttendanceStatusChanged::WORKING, true);
 
         return response()->json(['status' => 'ok']);
     }
@@ -214,7 +220,7 @@ class AttendanceController extends Controller
                     'status' => 'fuera_trabajo',
                     'updated_at' => now(),
                 ]);
-            $this->broadcastStatus((int) $user->id, AttendanceStatusChanged::IDLE);
+            $this->broadcastStatus((int) $user->id, AttendanceStatusChanged::IDLE, true);
         } else {
             // no open attendance found: maybe token changed or already closed
         }

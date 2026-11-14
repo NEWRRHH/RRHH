@@ -265,6 +265,17 @@ class TenantIsolationTest extends TestCase
         $this->assertFalse($this->canJoinReviewers($this->a['employee'], $a));
     }
 
+    public function test_attendance_channel_is_per_company(): void
+    {
+        // any employee hears their own company's clock-in pings, never another's
+        $callback = app(\Illuminate\Contracts\Broadcasting\Broadcaster::class)
+            ->getChannels()
+            ->get('company.{companyId}.attendance');
+
+        $this->assertTrue((bool) $callback($this->a['employee'], (string) $this->a['company']->id));
+        $this->assertFalse((bool) $callback($this->a['employee'], (string) $this->b['company']->id));
+    }
+
     private function canJoinReviewers(User $user, int $companyId): bool
     {
         $callback = app(\Illuminate\Contracts\Broadcasting\Broadcaster::class)

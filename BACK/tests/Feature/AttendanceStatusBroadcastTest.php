@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Events\AttendanceStatusChanged;
+use App\Events\CompanyAttendanceChanged;
 use App\Services\CompanyProvisioner;
 use App\Support\Tenancy\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -32,12 +33,17 @@ class AttendanceStatusBroadcastTest extends TestCase
         // a Monday mid-morning: inside any default schedule
         $this->travelTo(now()->next('Monday')->setTime(11, 0));
 
-        Event::fake([AttendanceStatusChanged::class]);
+        Event::fake([AttendanceStatusChanged::class, CompanyAttendanceChanged::class]);
 
         $this->postJson('/api/attendance/start')->assertOk();
         $this->postJson('/api/attendance/pause')->assertOk();
         $this->postJson('/api/attendance/resume')->assertOk();
         $this->postJson('/api/attendance/stop')->assertOk();
+
+        // the company dashboards are pinged on clock-in and clock-out only
+        Event::assertDispatchedTimes(CompanyAttendanceChanged::class, 2);
+        Event::assertDispatched(CompanyAttendanceChanged::class, fn ($e) => $e->companyId === (int) $user->company_id
+            && $e->broadcastOn()->name === "private-company.{$user->company_id}.attendance");
 
         $sent = [];
         Event::assertDispatched(AttendanceStatusChanged::class, function (AttendanceStatusChanged $e) use ($user, &$sent) {
