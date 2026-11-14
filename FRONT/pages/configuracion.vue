@@ -554,6 +554,51 @@
             </div>
           </section>
 
+          <section v-else-if="activeTab === 'limits'" class="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-4">
+            <div>
+              <h2 class="text-white font-semibold">Límites de tarjetas</h2>
+              <p class="text-sm text-gray-400 mt-1">
+                Cuántos elementos muestra como máximo cada tarjeta con lista del dashboard. Se aplica a todos los empleados de la empresa.
+              </p>
+            </div>
+
+            <div v-if="layoutLoading" class="space-y-2">
+              <div v-for="i in 5" :key="i" class="h-12 rounded-lg bg-gray-800 animate-pulse"></div>
+            </div>
+
+            <form v-else class="space-y-2" @submit.prevent="saveCardLimits">
+              <div
+                v-for="w in limitWidgets"
+                :key="w.key"
+                class="flex items-center justify-between gap-4 rounded-lg border border-gray-800 bg-gray-800/40 px-4 py-3"
+              >
+                <label :for="`limit-${w.key}`" class="!mb-0 text-sm text-gray-200">{{ w.name }}</label>
+                <div class="flex items-center gap-2">
+                  <input
+                    :id="`limit-${w.key}`"
+                    v-model.number="cardLimits[w.key]"
+                    type="number"
+                    inputmode="numeric"
+                    min="1"
+                    :max="maxCardLimit"
+                    required
+                    class="!mb-0 w-20 rounded-lg bg-gray-800 border border-gray-700 px-3 py-1.5 text-white text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span class="text-xs text-gray-500 w-14">elementos</span>
+                </div>
+              </div>
+              <p class="text-xs text-gray-500">Entre 1 y {{ maxCardLimit }}. Por defecto {{ defaultCardLimit }}.</p>
+
+              <div class="flex flex-wrap justify-end gap-2 pt-2">
+                <button type="button" class="px-3 py-2 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800 text-sm" :disabled="limitsSaving" @click="resetCardLimits">
+                  Restablecer ({{ defaultCardLimit }})
+                </button>
+                <button type="submit" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium disabled:opacity-50" :disabled="limitsSaving || !limitsDirty">
+                  {{ limitsSaving ? 'Guardando...' : 'Guardar límites' }}
+                </button>
+              </div>
+            </form>
+          </section>
 
         </div>
       </main>
@@ -612,6 +657,7 @@ const tabs = computed(() => {
   if (isAdminUser.value) {
     return [
       { id: 'dashboard', label: 'Dashboard' },
+      { id: 'limits', label: 'Límites de tarjetas' },
       { id: 'permissions', label: 'Roles y permisos' },
       { id: 'schedules', label: 'Jornadas laborales' },
       { id: 'equipos', label: 'Equipos' },
@@ -619,7 +665,10 @@ const tabs = computed(() => {
   }
 
   const list: Array<{ id: string; label: string }> = []
-  if (canManageDashboard.value) list.push({ id: 'dashboard', label: 'Dashboard' })
+  if (canManageDashboard.value) {
+    list.push({ id: 'dashboard', label: 'Dashboard' })
+    list.push({ id: 'limits', label: 'Límites de tarjetas' })
+  }
   if (canManageSchedules.value) list.push({ id: 'schedules', label: 'Jornadas laborales' })
   if (canManageTeams.value) list.push({ id: 'equipos', label: 'Equipos' })
   return list
@@ -796,7 +845,11 @@ async function loadCompanyLayout() {
     const res: any = await $fetch('/api/settings/dashboard')
     defaultSlots.value = normalizeDashboardSlots(res?.default_slots)
     if (res?.default_welcome) defaultWelcome.value = { ...res.default_welcome }
+    if (Array.isArray(res?.limit_widgets)) limitWidgets.value = res.limit_widgets
+    if (res?.default_limit) defaultCardLimit.value = Number(res.default_limit)
+    if (res?.max_limit) maxCardLimit.value = Number(res.max_limit)
     applyCompanyLayout(res)
+    applyCardLimits(res?.limits)
   } catch (e) {
     $swal.toast('error', 'No se pudo cargar el dashboard de la empresa')
   } finally {
@@ -865,6 +918,46 @@ function warnBeforeUnload(event: BeforeUnloadEvent) {
 onMounted(() => window.addEventListener('beforeunload', warnBeforeUnload))
 onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnload))
 // ── End company dashboard ──
+
+// ── Card limits (items per list card on the dashboard) ──
+const limitWidgets = ref<Array<{ key: string; name: string }>>([])
+const cardLimits = ref<Record<string, number>>({})
+const savedCardLimits = ref('')
+const defaultCardLimit = ref(10)
+const maxCardLimit = ref(50)
+const limitsSaving = ref(false)
+const limitsDirty = computed(() => JSON.stringify(cardLimits.value) !== savedCardLimits.value)
+
+function applyCardLimits(limits: Record<string, number> | null | undefined) {
+  const next: Record<string, number> = {}
+  for (const w of limitWidgets.value) next[w.key] = Number(limits?.[w.key] ?? defaultCardLimit.value)
+  cardLimits.value = next
+  savedCardLimits.value = JSON.stringify(next)
+}
+
+function resetCardLimits() {
+  const next: Record<string, number> = {}
+  for (const w of limitWidgets.value) next[w.key] = defaultCardLimit.value
+  cardLimits.value = next
+}
+
+async function saveCardLimits() {
+  limitsSaving.value = true
+  try {
+    const res: any = await $fetch('/api/settings/dashboard/limits', {
+      method: 'PUT',
+      body: { limits: cardLimits.value },
+    })
+    applyCardLimits(res?.layout?.limits)
+    $swal.toast('success', 'Límites guardados')
+  } catch (e: any) {
+    const errors = e?.data?.errors
+    $swal.toast('error', errors ? String(Object.values(errors).flat()[0]) : 'No se pudieron guardar los límites')
+  } finally {
+    limitsSaving.value = false
+  }
+}
+// ── End card limits ──
 
 // ── Roles & permissions ──
 type PermissionRole = { id: number; name: string; description: string | null; is_admin: boolean; users_count: number; permission_codes: string[] }

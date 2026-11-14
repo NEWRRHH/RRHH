@@ -237,6 +237,18 @@ const welcomeSettings = ref<{ title: string; subtitle: string; show_date: boolea
 })
 const { $swal } = useNuxtApp()
 
+// Items per list card, set by the company in Configuración > Límites de tarjetas.
+type ListCardKey = 'notifications' | 'announcements' | 'birthdays' | 'holidays' | 'team'
+const DEFAULT_CARD_LIMIT = 10
+const cardLimits = ref<Record<ListCardKey, number>>({
+  notifications: DEFAULT_CARD_LIMIT,
+  announcements: DEFAULT_CARD_LIMIT,
+  birthdays: DEFAULT_CARD_LIMIT,
+  holidays: DEFAULT_CARD_LIMIT,
+  team: DEFAULT_CARD_LIMIT,
+})
+const limitList = <T,>(list: T[] | null | undefined, key: ListCardKey): T[] => (list || []).slice(0, cardLimits.value[key])
+
 const cardComponent = (key: CardKey | null) => {
   if (key === 'birthdays') return BirthdayCard
   if (key === 'team') return TeamCard
@@ -249,8 +261,8 @@ const cardComponent = (key: CardKey | null) => {
 }
 
 const cardProps = (key: CardKey | null) => {
-  if (key === 'birthdays') return { birthdays: birthdays.value, loading: birthdaysLoading.value }
-  if (key === 'team') return { members: teamMembers.value, teamName: teamName.value, loading: teamLoading.value }
+  if (key === 'birthdays') return { birthdays: limitList(birthdays.value, 'birthdays'), loading: birthdaysLoading.value }
+  if (key === 'team') return { members: limitList(teamMembers.value, 'team'), teamName: teamName.value, loading: teamLoading.value }
   if (key === 'vacation') {
     return {
       daysUntilVacation: vacationInfo.value.daysUntilVacation,
@@ -267,11 +279,12 @@ const cardProps = (key: CardKey | null) => {
       monthTargetHHMM: data.value?.worked_hours?.target_month_hhmm || null,
     }
   }
-  if (key === 'holidays') return { holidays: holidays.value, loading: holidaysLoading.value }
-  if (key === 'announcements') return { items: announcements.value, loading: announcementsLoading.value }
+  if (key === 'holidays') return { holidays: limitList(holidays.value, 'holidays'), loading: holidaysLoading.value }
+  if (key === 'announcements') return { items: limitList(announcements.value, 'announcements'), loading: announcementsLoading.value }
   if (key === 'documents') return { summary: documentsSummary.value }
   return {
-    notifications: data.value.notifications || [],
+    // the badge keeps the real unread total; only the list is capped
+    notifications: limitList(data.value.notifications, 'notifications'),
     unreadCount: unreadNotifications.value || 0,
   }
 }
@@ -325,6 +338,11 @@ function applyLayout(res: any) {
     subtitle: typeof ws?.subtitle === 'string' && ws.subtitle.trim() ? ws.subtitle.trim() : 'Aquí tienes un resumen de la actividad de la empresa.',
     show_date: ws?.show_date !== false,
   }
+  const limits = res?.settings?.limits || {}
+  for (const key of Object.keys(cardLimits.value) as ListCardKey[]) {
+    const n = Number(limits[key])
+    if (Number.isFinite(n) && n > 0) cardLimits.value[key] = n
+  }
 }
 
 async function loadDashboardLayout() {
@@ -371,8 +389,7 @@ onBeforeMount(async () => {
 
   birthdaysLoading.value = true
   try {
-    const res = await $fetch(`/api/birthdays`, {
-    })
+    const res = await $fetch(`/api/birthdays?limit=${cardLimits.value.birthdays}`)
     birthdays.value = res || []
   } catch (err) {
     console.error('birthdays fetch failed', err)
@@ -433,8 +450,7 @@ async function handleAttendanceChanged() {
 async function refreshHolidays() {
   holidaysLoading.value = true
   try {
-    const res = await $fetch(`/api/holidays/upcoming`, {
-    })
+    const res = await $fetch(`/api/holidays/upcoming?limit=${cardLimits.value.holidays}`)
     holidays.value = res || []
   } catch (e) {
     console.error('holidays fetch failed', e)
@@ -447,8 +463,7 @@ async function refreshHolidays() {
 async function refreshAnnouncements() {
   announcementsLoading.value = true
   try {
-    const res = await $fetch(`/api/announcements?limit=5`, {
-    })
+    const res = await $fetch(`/api/announcements?limit=${cardLimits.value.announcements}`)
     announcements.value = res || []
   } catch (e) {
     console.error('announcements fetch failed', e)

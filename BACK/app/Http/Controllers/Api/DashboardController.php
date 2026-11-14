@@ -158,7 +158,34 @@ class DashboardController extends Controller
             'widgets' => $layouts->catalog(),
             'default_slots' => $layouts->defaultSlots(),
             'default_welcome' => DashboardLayoutService::DEFAULT_WELCOME,
+            'limit_widgets' => $layouts->limitCatalog(),
+            'default_limit' => DashboardLayoutService::DEFAULT_LIMIT,
+            'max_limit' => DashboardLayoutService::MAX_LIMIT,
         ]);
+    }
+
+    /**
+     * How many items each list card shows (RRHH, "dashboard.manage").
+     */
+    public function saveCompanyLimits(Request $request, DashboardLayoutService $layouts)
+    {
+        if ($request->user()->cannot('dashboard.manage')) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $rules = ['limits' => 'required|array'];
+        foreach (DashboardLayoutService::LIST_WIDGETS as $key) {
+            $rules["limits.$key"] = 'required|integer|min:1|max:' . DashboardLayoutService::MAX_LIMIT;
+        }
+        $data = $request->validate($rules, [
+            'limits.*.min' => 'El límite mínimo es 1.',
+            'limits.*.max' => 'El límite máximo es ' . DashboardLayoutService::MAX_LIMIT . '.',
+        ]);
+
+        $layout = $layouts->saveCompanyLimits($request->user(), $data['limits']);
+        Audit::log('dashboard.company_limits_updated', null, ['limits' => $layout['limits']]);
+
+        return response()->json(['status' => 'ok', 'layout' => $layout]);
     }
 
     public function saveCompanyLayout(Request $request, DashboardLayoutService $layouts)
@@ -403,7 +430,10 @@ class DashboardController extends Controller
             ->sortBy('next_birthday')
             ->values();
 
-        return response()->json($users->take(10));
+        // ?limit= comes from the company's card limit (Configuración > Límites).
+        $limit = max(1, min(DashboardLayoutService::MAX_LIMIT, (int) $request->query('limit', DashboardLayoutService::DEFAULT_LIMIT)));
+
+        return response()->json($users->take($limit)->values());
     }
 
     /**

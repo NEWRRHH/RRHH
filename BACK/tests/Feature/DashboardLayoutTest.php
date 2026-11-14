@@ -111,6 +111,43 @@ class DashboardLayoutTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors('welcome.title');
     }
 
+    public function test_card_limits_default_to_ten_and_rrhh_can_change_them(): void
+    {
+        Sanctum::actingAs($this->employee);
+        $this->getJson('/api/dashboard/layout')->assertOk()
+            ->assertJsonPath('settings.limits.notifications', 10)
+            ->assertJsonPath('settings.limits.announcements', 10);
+
+        $limits = ['notifications' => 5, 'announcements' => 3, 'birthdays' => 10, 'holidays' => 50, 'team' => 1];
+        $this->putJson('/api/settings/dashboard/limits', ['limits' => $limits])->assertForbidden();
+
+        Sanctum::actingAs($this->hr);
+        $this->putJson('/api/settings/dashboard', ['slots' => self::COMPANY_SLOTS, 'welcome' => ['title' => 'Hola']])->assertOk();
+        $this->putJson('/api/settings/dashboard/limits', ['limits' => $limits])->assertOk()->assertJsonPath('layout.limits', $limits);
+
+        // saving limits keeps the layout, and saving the layout keeps the limits
+        $this->putJson('/api/settings/dashboard', ['slots' => self::COMPANY_SLOTS, 'welcome' => ['title' => 'Hola 2']])->assertOk();
+
+        Sanctum::actingAs($this->employee);
+        $this->getJson('/api/dashboard/layout')
+            ->assertJsonPath('slots', self::COMPANY_SLOTS)
+            ->assertJsonPath('settings.welcome.title', 'Hola 2')
+            ->assertJsonPath('settings.limits', $limits);
+    }
+
+    public function test_card_limits_validation(): void
+    {
+        Sanctum::actingAs($this->hr);
+        $base = ['notifications' => 10, 'announcements' => 10, 'birthdays' => 10, 'holidays' => 10, 'team' => 10];
+
+        $this->putJson('/api/settings/dashboard/limits', ['limits' => ['notifications' => 0] + $base])
+            ->assertStatus(422)->assertJsonValidationErrors('limits.notifications');
+        $this->putJson('/api/settings/dashboard/limits', ['limits' => ['team' => 51] + $base])
+            ->assertStatus(422)->assertJsonValidationErrors('limits.team');
+        $this->putJson('/api/settings/dashboard/limits', ['limits' => ['notifications' => 10]])
+            ->assertStatus(422)->assertJsonValidationErrors('limits.announcements');
+    }
+
     public function test_company_layouts_are_isolated(): void
     {
         Sanctum::actingAs($this->hr);

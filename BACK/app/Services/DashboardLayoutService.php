@@ -35,6 +35,13 @@ class DashboardLayoutService
         'documents' => 'Documentos',
     ];
 
+    /** Cards that render a list: how many items each shows is set by the company. */
+    public const LIST_WIDGETS = ['notifications', 'announcements', 'birthdays', 'holidays', 'team'];
+
+    public const DEFAULT_LIMIT = 10;
+
+    public const MAX_LIMIT = 50;
+
     public const DEFAULT_WELCOME = [
         'title' => 'Bienvenido',
         'subtitle' => 'Aquí tienes un resumen de la actividad de la empresa.',
@@ -65,6 +72,7 @@ class DashboardLayoutService
         return [
             'slots' => $row ? $this->sanitize($row->slots ?? []) : $this->defaultSlots(),
             'welcome' => $this->welcome($row?->settings['welcome'] ?? null),
+            'limits' => $this->limits($row?->settings['limits'] ?? null),
             'configured' => (bool) $row,
             'updated_at' => $row?->updated_at?->toIso8601String(),
         ];
@@ -82,7 +90,7 @@ class DashboardLayoutService
             'slots' => $own ?? $company['slots'],
             'source' => $own !== null ? 'user' : 'company',
             'company_slots' => $company['slots'],
-            'settings' => ['welcome' => $company['welcome']],
+            'settings' => ['welcome' => $company['welcome'], 'limits' => $company['limits']],
             'widgets' => $this->catalog(),
         ];
     }
@@ -120,14 +128,54 @@ class DashboardLayoutService
     public function saveCompanyLayout(User $editor, array $slots, array $welcome): array
     {
         $slots = $this->validateSlots($slots);
+        $current = $this->companyLayout();
 
         CompanyDashboardLayout::query()->updateOrCreate([], [
             'slots' => $slots,
-            'settings' => ['welcome' => $this->welcome($welcome)],
+            // limits are edited in their own tab: keep them as they are
+            'settings' => ['welcome' => $this->welcome($welcome), 'limits' => $current['limits']],
             'updated_by' => $editor->id,
         ]);
 
         return $this->companyLayout();
+    }
+
+    /**
+     * Save how many items each list card shows (keeps slots and welcome).
+     */
+    public function saveCompanyLimits(User $editor, array $limits): array
+    {
+        $current = $this->companyLayout();
+
+        CompanyDashboardLayout::query()->updateOrCreate([], [
+            'slots' => $current['slots'],
+            'settings' => ['welcome' => $current['welcome'], 'limits' => $this->limits($limits)],
+            'updated_by' => $editor->id,
+        ]);
+
+        return $this->companyLayout();
+    }
+
+    /** @return array<int, array{key: string, name: string}> */
+    public function limitCatalog(): array
+    {
+        return array_map(fn ($key) => ['key' => $key, 'name' => self::WIDGETS[$key]], self::LIST_WIDGETS);
+    }
+
+    /**
+     * Item limit per list card, clamped to 1..MAX_LIMIT (default DEFAULT_LIMIT).
+     *
+     * @return array<string, int>
+     */
+    public function limits(?array $input): array
+    {
+        $out = [];
+        foreach (self::LIST_WIDGETS as $key) {
+            $value = is_numeric($input[$key] ?? null) ? (int) $input[$key] : self::DEFAULT_LIMIT;
+            $out[$key] = max(1, min(self::MAX_LIMIT, $value));
+        }
+
+        return $out;
     }
 
     /** @return array<int, ?string>|null */

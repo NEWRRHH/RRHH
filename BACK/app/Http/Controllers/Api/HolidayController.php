@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Holiday;
 use App\Models\NationalHoliday;
+use App\Services\DashboardLayoutService;
 use App\Services\HolidayService;
 use App\Support\Audit;
 use App\Support\HolidayCsvParser;
@@ -26,10 +27,12 @@ class HolidayController extends Controller
     {
     }
 
-    /** Next holidays for the dashboard card. */
-    public function upcoming()
+    /** Next holidays for the dashboard card (?limit= is the company's card limit). */
+    public function upcoming(Request $request)
     {
-        return response()->json($this->holidays->upcoming(5));
+        $limit = max(1, min(DashboardLayoutService::MAX_LIMIT, (int) $request->query('limit', 5)));
+
+        return response()->json($this->holidays->upcoming($limit));
     }
 
     public function index(Request $request)
