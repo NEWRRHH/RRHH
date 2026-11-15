@@ -132,6 +132,15 @@
                 @pointerup="onDayPointerUp"
               >
                 {{ cell.day }}
+                <!-- type icon in the event colour + colour bar -->
+                <svg
+                  v-if="eventsByDate[cell.iso]?.length"
+                  class="absolute top-0.5 right-0.5 w-2.5 h-2.5 pointer-events-none"
+                  :style="{ color: eventsByDate[cell.iso][0].display_color || '#3B82F6' }"
+                  fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" aria-hidden="true"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" :d="eventTypeVisual(eventsByDate[cell.iso][0].event_type_code, eventsByDate[cell.iso][0].event_type_name).icon" />
+                </svg>
                 <span
                   v-if="eventsByDate[cell.iso]?.length"
                   class="absolute left-1 right-1 bottom-1 h-1 rounded-full"
@@ -162,10 +171,14 @@
                 <div
                   v-for="ev in (eventsByDate[cell.iso] || []).slice(0, 2)"
                   :key="`${cell.iso}-${ev.id}`"
-                  class="truncate text-[10px] px-1.5 py-0.5 rounded"
+                  class="flex items-center gap-1 min-w-0 text-[10px] px-1.5 py-0.5 rounded"
                   :style="{ backgroundColor: `${ev.display_color || '#1D4ED8'}33`, color: ev.display_color || '#93C5FD' }"
+                  :title="`${ev.title} · ${statusShort(ev.approval_status)}`"
                 >
-                  {{ ev.title }} · {{ statusShort(ev.approval_status) }}
+                  <svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" :d="eventTypeVisual(ev.event_type_code, ev.event_type_name).icon" />
+                  </svg>
+                  <span class="truncate">{{ ev.title }} · {{ statusShort(ev.approval_status) }}</span>
                 </div>
                 <div v-if="(eventsByDate[cell.iso] || []).length > 2" class="text-[10px] text-gray-400">
                   +{{ (eventsByDate[cell.iso] || []).length - 2 }} mas
@@ -197,7 +210,14 @@
               class="rounded-xl border border-gray-800 bg-gray-950 px-3 py-2"
             >
               <div class="flex items-center justify-between gap-2">
-                <p class="text-sm text-gray-200 truncate">{{ req.title }}</p>
+                <p class="min-w-0 flex items-center gap-2 text-sm text-gray-200">
+                  <span class="w-6 h-6 shrink-0 rounded-md flex items-center justify-center" :class="eventTypeVisual(req.event_type_code, req.event_type_name).tone">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" :d="eventTypeVisual(req.event_type_code, req.event_type_name).icon" />
+                    </svg>
+                  </span>
+                  <span class="truncate">{{ req.title }}</span>
+                </p>
                 <span class="text-[11px] px-2 py-1 rounded-full border uppercase tracking-wide" :class="statusBadgeClass(req.approval_status)">
                   {{ statusLabel(req.approval_status) }}
                 </span>
@@ -233,20 +253,43 @@
         </div>
 
         <div class="grid gap-3">
+          <!-- the type is also the title of the request -->
           <div>
-            <label class="block text-xs text-gray-400 mb-1">Tipo de evento</label>
-            <select v-model.number="form.event_type_id" class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white">
-              <option :value="0" disabled>Seleccionar tipo</option>
-              <option v-for="t in eventTypes" :key="t.id" :value="t.id">{{ t.name }}</option>
-            </select>
+            <span class="block text-xs text-gray-400 mb-1.5">Tipo de evento</span>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2" role="radiogroup" aria-label="Tipo de evento">
+              <button
+                v-for="t in eventTypes"
+                :key="t.id"
+                type="button"
+                role="radio"
+                :aria-checked="form.event_type_id === t.id"
+                class="flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-sm transition"
+                :class="form.event_type_id === t.id ? 'border-blue-500 bg-blue-600/15 text-white' : 'border-gray-700 bg-gray-800 text-gray-300 hover:border-gray-500'"
+                @click="form.event_type_id = t.id"
+              >
+                <span class="w-7 h-7 shrink-0 rounded-md flex items-center justify-center" :class="eventTypeVisual(t.code, t.name).tone">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" :d="eventTypeVisual(t.code, t.name).icon" />
+                  </svg>
+                </span>
+                <span class="truncate">{{ t.name }}</span>
+                <span class="ml-auto w-2.5 h-2.5 shrink-0 rounded-full" :style="{ backgroundColor: eventTypeVisual(t.code, t.name).color }" aria-hidden="true"></span>
+              </button>
+            </div>
           </div>
           <div>
-            <label class="block text-xs text-gray-400 mb-1">Titulo</label>
-            <input v-model="form.title" class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white" maxlength="100" />
-          </div>
-          <div>
-            <label class="block text-xs text-gray-400 mb-1">Descripcion</label>
-            <textarea v-model="form.description" class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white min-h-20" />
+            <label for="event-description" class="block text-xs text-gray-400 mb-1">
+              Descripción
+              <span v-if="descriptionRequired" class="text-red-300">*</span>
+              <span v-else class="text-gray-500">(opcional)</span>
+            </label>
+            <textarea
+              id="event-description"
+              v-model="form.description"
+              maxlength="1000"
+              :placeholder="descriptionRequired ? 'Cuéntale a RRHH el motivo' : ''"
+              class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white min-h-20"
+            />
           </div>
           <div>
             <label v-if="canChooseHours" class="inline-flex items-center gap-2 text-sm text-gray-200">
@@ -281,10 +324,6 @@
                 class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white"
               />
             </div>
-          </div>
-          <div>
-            <label class="block text-xs text-gray-400 mb-1">Color</label>
-            <input v-model="form.color" type="color" class="w-16 h-10 rounded border border-gray-700 bg-gray-800" />
           </div>
         </div>
 
@@ -334,6 +373,8 @@ type CalendarEvent = {
   all_day: boolean
   color: string | null
   display_color: string | null
+  event_type_code?: string | null
+  event_type_name?: string | null
   approval_status: 'pending' | 'approved' | 'rejected'
   approval_comment: string | null
   reviewed_at: string | null
@@ -354,7 +395,10 @@ const selectedYear = ref(new Date().getFullYear())
 const selectedMonth = ref(new Date().getMonth())
 const viewMode = ref<'year' | 'month'>('year')
 
-const eventTypes = ref<Array<{ id: number; name: string }>>([])
+const eventTypes = ref<Array<{ id: number; name: string; code?: string | null }>>([])
+const selectedEventType = computed(() => eventTypes.value.find((t) => t.id === form.value.event_type_id))
+// General and Permiso need a description; the title is always the type name
+const descriptionRequired = computed(() => DESCRIPTION_REQUIRED_CODES.includes(String(selectedEventType.value?.code || '')))
 const events = ref<CalendarEvent[]>([])
 const scheduleDays = ref<string[]>(['L', 'M', 'X', 'J', 'V'])
 const scheduleStartTime = ref<string | null>(null)
@@ -561,7 +605,8 @@ const selectedWorkingDays = computed(() => {
 
 const canSave = computed(() => {
   if (!selectedRange.value.start || !selectedRange.value.end) return false
-  if (!(form.value.event_type_id > 0 && form.value.title.trim().length > 0)) return false
+  if (!(form.value.event_type_id > 0)) return false
+  if (descriptionRequired.value && !String(form.value.description || '').trim()) return false
   if (!canChooseHours.value) return true
   if (!form.value.all_day) {
     if (!form.value.start_time || !form.value.end_time) return false
@@ -890,7 +935,7 @@ async function saveEvent() {
     await $fetch(url, {
       method,
       body: {
-        title: form.value.title.trim(),
+        title: selectedEventType.value?.name || '',
         description: form.value.description?.trim() || null,
         event_type_id: form.value.event_type_id,
         start_date: selectedRange.value.start,
@@ -898,7 +943,7 @@ async function saveEvent() {
         all_day: form.value.all_day,
         start_time: form.value.all_day ? null : form.value.start_time,
         end_time: form.value.all_day ? null : form.value.end_time,
-        color: form.value.color,
+        // colour: fixed by the event type (server side)
       },
     })
     closeModal()

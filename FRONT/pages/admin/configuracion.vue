@@ -74,50 +74,6 @@
       </form>
     </section>
 
-    <!-- NATIONAL HOLIDAYS -->
-    <section v-else-if="tab === 'holidays'" class="space-y-4">
-      <p class="text-sm text-gray-400">Catálogo de feriados por país. Cada empresa los copia desde su pantalla de Festivos con "Importar nacionales".</p>
-      <div class="flex flex-wrap items-end gap-2">
-        <label class="text-xs text-gray-400">País
-          <input v-model="country" maxlength="2" list="countries" class="mt-1 w-24 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm uppercase" @change="loadNational" />
-          <datalist id="countries"><option v-for="c in countries" :key="c" :value="c" /></datalist>
-        </label>
-        <label class="text-xs text-gray-400">Año
-          <input v-model.number="nhYear" type="number" min="2000" max="2100" class="mt-1 w-28 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm" @change="loadNational" />
-        </label>
-        <label class="ml-auto text-xs text-gray-400">Importar CSV para {{ country.toUpperCase() }}
-          <input type="file" accept=".csv,text/csv,text/plain" class="mt-1 block text-sm text-gray-300 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-gray-700 file:text-white" @change="importNationalCsv" />
-        </label>
-      </div>
-
-      <div class="grid grid-cols-1 xl:grid-cols-[1fr,320px] gap-4">
-        <div class="rounded-2xl border border-gray-800 bg-gray-900 divide-y divide-gray-800">
-          <p v-if="!nationalHolidays.length" class="px-5 py-6 text-center text-sm text-gray-500">No hay feriados cargados para {{ country.toUpperCase() }} en {{ nhYear }}.</p>
-          <div v-for="h in nationalHolidays" :key="h.id" class="px-5 py-2.5 flex items-center justify-between gap-3">
-            <div>
-              <div class="text-sm text-gray-100">{{ h.name }}</div>
-              <div class="text-[11px] text-gray-500">
-                {{ h.recurring ? `${h.date.slice(8, 10)}/${h.date.slice(5, 7)} · cada año` : formatDate(h.date) }} · {{ h.type === 'regional' ? 'Regional' : 'Nacional' }}
-              </div>
-            </div>
-            <button class="text-xs px-2 py-1 rounded-md text-red-300 hover:bg-gray-800" @click="deleteNational(h)">Eliminar</button>
-          </div>
-        </div>
-
-        <form class="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-3 h-fit" @submit.prevent="addNational">
-          <h3 class="text-sm font-semibold text-white">Agregar feriado</h3>
-          <input v-model="nhForm.date" type="date" required class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm" />
-          <input v-model="nhForm.name" required placeholder="Nombre" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm" />
-          <select v-model="nhForm.type" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm">
-            <option value="national">Nacional</option>
-            <option value="regional">Regional</option>
-          </select>
-          <label class="flex items-center gap-2 text-sm text-gray-300"><input v-model="nhForm.recurring" type="checkbox" class="!w-auto !m-0" /> Se repite cada año</label>
-          <button class="w-full px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm">Agregar a {{ country.toUpperCase() }}</button>
-        </form>
-      </div>
-    </section>
-
     <!-- PERMISSIONS -->
     <section v-else class="space-y-4">
       <p class="text-sm text-gray-400">Catálogo de permisos que las empresas asignan a sus roles. Los códigos los usa la aplicación, por eso no se editan desde aquí.</p>
@@ -154,7 +110,6 @@ definePageMeta({ layout: 'admin', title: 'Configuración global' })
 const { $swal } = useNuxtApp() as any
 const tabs = [
   { id: 'plans', label: 'Planes' },
-  { id: 'holidays', label: 'Feriados nacionales' },
   { id: 'permissions', label: 'Permisos' },
 ]
 const tab = ref('plans')
@@ -198,68 +153,6 @@ async function deletePlan(p: any) {
   }
 }
 
-// ---- national holidays
-const country = ref('ES')
-const nhYear = ref(new Date().getFullYear())
-const countries = ref<string[]>([])
-const nationalHolidays = ref<any[]>([])
-const nhForm = ref({ date: '', name: '', type: 'national', recurring: false })
-
-async function loadNational() {
-  try {
-    const res: any = await $fetch('/api/admin/national-holidays', { query: { country_code: country.value.toUpperCase(), year: nhYear.value } })
-    nationalHolidays.value = res?.holidays || []
-    countries.value = res?.countries || []
-  } catch (e: any) {
-    $swal.toast('error', errorText(e, 'No se pudieron cargar los feriados'))
-  }
-}
-async function addNational() {
-  try {
-    await $fetch('/api/admin/national-holidays', { method: 'POST', body: { ...nhForm.value, country_code: country.value } })
-    nhForm.value = { date: '', name: '', type: 'national', recurring: false }
-    await loadNational()
-  } catch (e: any) {
-    $swal.toast('error', errorText(e, 'No se pudo agregar'))
-  }
-}
-async function deleteNational(h: any) {
-  if (!(await $swal.confirm('Eliminar feriado', `¿Eliminar "${h.name}" del catálogo?`, 'Eliminar', 'Cancelar'))) return
-  await $fetch(`/api/admin/national-holidays/${h.id}`, { method: 'DELETE' }).catch(() => null)
-  await loadNational()
-}
-async function importNationalCsv(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
-  const build = (mode: string) => {
-    const data = new FormData()
-    data.append('file', file)
-    data.append('mode', mode)
-    data.append('country_code', country.value)
-    data.append('on_duplicate', 'skip')
-    return data
-  }
-  try {
-    const preview: any = await $fetch('/api/admin/national-holidays/import', { method: 'POST', body: build('preview') })
-    const s = preview.summary || {}
-    const ok = await $swal.confirm(
-      'Importar CSV',
-      `${s.new || 0} nuevos, ${s.duplicate || 0} ya existen (se mantienen), ${s.error || 0} con errores (se ignoran). ¿Importar?`,
-      'Importar',
-      'Cancelar',
-    )
-    if (!ok) return
-    const res: any = await $fetch('/api/admin/national-holidays/import', { method: 'POST', body: build('commit') })
-    $swal.toast('success', `${res.created} feriado(s) importados`)
-    await loadNational()
-  } catch (e: any) {
-    $swal.toast('error', errorText(e, 'No se pudo importar el CSV'))
-  } finally {
-    input.value = ''
-  }
-}
-
 // ---- permissions
 const permissions = ref<any[]>([])
 async function loadPermissions() {
@@ -267,7 +160,6 @@ async function loadPermissions() {
 }
 
 watch(tab, (t) => {
-  if (t === 'holidays' && !nationalHolidays.value.length) loadNational()
   if (t === 'permissions' && !permissions.value.length) loadPermissions()
 })
 

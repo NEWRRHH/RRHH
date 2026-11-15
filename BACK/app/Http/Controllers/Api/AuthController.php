@@ -171,7 +171,8 @@ class AuthController extends Controller
         $payload['can_access_settings'] = $user->isAdmin()
             || $user->hasPermission('schedules.manage')
             || $user->hasPermission('teams.manage')
-            || $user->hasPermission('dashboard.manage');
+            || $user->hasPermission('dashboard.manage')
+            || $user->hasPermission('holidays.manage');
         $payload['can_view_vacations'] = $user->hasPermission('vacations.view');
         $payload['can_create_vacations'] = $user->hasPermission('vacations.create');
         $payload['can_edit_vacations'] = $user->hasPermission('vacations.edit');

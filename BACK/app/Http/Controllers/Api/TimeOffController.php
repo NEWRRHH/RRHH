@@ -37,12 +37,12 @@ class TimeOffController extends Controller
         return 'entry_exit';
     }
 
-    private function applyApprovedAttendanceRequest(object $event): void
+    private function applyApprovedAttendanceRequest(object $event, ?string $kind = null): void
     {
         $requestDate = Carbon::parse((string) $event->start_at)->toDateString();
         $startAt = Carbon::parse((string) $event->start_at);
         $endAt = Carbon::parse((string) ($event->end_at ?: $event->start_at));
-        $kind = $this->parseAttendanceRequestKindFromEvent($event);
+        $kind ??= $this->parseAttendanceRequestKindFromEvent($event);
 
         $attendance = Attendance::table()
             ->where('user_id', (int) $event->user_id)
@@ -195,14 +195,6 @@ class TimeOffController extends Controller
         return $user->hasPermission('requests.review');
     }
 
-    private function eventDisplayColor(?string $approvalStatus, ?string $selectedColor): string
-    {
-        $status = strtolower(trim((string) $approvalStatus));
-        if ($status === 'pending') return '#9CA3AF';
-        if ($status === 'rejected') return '#EF4444';
-        return $selectedColor ?: '#3B82F6';
-    }
-
     private function normalizeApprovalStatus(?string $status): string
     {
         $value = strtolower(trim((string) $status));
@@ -233,10 +225,13 @@ class TimeOffController extends Controller
         $schedule = $this->schedules->loadEffectiveScheduleForUser((int) $user->id);
         $scheduleDays = $this->schedules->normalizeScheduleDays($schedule->days ?? null);
 
+        // types the employee can request here ("Fichaje" lives in Reportes > Ausencias);
+        // code drives the icon and whether the description is required
         $eventTypes = EventType::table()
             ->whereNull('deleted_at')
+            ->where(fn ($q) => $q->whereNull('code')->orWhere('code', '<>', EventType::ATTENDANCE_REQUEST))
             ->orderBy('name', 'asc')
-            ->get(['id', 'name']);
+            ->get(['id', 'name', 'code']);
 
         $events = Event::table()
             ->join('event_types', 'events.event_type_id', '=', 'event_types.id')
@@ -267,6 +262,7 @@ class TimeOffController extends Controller
                 'events.reviewed_at',
                 'events.event_type_id',
                 'event_types.name as event_type_name',
+                'event_types.code as event_type_code',
                 'events.created_at'
             )
             ->get()
@@ -286,12 +282,13 @@ class TimeOffController extends Controller
                     'end_time' => $endAt->format('H:i'),
                     'all_day' => (bool) $row->all_day,
                     'color' => $row->color,
-                    'display_color' => $this->eventDisplayColor($status, $row->color),
+                    'display_color' => EventType::colorFor($row->event_type_code),
                     'approval_status' => $status,
                     'approval_comment' => $row->approval_comment,
                     'reviewed_at' => $row->reviewed_at,
                     'event_type_id' => $row->event_type_id,
                     'event_type_name' => $row->event_type_name,
+                    'event_type_code' => $row->event_type_code,
                     'created_at' => $row->created_at,
                 ];
             })
@@ -340,7 +337,7 @@ class TimeOffController extends Controller
         }
 
         $data = $request->validate([
-            'title' => 'required|string|max:100',
+            'title' => 'nullable|string|max:100', // ignored: the title is the event type name
             'description' => 'nullable|string',
             'event_type_id' => ['required', 'integer', TenantRule::exists('event_types', 'id', true)],
             'start_date' => 'required|date_format:Y-m-d',
@@ -350,6 +347,11 @@ class TimeOffController extends Controller
             'end_time' => 'nullable|date_format:H:i',
             'color' => 'nullable|string|max:20',
         ]);
+
+        if ($typeError = $this->checkRequestType((int) $data['event_type_id'], $data['description'] ?? null)) {
+            return response()->json(['message' => $typeError], 422);
+        }
+        $data['title'] = $this->eventTypeName((int) $data['event_type_id']);
 
         $allDay = (bool) ($data['all_day'] ?? true);
         $start = Carbon::createFromFormat('Y-m-d', $data['start_date'])->startOfDay();
@@ -419,7 +421,8 @@ class TimeOffController extends Controller
             'user_id' => $user->id,
             'event_type_id' => (int) $data['event_type_id'],
             'all_day' => $allDay,
-            'color' => $data['color'] ?? null,
+            // each type has its own fixed colour
+            'color' => EventType::colorFor(EventType::table()->where('id', (int) $data['event_type_id'])->value('code')),
             'approval_status' => 'pending',
             'approval_comment' => null,
             'reviewed_by_user_id' => null,
@@ -439,6 +442,90 @@ class TimeOffController extends Controller
             ],
             'schedule_days' => $scheduleDays,
         ]);
+    }
+
+    /**
+     * Review of a multi-day attendance request: RRHH accepts some days and
+     * rejects the others. Accepted days get their attendance created; the
+     * request is "approved" if at least one day was accepted.
+     */
+    private function reviewRequestDays(int $id, object $event, array $days, string $decision, string $comment, ?array $approvedDates, $reviewer)
+    {
+        $pendingDates = array_values(array_map(
+            fn ($d) => $d['date'],
+            array_filter($days, fn ($d) => ($d['status'] ?? 'pending') === 'pending'),
+        ));
+        if (! $pendingDates) {
+            return response()->json(['message' => 'Esta solicitud ya fue revisada'], 422);
+        }
+
+        // "approved" without a list = every pending day; "rejected" = none
+        $accepted = $decision === 'rejected'
+            ? []
+            : array_values(array_intersect($pendingDates, $approvedDates ?? $pendingDates));
+        if ($decision === 'approved' && ! $accepted) {
+            return response()->json(['message' => 'Selecciona al menos un día para aprobar'], 422);
+        }
+        if (! $accepted && $comment === '') {
+            return response()->json(['message' => 'Debes agregar un comentario al desaprobar'], 422);
+        }
+
+        DB::transaction(function () use ($id, $event, $days, $accepted, $comment, $reviewer) {
+            foreach ($days as &$day) {
+                if (($day['status'] ?? 'pending') !== 'pending') {
+                    continue;
+                }
+                $day['status'] = in_array($day['date'], $accepted, true) ? 'approved' : 'rejected';
+                if ($day['status'] === 'approved') {
+                    $this->applyApprovedAttendanceRequest((object) [
+                        'user_id' => $event->user_id,
+                        'start_at' => $day['date'] . ' ' . $day['start_time'],
+                        'end_at' => $day['date'] . ' ' . $day['end_time'],
+                    ], $day['kind'] ?? 'entry_exit');
+                }
+            }
+            unset($day);
+
+            Event::table()->where('id', $id)->update([
+                'request_days' => json_encode($days),
+                'approval_status' => $accepted ? 'approved' : 'rejected',
+                'approval_comment' => $comment !== '' ? $comment : null,
+                'reviewed_by_user_id' => $reviewer->id,
+                'reviewed_at' => now(),
+                'updated_at' => now(),
+            ]);
+        });
+        event(new TimeOffRequestUpdated($id, (int) $event->user_id, 'reviewed'));
+
+        return response()->json([
+            'status' => 'ok',
+            'event_id' => $id,
+            'decision' => $accepted ? 'approved' : 'rejected',
+            'approved_dates' => $accepted,
+        ]);
+    }
+
+    /**
+     * Rules of the request type: attendance requests ("Fichaje") are only made
+     * from Reportes > Ausencias, and General / Permiso need a description.
+     */
+    private function checkRequestType(int $typeId, ?string $description): ?string
+    {
+        $code = EventType::table()->where('id', $typeId)->value('code');
+        if ($code === EventType::ATTENDANCE_REQUEST) {
+            return 'Los fichajes se solicitan desde Reportes > Ausencias.';
+        }
+        if (in_array($code, EventType::DESCRIPTION_REQUIRED, true) && trim((string) $description) === '') {
+            return 'La descripción es obligatoria para este tipo de evento.';
+        }
+
+        return null;
+    }
+
+    /** The title of every request is its event type. */
+    private function eventTypeName(int $typeId): string
+    {
+        return mb_substr((string) (EventType::table()->where('id', $typeId)->value('name') ?: 'Evento'), 0, 100);
     }
 
     public function update(Request $request, int $id)
@@ -463,7 +550,7 @@ class TimeOffController extends Controller
         }
 
         $data = $request->validate([
-            'title' => 'required|string|max:100',
+            'title' => 'nullable|string|max:100', // ignored: the title is the event type name
             'description' => 'nullable|string',
             'event_type_id' => ['required', 'integer', TenantRule::exists('event_types', 'id', true)],
             'start_date' => 'required|date_format:Y-m-d',
@@ -473,6 +560,11 @@ class TimeOffController extends Controller
             'end_time' => 'nullable|date_format:H:i',
             'color' => 'nullable|string|max:20',
         ]);
+
+        if ($typeError = $this->checkRequestType((int) $data['event_type_id'], $data['description'] ?? null)) {
+            return response()->json(['message' => $typeError], 422);
+        }
+        $data['title'] = $this->eventTypeName((int) $data['event_type_id']);
 
         $allDay = (bool) ($data['all_day'] ?? true);
         $start = Carbon::createFromFormat('Y-m-d', $data['start_date'])->startOfDay();
@@ -543,7 +635,8 @@ class TimeOffController extends Controller
                 'end_at' => $end->toDateTimeString(),
                 'event_type_id' => (int) $data['event_type_id'],
                 'all_day' => $allDay,
-                'color' => $data['color'] ?? null,
+                // each type has its own fixed colour
+            'color' => EventType::colorFor(EventType::table()->where('id', (int) $data['event_type_id'])->value('code')),
                 'approval_status' => 'pending',
                 'approval_comment' => null,
                 'reviewed_by_user_id' => null,
@@ -602,6 +695,8 @@ class TimeOffController extends Controller
                 'events.created_at',
                 'event_types.id as event_type_id',
                 'event_types.name as event_type_name',
+                'event_types.code as event_type_code',
+                'events.request_days',
                 'users.id as requester_id',
                 'users.first_name as requester_first_name',
                 'users.last_name as requester_last_name',
@@ -633,13 +728,15 @@ class TimeOffController extends Controller
                 'description' => $row->description,
                 'event_type_id' => $row->event_type_id,
                 'event_type_name' => $row->event_type_name,
+                'event_type_code' => $row->event_type_code,
+                'request_days' => $row->request_days ? json_decode((string) $row->request_days, true) : null,
                 'start_date' => $start->toDateString(),
                 'end_date' => $end->toDateString(),
                 'start_time' => $start->format('H:i'),
                 'end_time' => $end->format('H:i'),
                 'all_day' => (bool) $row->all_day,
                 'color' => $row->color,
-                'display_color' => $this->eventDisplayColor($status, $row->color),
+                'display_color' => EventType::colorFor($row->event_type_code),
                 'approval_status' => $status,
                 'approval_comment' => $row->approval_comment,
                 'reviewed_at' => $row->reviewed_at,
@@ -670,6 +767,9 @@ class TimeOffController extends Controller
         $data = $request->validate([
             'decision' => 'required|in:approved,rejected',
             'comment' => 'nullable|string|max:2000',
+            // multi-day attendance requests: the days RRHH accepts (the rest are rejected)
+            'approved_dates' => 'nullable|array',
+            'approved_dates.*' => 'date_format:Y-m-d',
         ]);
 
         $decision = strtolower(trim((string) $data['decision']));
@@ -692,10 +792,17 @@ class TimeOffController extends Controller
                 'events.end_at',
                 'events.event_type_id',
                 'event_types.name as event_type_name',
+                'events.request_days',
             ]);
 
         if (!$event) {
             return response()->json(['message' => 'Solicitud no encontrada'], 404);
+        }
+
+        // multi-day attendance request: decide day by day
+        $requestDays = $event->request_days ? json_decode((string) $event->request_days, true) : null;
+        if (is_array($requestDays) && $requestDays) {
+            return $this->reviewRequestDays($id, $event, $requestDays, $decision, $comment, $data['approved_dates'] ?? null, $user);
         }
 
         DB::transaction(function () use ($id, $decision, $comment, $user, $event) {

@@ -180,12 +180,8 @@ class HolidaysAndPlansTest extends TestCase
         $this->deleteJson("/api/admin/plans/{$planId}")->assertStatus(422); // in use
         $this->getJson("/api/admin/companies/{$this->company->id}")->assertJsonPath('plan_usage.plan.code', 'enterprise');
 
-        $this->postJson('/api/admin/national-holidays', ['country_code' => 'es', 'date' => '2030-10-12', 'name' => 'Fiesta Nacional'])->assertCreated();
-        $this->post('/api/admin/national-holidays/import', [
-            'country_code' => 'ES', 'mode' => 'commit',
-            'file' => $this->csv("fecha;nombre;tipo\n01/11/2030;Todos los Santos;nacional\n10/12/2030;Mal tipo;empresa\n"),
-        ], ['Accept' => 'application/json'])->assertOk()->assertJson(['created' => 1]);
-        $this->getJson('/api/admin/national-holidays?country_code=ES&year=2030')->assertOk()->assertJsonCount(2, 'holidays');
+        // national holidays are no longer managed here (festivos: Configuración of each company)
+        $this->assertGreaterThanOrEqual(400, $this->getJson('/api/admin/national-holidays?country_code=ES&year=2030')->status());
 
         $this->getJson('/api/admin/permissions')->assertOk()->assertJsonFragment(['code' => 'holidays.manage']);
 

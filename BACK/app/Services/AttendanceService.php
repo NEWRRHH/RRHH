@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Event;
 use App\Models\EventType;
 use Carbon\Carbon;
 
@@ -75,5 +76,48 @@ class AttendanceService
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+    }
+
+    /**
+     * Days with a pending attendance request of the user: date => request id.
+     * Multi-day requests (events.request_days) count only their still
+     * pending days; older single-day requests cover start_at..end_at.
+     *
+     * @return array<string, int>
+     */
+    public function pendingAttendanceRequestDates(int $userId, ?Carbon $from = null, ?Carbon $to = null): array
+    {
+        $rows = Event::table()
+            ->where('user_id', $userId)
+            ->where('event_type_id', $this->attendanceRequestEventTypeId())
+            ->whereNull('deleted_at')
+            ->where('approval_status', 'pending')
+            ->orderBy('created_at', 'desc')
+            ->get(['id', 'start_at', 'end_at', 'request_days']);
+
+        $out = [];
+        foreach ($rows as $row) {
+            $days = $row->request_days ? json_decode((string) $row->request_days, true) : null;
+            if (is_array($days)) {
+                foreach ($days as $day) {
+                    if (($day['status'] ?? 'pending') === 'pending' && ! empty($day['date'])) {
+                        $out[$day['date']] ??= (int) $row->id;
+                    }
+                }
+                continue;
+            }
+            $cursor = Carbon::parse($row->start_at)->startOfDay();
+            $last = $row->end_at ? Carbon::parse($row->end_at)->startOfDay() : $cursor->copy();
+            while ($cursor->lte($last)) {
+                $out[$cursor->toDateString()] ??= (int) $row->id;
+                $cursor->addDay();
+            }
+        }
+
+        if ($from || $to) {
+            $out = array_filter($out, fn ($id, $date) => (! $from || $date >= $from->toDateString()) && (! $to || $date <= $to->toDateString()), ARRAY_FILTER_USE_BOTH);
+        }
+
+        return $out;
     }
 }

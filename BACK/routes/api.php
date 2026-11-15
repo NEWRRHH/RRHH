@@ -81,6 +81,8 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::get('/attendance/month', [AttendanceController::class, 'attendanceMonth']);
     Route::get('/attendance/who-is-in', [AttendanceController::class, 'attendanceWhoIsIn']);
     Route::post('/attendance/requests', [AttendanceController::class, 'requestAttendanceAdjustment']);
+    // several absence days in one request (Reportes > Ausencias)
+    Route::post('/attendance/requests/days', [AttendanceController::class, 'requestAttendanceDays']);
 
     Route::get('/dashboard', [DashboardController::class, 'index']);
     Route::get('/dashboard/layout', [DashboardController::class, 'dashboardLayout']);
@@ -168,11 +170,6 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
             Route::post('/plans', [AdminPlans::class, 'store']);
             Route::put('/plans/{id}', [AdminPlans::class, 'update']);
             Route::delete('/plans/{id}', [AdminPlans::class, 'destroy']);
-
-            Route::get('/national-holidays', [AdminNationalHolidays::class, 'index']);
-            Route::post('/national-holidays', [AdminNationalHolidays::class, 'store']);
-            Route::post('/national-holidays/import', [AdminNationalHolidays::class, 'import']);
-            Route::delete('/national-holidays/{id}', [AdminNationalHolidays::class, 'destroy']);
 
             Route::get('/permissions', [AdminPermissionCatalog::class, 'index']);
         });

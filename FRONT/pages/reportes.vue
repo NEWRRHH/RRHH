@@ -146,14 +146,6 @@
                     Mensual
                   </div>
                 </div>
-
-                <button
-                  class="h-10 sm:h-11 w-full sm:w-auto px-5 rounded-xl text-white text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                  :disabled="requestingAttendance"
-                  @click="openRequestModal"
-                >
-                  {{ requestingAttendance ? 'Enviando...' : 'Solicitar fichaje' }}
-                </button>
               </div>
 
               <div class="text-xs text-gray-400 mb-3">
@@ -346,29 +338,65 @@
                 <span class="text-gray-200 font-medium">{{ selectedUserName }}</span>
               </div>
               <p class="text-xs text-gray-500 mb-3">
-                Se listan solo dias laborables sin fichaje, excluyendo vacaciones y dias con comprobante cargado.
+                Se listan solo días laborables sin fichaje, excluyendo vacaciones y días con comprobante cargado.
               </p>
 
+              <!-- own absences: pick the days and ask RRHH to regularise them in one request -->
+              <div v-if="isOwnSelectedUser && requestableAbsences.length" class="mb-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  class="h-10 px-4 rounded-xl text-white text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  :disabled="requestingAttendance || !selectedAbsenceDates.length"
+                  @click="requestSelectedAbsences"
+                >
+                  {{ requestingAttendance ? 'Enviando...' : `Solicitar fichaje (${selectedAbsenceDates.length} ${selectedAbsenceDates.length === 1 ? 'día' : 'días'})` }}
+                </button>
+                <button
+                  type="button"
+                  class="h-10 px-3 rounded-xl border border-gray-700 text-gray-300 text-sm hover:bg-gray-800"
+                  @click="toggleAllAbsences"
+                >
+                  {{ allAbsencesSelected ? 'Quitar todos' : 'Seleccionar todos' }}
+                </button>
+                <span class="text-[11px] text-gray-500">Se usará el horario de tu jornada; RRHH aprueba cada día.</span>
+              </div>
+
               <div class="xl:flex-1 xl:min-h-0 overflow-y-auto rounded-2xl border border-gray-800">
-                <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:grid-cols-[160px_120px_minmax(0,1fr)] gap-x-2 px-3 sm:px-4 py-3 text-gray-400 text-xs sm:text-sm border-b border-gray-800 bg-gray-800/50 sticky top-0 z-10">
+                <div class="grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)_auto] sm:grid-cols-[auto_160px_120px_minmax(0,1fr)] gap-x-3 px-3 sm:px-4 py-3 text-gray-400 text-xs sm:text-sm border-b border-gray-800 bg-gray-800/50 sticky top-0 z-10">
+                  <div class="w-4"></div>
                   <div>Fecha</div>
                   <div>Día</div>
                   <div>Estado</div>
                 </div>
 
-                <div
+                <label
                   v-for="row in absencesRows"
                   :key="`absence-${row.date}`"
-                  class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:grid-cols-[160px_120px_minmax(0,1fr)] gap-x-2 px-3 sm:px-4 py-3 border-b border-gray-800 items-center"
+                  class="!mb-0 !font-normal grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)_auto] sm:grid-cols-[auto_160px_120px_minmax(0,1fr)] gap-x-3 px-3 sm:px-4 py-3 border-b border-gray-800 items-center"
+                  :class="canSelectAbsence(row) ? 'cursor-pointer hover:bg-gray-800/40' : ''"
                 >
+                  <div class="w-4">
+                    <input
+                      v-if="canSelectAbsence(row)"
+                      v-model="selectedAbsenceDates"
+                      type="checkbox"
+                      :value="row.date"
+                      class="accent-blue-500 w-4 h-4"
+                      :aria-label="`Seleccionar ${shortDate(row.date)}`"
+                    />
+                  </div>
                   <div class="text-gray-200 text-sm font-medium">{{ shortDate(row.date) }}</div>
                   <div class="text-gray-400 text-sm">{{ row.weekday }}</div>
                   <div>
-                    <span class="whitespace-nowrap px-2 sm:px-2.5 py-1 rounded-full text-[10px] sm:text-xs border border-red-500/40 bg-red-500/15 text-red-200 uppercase tracking-wide">
+                    <span
+                      v-if="row.attendance_request_pending"
+                      class="whitespace-nowrap px-2 sm:px-2.5 py-1 rounded-full text-[10px] sm:text-xs border border-amber-500/40 bg-amber-500/15 text-amber-200 uppercase tracking-wide"
+                    >Solicitado</span>
+                    <span v-else class="whitespace-nowrap px-2 sm:px-2.5 py-1 rounded-full text-[10px] sm:text-xs border border-red-500/40 bg-red-500/15 text-red-200 uppercase tracking-wide">
                       Sin fichaje
                     </span>
                   </div>
-                </div>
+                </label>
 
                 <div v-if="!absencesRows.length" class="px-4 py-12 text-center text-gray-500 text-sm">
                   No hay ausencias para los filtros seleccionados.
@@ -454,62 +482,6 @@
           </div>
         </div>
       </main>
-      <div v-if="requestModal.open" class="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center" @click.self="closeRequestModal">
-        <div class="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-4 space-y-4">
-          <h2 class="text-white font-semibold">Solicitar fichaje</h2>
-          <p class="text-xs text-gray-400">Selecciona la fecha y, si queres, la hora de entrada y de salida.</p>
-          <p v-if="!isOwnSelectedUser" class="text-xs text-amber-300">
-            Debes seleccionar tu usuario para solicitar fichajes.
-          </p>
-          <div>
-            <label class="block text-xs text-gray-400 mb-1">Fecha</label>
-            <input
-              v-model="requestModal.date"
-              type="date"
-              class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white"
-              :max="todayIso"
-            />
-          </div>
-          <div class="grid grid-cols-2 gap-2">
-            <div>
-              <label class="block text-xs text-gray-400 mb-1">Hora de entrada</label>
-              <input
-                v-model="requestModal.entry_time"
-                type="time"
-                :disabled="requestMissingKind === 'exit'"
-                class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-            </div>
-            <div>
-              <label class="block text-xs text-gray-400 mb-1">Hora de salida</label>
-              <input
-                v-model="requestModal.exit_time"
-                type="time"
-                :disabled="requestMissingKind === 'entry'"
-                class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-            </div>
-          </div>
-          <p class="text-xs text-gray-500">
-            {{ requestMissingKindHint || 'Deja las horas en blanco para usar el horario habitual.' }}
-          </p>
-          <p v-if="requestModal.error" class="text-xs text-red-300 border border-red-500/30 bg-red-500/10 rounded-lg px-3 py-2">
-            {{ requestModal.error }}
-          </p>
-          <div class="flex justify-end gap-2">
-            <button class="px-3 py-2 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800" @click="closeRequestModal">
-              Cancelar
-            </button>
-            <button
-              class="px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50"
-              :disabled="requestingAttendance || !requestModal.date || !isOwnSelectedUser"
-              @click="confirmRequestModal"
-            >
-              Confirmar
-            </button>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -583,29 +555,6 @@ const monthLabel = computed(() => {
 const currentUserId = computed(() => Number((user.value as any)?.id || 0))
 const todayIso = computed(() => localIsoDate())
 const isOwnSelectedUser = computed(() => Number(selectedUserId.value || 0) === currentUserId.value)
-const requestModal = ref<{ open: boolean; date: string; entry_time: string; exit_time: string; error: string }>({
-  open: false,
-  date: '',
-  entry_time: '',
-  exit_time: '',
-  error: '',
-})
-
-const requestMissingKind = computed(() => {
-  const date = requestModal.value.date
-  if (!date || !requestModal.value.open) return null
-  const row = monthRows.value.find((r: any) => String(r?.date || '') === date)
-  return row ? missingAttendanceKind(row) : null
-})
-
-const requestMissingKindHint = computed(() => {
-  const kind = requestMissingKind.value
-  if (kind === 'entry_exit') return 'Falta fichar la entrada y la salida.'
-  if (kind === 'entry') return 'Falta fichar la entrada.'
-  if (kind === 'exit') return 'Falta fichar la salida.'
-  return ''
-})
-
 function openSidebar() {
   if (sidebar.value) sidebar.value.open = true
 }
@@ -728,84 +677,41 @@ function workedColorClass(seconds?: number) {
   return 'text-amber-300'
 }
 
-function missingAttendanceKind(row: any): 'entry_exit' | 'entry' | 'exit' | null {
-  const hasStart = !!row?.start_time
-  const hasEnd = !!row?.end_time
-  if (!hasStart && !hasEnd) return 'entry_exit'
-  if (!hasStart && hasEnd) return 'entry'
-  if (hasStart && !hasEnd) return 'exit'
-  return null
+// ── Ausencias: ask RRHH to regularise several days in one request ──
+const selectedAbsenceDates = ref<string[]>([])
+const canSelectAbsence = (row: any) => isOwnSelectedUser.value && !row?.attendance_request_pending
+const requestableAbsences = computed(() => absencesRows.value.filter(canSelectAbsence))
+const allAbsencesSelected = computed(() =>
+  requestableAbsences.value.length > 0 && selectedAbsenceDates.value.length === requestableAbsences.value.length,
+)
+
+function toggleAllAbsences() {
+  selectedAbsenceDates.value = allAbsencesSelected.value ? [] : requestableAbsences.value.map((r: any) => r.date)
 }
 
-function canRequestAttendanceForRow(row: any): boolean {
-  if (!row || !row.date) return false
-  if (Number(selectedUserId.value || 0) !== currentUserId.value) return false
-  if (row.attendance_request_pending) return false
-  if (String(row.date) > todayIso.value) return false
-  return missingAttendanceKind(row) !== null
-}
-
-function openRequestModal() {
-  requestModal.value = {
-    open: true,
-    date: todayIso.value,
-    entry_time: '',
-    exit_time: '',
-    error: '',
-  }
-}
-
-function closeRequestModal() {
-  requestModal.value = { open: false, date: '', entry_time: '', exit_time: '', error: '' }
-}
-
-async function requestAttendanceByDate(date: string, entryTime = '', exitTime = '') {
-  if (!authenticated.value || !date || requestingAttendance.value) return
+async function requestSelectedAbsences() {
+  if (!selectedAbsenceDates.value.length || requestingAttendance.value) return
   requestingAttendance.value = true
   requestNotice.value = { type: 'success', text: '' }
   try {
-    const res: any = await $fetch(`/api/attendance/requests`, {
+    const res: any = await $fetch('/api/attendance/requests/days', {
       method: 'POST',
-      body: { date, entry_time: entryTime || null, exit_time: exitTime || null },
+      body: { dates: [...selectedAbsenceDates.value].sort() },
     })
-    const kind = String(res?.request_kind || '')
-    const kindLabel = kind === 'entry_exit' ? 'entrada y salida' : kind === 'entry' ? 'entrada' : kind === 'exit' ? 'salida' : 'fichaje'
-    const timesLabel = [entryTime ? `entrada ${entryTime}` : '', exitTime ? `salida ${exitTime}` : ''].filter(Boolean).join(', ')
-    requestNotice.value = { type: 'success', text: `Solicitud enviada a RRHH para ${date} (${kindLabel}${timesLabel ? ` - ${timesLabel}` : ''}).` }
+    const n = (res?.days || []).length
+    const skipped = (res?.skipped || []).length
+    requestNotice.value = {
+      type: 'success',
+      text: `Solicitud de fichaje enviada a RRHH por ${n} ${n === 1 ? 'día' : 'días'}.${skipped ? ` ${skipped} ${skipped === 1 ? 'día no necesitaba' : 'días no necesitaban'} solicitud.` : ''}`,
+    }
+    selectedAbsenceDates.value = []
     await loadMonthData()
-    closeRequestModal()
   } catch (e: any) {
-    const message = e?.data?.message || 'No se pudo enviar la solicitud de fichaje.'
-    requestNotice.value = { type: 'error', text: message }
-    requestModal.value.error = message
+    const errors = e?.data?.errors
+    requestNotice.value = { type: 'error', text: errors ? String(Object.values(errors).flat()[0]) : (e?.data?.message || 'No se pudo enviar la solicitud de fichaje.') }
   } finally {
     requestingAttendance.value = false
   }
-}
-
-async function confirmRequestModal() {
-  const { date, entry_time, exit_time } = requestModal.value
-  requestModal.value.error = ''
-  if (!date) {
-    requestModal.value.error = 'Debes seleccionar una fecha.'
-    return
-  }
-  if (date > todayIso.value) {
-    requestModal.value.error = 'No puedes solicitar fichajes para fechas futuras.'
-    return
-  }
-  if (entry_time && exit_time && exit_time <= entry_time) {
-    requestModal.value.error = 'La hora de salida debe ser posterior a la hora de entrada.'
-    return
-  }
-  const row = monthRows.value.find((r: any) => String(r?.date || '') === date)
-  if (row && !canRequestAttendanceForRow(row)) {
-    requestModal.value.error = 'Ese dia no tiene fichaje faltante o ya posee solicitud pendiente.'
-    return
-  }
-  const validEntry = requestMissingKind.value === 'exit' ? '' : entry_time
-  const validExit = requestMissingKind.value === 'entry' ? '' : exit_time
-  await requestAttendanceByDate(date, validEntry, validExit)
 }
 
 async function loadMonthData() {
@@ -824,6 +730,7 @@ async function loadMonthData() {
   teams.value = res?.teams || []
   monthRows.value = res?.rows || []
   absencesRows.value = res?.absences?.rows || []
+  selectedAbsenceDates.value = []
   absencesCount.value = Number(res?.absences?.count || absencesRows.value.length || 0)
   summary.value = res?.summary || summary.value
   includeNonWorkingDays.value = !!res?.include_non_working
