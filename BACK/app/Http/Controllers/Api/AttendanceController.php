@@ -14,6 +14,7 @@ use App\Models\EventType;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\AttendanceService;
+use App\Services\PresenceService;
 use App\Services\ScheduleService;
 use App\Support\WorkTime;
 use Carbon\Carbon;
@@ -780,8 +781,32 @@ class AttendanceController extends Controller
      * "Who's in" view data for attendance page.
      * Returns users currently working with check-in time and live worked hours.
      */
+    /** @var array<int, int>|null users clocked in today (memo for who's in) */
+    private ?array $workingToday = null;
+
+    private function workingTodayIds(): array
+    {
+        return $this->workingToday ??= Attendance::table()
+            ->whereDate('date', Carbon::today()->toDateString())
+            ->where('status', 'en_trabajo')
+            ->whereNull('end_date')
+            ->pluck('user_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+    }
+
+    /**
+     * Where everybody is today: remote (house), office (building), vacation.
+     * Drives the small icon on every avatar of the app.
+     */
+    public function presenceToday(PresenceService $presence)
+    {
+        return response()->json($presence->today() + ['date' => Carbon::today()->toDateString()]);
+    }
+
     public function attendanceWhoIsIn(Request $request)
     {
+        $this->workingToday = null;
         $user = $request->user();
         if (! $user) {
             return response()->json(['message' => 'Unauthenticated'], 401);
@@ -847,9 +872,40 @@ class AttendanceController extends Controller
             ->orderBy('name', 'asc')
             ->get();
 
+        // people on remote work / vacation today (same team + privilege rules)
+        $presence = app(PresenceService::class)->today();
+        $people = function (array $ids) use ($isPrivileged, $teamFilter, $user) {
+            if (! $isPrivileged) {
+                $ids = array_values(array_intersect($ids, [(int) $user->id]));
+            }
+            if (! $ids) {
+                return [];
+            }
+
+            return User::query()
+                ->leftJoin('teams', 'users.team_id', '=', 'teams.id')
+                ->whereIn('users.id', $ids)
+                ->whereNull('users.disabled_at')
+                ->when($isPrivileged && $teamFilter !== null && $teamFilter !== '', fn ($q) => $q->where('users.team_id', (int) $teamFilter))
+                ->orderBy('users.first_name')
+                ->get(['users.id', 'users.first_name', 'users.last_name', 'users.name', 'users.photo', 'users.profile_photo_path', 'teams.name as team_name'])
+                ->map(fn ($u) => [
+                    'user_id' => $u->id,
+                    'full_name' => trim(($u->first_name ?? $u->name ?? '') . ' ' . ($u->last_name ?? '')) ?: ('Usuario #' . $u->id),
+                    'team_name' => $u->team_name ?? 'Sin equipo',
+                    'photo' => $u->photo ?? $u->profile_photo_path ?? null,
+                    // remote people may also have clocked in
+                    'working' => in_array((int) $u->id, $this->workingTodayIds(), true),
+                ])
+                ->values()
+                ->all();
+        };
+
         return response()->json([
             'date' => $today,
             'can_view_all' => $isPrivileged,
+            'remote_rows' => $people($presence['remote']),
+            'vacation_rows' => $people($presence['vacation']),
             'team_filter' => $teamFilter !== null && $teamFilter !== '' ? (int) $teamFilter : null,
             'working_count' => $rows->count(),
             'rows' => $rows,

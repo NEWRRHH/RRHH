@@ -792,6 +792,7 @@ class TimeOffController extends Controller
                 'events.end_at',
                 'events.event_type_id',
                 'event_types.name as event_type_name',
+                'event_types.code as event_type_code',
                 'events.request_days',
             ]);
 
@@ -822,6 +823,15 @@ class TimeOffController extends Controller
             }
         });
         event(new TimeOffRequestUpdated((int) $id, (int) $event->user_id, 'reviewed'));
+
+        // remote work / vacation decided: everybody's presence icons may change
+        if (in_array($event->event_type_code ?? null, [EventType::REMOTE_WORK, EventType::VACATION], true) && \App\Support\Tenancy\Tenant::id()) {
+            try {
+                event(new \App\Events\CompanyAttendanceChanged((int) \App\Support\Tenancy\Tenant::id()));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
 
         return response()->json([
             'status' => 'ok',

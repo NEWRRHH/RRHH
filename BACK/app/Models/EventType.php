@@ -19,6 +19,8 @@ class EventType extends Model
     public const GENERAL = 'general';
     public const PERMISSION = 'permission';
     public const MEETING = 'meeting';
+    /** Remote work day (approved = "de teletrabajo" in who's in / avatars) */
+    public const REMOTE_WORK = 'remote_work';
 
     /**
      * Fixed colour of each type (not chosen by the employee). Same palette as
@@ -30,6 +32,7 @@ class EventType extends Model
         self::GENERAL => '#3B82F6',            // blue
         self::MEETING => '#8B5CF6',            // violet
         self::ATTENDANCE_REQUEST => '#F97316', // orange
+        self::REMOTE_WORK => '#0EA5E9',        // sky
     ];
 
     public const DEFAULT_COLOR = '#64748B'; // slate: custom types

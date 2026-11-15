@@ -30,6 +30,12 @@ const VISUALS: Record<string, EventTypeVisual> = {
     tone: 'bg-violet-500/15 text-violet-300',
     color: '#8B5CF6',
   },
+  // house
+  remote_work: {
+    icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6',
+    tone: 'bg-sky-500/15 text-sky-300',
+    color: '#0EA5E9',
+  },
   // clock
   attendance_request: {
     icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z',
@@ -57,6 +63,7 @@ export function eventTypeVisual(code?: string | null, name?: string | null): Eve
   if (n.includes('vacacion')) return VISUALS.vacation
   if (n.includes('permiso') || n.includes('licencia')) return VISUALS.permission
   if (n.includes('reuni')) return VISUALS.meeting
+  if (n.includes('teletrab') || n.includes('remoto')) return VISUALS.remote_work
   if (n.includes('fichaj')) return VISUALS.attendance_request
   if (n.includes('médic') || n.includes('medic') || n.includes('salud') || n.includes('enferm')) return MEDICAL
   if (n.includes('general')) return VISUALS.general

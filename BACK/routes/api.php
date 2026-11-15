@@ -85,6 +85,8 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::get('/attendance/day', [AttendanceController::class, 'attendanceDay']);
     Route::get('/attendance/month', [AttendanceController::class, 'attendanceMonth']);
     Route::get('/attendance/who-is-in', [AttendanceController::class, 'attendanceWhoIsIn']);
+    // today's presence of the company (remote / office / vacation): icon on every avatar
+    Route::get('/presence/today', [AttendanceController::class, 'presenceToday']);
     Route::post('/attendance/requests', [AttendanceController::class, 'requestAttendanceAdjustment']);
     // several absence days in one request (Reportes > Ausencias)
     Route::post('/attendance/requests/days', [AttendanceController::class, 'requestAttendanceDays']);

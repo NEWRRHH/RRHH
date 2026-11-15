@@ -47,9 +47,12 @@
           class="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-gray-800/70 transition"
           @click="openConversation(c.user.id)"
         >
-          <div class="w-9 h-9 shrink-0 rounded-full overflow-hidden bg-gray-700 flex items-center justify-center text-xs font-semibold text-gray-200">
-            <img v-if="c.user.photo" :src="c.user.photo" class="w-full h-full object-cover" alt="" />
-            <span v-else>{{ (c.user.name || '?').charAt(0).toUpperCase() }}</span>
+          <div class="relative shrink-0">
+            <div class="w-9 h-9 rounded-full overflow-hidden bg-gray-700 flex items-center justify-center text-xs font-semibold text-gray-200">
+              <img v-if="c.user.photo" :src="c.user.photo" class="w-full h-full object-cover" alt="" />
+              <span v-else>{{ (c.user.name || '?').charAt(0).toUpperCase() }}</span>
+            </div>
+            <PresenceBadge :user-id="c.user.id" size="xs" />
           </div>
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
@@ -84,6 +87,8 @@
         />
         <span v-else>{{ initial }}</span>
       </div>
+      <!-- house = remote work today, building = at the office -->
+      <PresenceBadge :user-id="(user as any)?.id" corner="top-right" />
       <span
         v-if="attendanceStatus !== null"
         :class="['absolute bottom-0 right-0 w-2.5 h-2.5 border-2 border-gray-900 rounded-full transition-colors duration-300', statusDotClass]"

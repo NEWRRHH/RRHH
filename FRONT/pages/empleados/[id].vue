@@ -228,9 +228,12 @@
                 <!-- phones: photo on top, fields below -->
                 <div class="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6">
                   <div class="flex-shrink-0">
-                    <div class="w-24 h-24 rounded-full bg-gray-700 overflow-hidden">
-                      <img v-if="preview" :src="preview" class="w-full h-full object-cover" />
-                      <span v-else class="flex items-center justify-center h-full text-gray-400 text-2xl">{{ (form.name || '?').charAt(0).toUpperCase() }}</span>
+                    <div class="relative">
+                      <div class="w-24 h-24 rounded-full bg-gray-700 overflow-hidden">
+                        <img v-if="preview" :src="preview" class="w-full h-full object-cover" />
+                        <span v-else class="flex items-center justify-center h-full text-gray-400 text-2xl">{{ (form.name || '?').charAt(0).toUpperCase() }}</span>
+                      </div>
+                      <PresenceBadge :user-id="employeeId" size="md" corner="bottom-right" />
                     </div>
                     <label class="block text-xs text-gray-300 mt-2 text-center" for="photo">Cambiar foto</label>
                     <input id="photo" type="file" class="hidden" @change="onPhotoChange" />

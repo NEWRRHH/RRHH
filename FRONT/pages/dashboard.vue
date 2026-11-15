@@ -525,22 +525,25 @@ async function refreshStats() {
   }
 }
 
+// named so leaving the dashboard removes only this listener (usePresence shares the channel)
+function onCompanyAttendanceChanged() {
+  // several people clocking in at 9:00 -> one request
+  if (statsRefreshTimer) clearTimeout(statsRefreshTimer)
+  statsRefreshTimer = setTimeout(() => { void refreshStats() }, 400)
+}
+
 function subscribeCompanyAttendance() {
   const echo: any = realtimeInstance?.()
   const companyId = Number((user.value as any)?.company_id || 0)
   if (!echo || !companyId || companyAttendanceChannel) return
   companyAttendanceChannel = echo.private(`company.${companyId}.attendance`)
-  companyAttendanceChannel.listen('.CompanyAttendanceChanged', () => {
-    // several people clocking in at 9:00 -> one request
-    if (statsRefreshTimer) clearTimeout(statsRefreshTimer)
-    statsRefreshTimer = setTimeout(() => { void refreshStats() }, 400)
-  })
+  companyAttendanceChannel.listen('.CompanyAttendanceChanged', onCompanyAttendanceChanged)
 }
 
 onBeforeUnmount(() => {
   if (statsRefreshTimer) clearTimeout(statsRefreshTimer)
   try {
-    companyAttendanceChannel?.stopListening?.('.CompanyAttendanceChanged')
+    companyAttendanceChannel?.stopListening?.('.CompanyAttendanceChanged', onCompanyAttendanceChanged)
   } catch {
     // ignore
   }

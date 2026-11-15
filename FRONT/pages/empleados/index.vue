@@ -90,9 +90,12 @@
                 <tr v-for="employee in filteredEmployees" :key="employee.id" class="border-t border-gray-800 text-gray-200 hover:bg-gray-800/40">
                   <td class="px-3 sm:px-4 py-3 max-w-0 w-full sm:max-w-none sm:w-auto">
                     <button class="flex items-center gap-3 w-full text-left min-w-0" :disabled="!canEditEmployee" @click="goToEdit(employee)">
-                      <div class="w-9 h-9 shrink-0 rounded-full overflow-hidden bg-blue-600 flex items-center justify-center font-semibold">
-                        <img v-if="employee.photo || employee.profile_photo_path" :src="resolvePhotoUrl(employee.photo || employee.profile_photo_path)" class="w-full h-full object-cover" />
-                        <span v-else>{{ (employee.name || '?').charAt(0).toUpperCase() }}</span>
+                      <div class="relative shrink-0">
+                        <div class="w-9 h-9 rounded-full overflow-hidden bg-blue-600 flex items-center justify-center font-semibold">
+                          <img v-if="employee.photo || employee.profile_photo_path" :src="resolvePhotoUrl(employee.photo || employee.profile_photo_path)" class="w-full h-full object-cover" />
+                          <span v-else>{{ (employee.name || '?').charAt(0).toUpperCase() }}</span>
+                        </div>
+                        <PresenceBadge :user-id="employee.id" size="xs" />
                       </div>
                       <span class="min-w-0">
                         <span class="block truncate" :class="canViewEmployeeDetails ? 'text-white' : 'text-gray-300'">{{ employee.name }}</span>

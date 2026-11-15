@@ -77,9 +77,12 @@
         :class="compact ? 'justify-center' : ''"
         @click="goToProfile"
       >
-        <div class="w-7 h-7 rounded-full overflow-hidden bg-gray-700 flex items-center justify-center text-[11px] font-semibold shrink-0">
-          <img v-if="(user as any)?.photo || (user as any)?.profile_photo_path" :src="(user as any)?.photo || (user as any)?.profile_photo_path" class="w-full h-full object-cover" />
-          <span v-else>{{ userInitial }}</span>
+        <div class="relative shrink-0">
+          <div class="w-7 h-7 rounded-full overflow-hidden bg-gray-700 flex items-center justify-center text-[11px] font-semibold">
+            <img v-if="(user as any)?.photo || (user as any)?.profile_photo_path" :src="(user as any)?.photo || (user as any)?.profile_photo_path" class="w-full h-full object-cover" />
+            <span v-else>{{ userInitial }}</span>
+          </div>
+          <PresenceBadge :user-id="(user as any)?.id" size="xs" corner="bottom-right" />
         </div>
         <span v-if="!compact" class="truncate">Mi perfil</span>
       </button>

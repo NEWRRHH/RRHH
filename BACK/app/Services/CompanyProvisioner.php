@@ -30,6 +30,7 @@ class CompanyProvisioner
         ['name' => 'Permiso', 'code' => EventType::PERMISSION],
         ['name' => 'Fichaje', 'code' => EventType::ATTENDANCE_REQUEST],
         ['name' => 'Reunión', 'code' => EventType::MEETING],
+        ['name' => 'Teletrabajo', 'code' => EventType::REMOTE_WORK],
     ];
 
     /**
