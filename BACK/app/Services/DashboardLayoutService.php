@@ -66,12 +66,17 @@ class DashboardLayoutService
         'birthday' => [
             'title' => '¡Feliz cumpleaños, {nombre}!',
             'message' => 'Todo el equipo te desea un día increíble.',
+            'effects' => ['confetti', 'balloons'],
         ],
         'anniversary' => [
             'title' => '¡Feliz aniversario, {nombre}!',
             'message' => 'Hoy cumples {años} con nosotros. ¡Gracias por ser parte del equipo!',
+            'effects' => ['confetti', 'stars'],
         ],
     ];
+
+    /** Animations the overlay can play (any combination, or none). */
+    public const CELEBRATION_EFFECTS = ['confetti', 'balloons', 'stars', 'fireworks', 'emojis'];
 
     public const CELEBRATION_TITLE_MAX = 80;
 
@@ -199,7 +204,7 @@ class DashboardLayoutService
     /**
      * Celebration texts with the placeholders filled in for this person.
      *
-     * @return array{title: string, message: string}
+     * @return array{title: string, message: string, effects: array<int, string>}
      */
     public function celebrationText(string $type, string $firstName, int $years): array
     {
@@ -215,7 +220,7 @@ class DashboardLayoutService
             return trim(preg_replace('/\s{2,}/u', ' ', $text));
         };
 
-        return ['title' => $fill($texts['title']), 'message' => $fill($texts['message'])];
+        return ['title' => $fill($texts['title']), 'message' => $fill($texts['message']), 'effects' => $texts['effects']];
     }
 
     /** @return array<int, array{key: string, name: string, mode: string}> */
@@ -320,9 +325,14 @@ class DashboardLayoutService
         foreach (self::DEFAULT_CELEBRATIONS as $type => $defaults) {
             $title = trim((string) ($input[$type]['title'] ?? ''));
             $message = trim((string) ($input[$type]['message'] ?? ''));
+            // missing (never configured) -> defaults; an empty list is a valid choice
+            $effects = is_array($input[$type]['effects'] ?? null)
+                ? array_values(array_intersect(self::CELEBRATION_EFFECTS, $input[$type]['effects']))
+                : $defaults['effects'];
             $out[$type] = [
                 'title' => mb_substr($title !== '' ? $title : $defaults['title'], 0, self::CELEBRATION_TITLE_MAX),
                 'message' => mb_substr($message !== '' ? $message : $defaults['message'], 0, self::CELEBRATION_MESSAGE_MAX),
+                'effects' => $effects,
             ];
         }
 

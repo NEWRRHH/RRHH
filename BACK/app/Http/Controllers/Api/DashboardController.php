@@ -163,6 +163,7 @@ class DashboardController extends Controller
             'default_limit' => DashboardLayoutService::DEFAULT_LIMIT,
             'max_limit' => DashboardLayoutService::MAX_LIMIT,
             'default_celebrations' => DashboardLayoutService::DEFAULT_CELEBRATIONS,
+            'celebration_effects' => DashboardLayoutService::CELEBRATION_EFFECTS,
         ]);
     }
 
@@ -185,7 +186,10 @@ class DashboardController extends Controller
             'celebrations.anniversary' => 'required|array',
             'celebrations.anniversary.title' => $title,
             'celebrations.anniversary.message' => $message,
+            'celebrations.*.effects' => 'present|array',
+            'celebrations.*.effects.*' => 'string|in:' . implode(',', DashboardLayoutService::CELEBRATION_EFFECTS),
         ], [
+            'celebrations.*.effects.*.in' => 'Animación desconocida.',
             'celebrations.*.title.max' => 'El título admite hasta ' . DashboardLayoutService::CELEBRATION_TITLE_MAX . ' caracteres.',
             'celebrations.*.message.max' => 'El mensaje admite hasta ' . DashboardLayoutService::CELEBRATION_MESSAGE_MAX . ' caracteres.',
         ]);
@@ -427,8 +431,9 @@ class DashboardController extends Controller
     }
 
     /**
-     * Upcoming birthdays and work anniversaries, soonest first (authenticated).
-     * Each item: type (birthday|anniversary), date, years, is_today + person.
+     * Upcoming birthdays and work anniversaries, one row per person, soonest
+     * first (authenticated). Each row: person + birthday / anniversary
+     * ({date, years, is_today} or null) + date / is_today of the soonest.
      */
     public function birthdays(Request $request, CelebrationService $celebrations)
     {

@@ -25,31 +25,37 @@
       </div>
 
       <div v-else-if="birthdays && birthdays.length" class="flex flex-col gap-3">
-        <!-- next (or today's) celebration -->
+        <!-- next (or today's) person: birthday line, anniversary line below -->
         <div
           class="relative overflow-hidden rounded-xl border p-3"
           :class="featured.is_today
             ? 'border-amber-400/40 bg-gradient-to-r from-rose-500/20 via-amber-400/15 to-fuchsia-500/20 celebrate-glow'
-            : isAnniversary(featured) ? 'border-amber-500/20 bg-gradient-to-r from-amber-500/10 to-yellow-400/5' : 'border-rose-500/20 bg-gradient-to-r from-rose-500/10 to-orange-400/10'"
+            : 'border-rose-500/20 bg-gradient-to-r from-rose-500/10 to-orange-400/10'"
         >
           <span v-if="featured.is_today" class="celebrate-sparkle" aria-hidden="true" style="top:8px;right:14px">✨</span>
           <span v-if="featured.is_today" class="celebrate-sparkle" aria-hidden="true" style="bottom:8px;right:44px;animation-delay:.7s">🎉</span>
 
-          <div class="text-[11px] uppercase tracking-wide mb-2" :class="featured.is_today ? 'text-amber-200 font-semibold' : isAnniversary(featured) ? 'text-amber-200/90' : 'text-rose-200/90'">
+          <div class="text-[11px] uppercase tracking-wide mb-2" :class="featured.is_today ? 'text-amber-200 font-semibold' : 'text-rose-200/90'">
             {{ featured.is_today ? '¡Hoy se celebra!' : 'Siguiente' }}
           </div>
           <div class="flex items-center gap-3">
             <div class="relative shrink-0">
-              <div class="w-14 h-14 rounded-full overflow-hidden bg-gray-800 border flex items-center justify-center text-white font-semibold" :class="isAnniversary(featured) ? 'border-amber-400/40' : 'border-rose-400/30'">
+              <div class="w-14 h-14 rounded-full overflow-hidden bg-gray-800 border border-rose-400/30 flex items-center justify-center text-white font-semibold">
                 <img v-if="featured.photo" :src="featured.photo" class="w-full h-full object-cover" />
                 <span v-else>{{ initials(featured) }}</span>
               </div>
-              <span class="absolute -bottom-1 -right-1 text-base leading-none" :class="{ 'celebrate-bounce': featured.is_today }" aria-hidden="true">{{ emoji(featured) }}</span>
+              <span v-if="featured.is_today" class="absolute -bottom-1 -right-1 text-base leading-none celebrate-bounce" aria-hidden="true">{{ todayEmoji(featured) }}</span>
             </div>
             <div class="min-w-0 flex-1">
               <p class="text-white font-semibold truncate">{{ featured.full_name || featured.first_name }}</p>
-              <p class="text-xs" :class="isAnniversary(featured) ? 'text-amber-100/90' : 'text-rose-100/90'">{{ featured.is_today ? 'Hoy' : formatDate(featured.date) }}</p>
-              <p class="text-[11px] text-gray-300">{{ describe(featured) }}</p>
+              <p
+                v-for="ev in events(featured)"
+                :key="ev.type"
+                class="text-xs truncate"
+                :class="ev.is_today ? 'text-amber-200 font-medium' : 'text-gray-300'"
+              >
+                <span aria-hidden="true">{{ ev.emoji }}</span> {{ ev.when }} · {{ ev.text }}
+              </p>
             </div>
             <button
               v-if="isMine(featured)"
@@ -74,11 +80,18 @@
                 <img v-if="b.photo" :src="b.photo" class="w-full h-full object-cover" />
                 <span v-else>{{ initials(b) }}</span>
               </div>
-              <span class="absolute -bottom-1 -right-1 text-xs leading-none" aria-hidden="true">{{ emoji(b) }}</span>
+              <span v-if="b.is_today" class="absolute -bottom-1 -right-1 text-xs leading-none" aria-hidden="true">{{ todayEmoji(b) }}</span>
             </div>
             <div class="min-w-0 flex-1">
               <p class="text-sm text-gray-100 truncate">{{ b.full_name || b.first_name }}</p>
-              <p class="text-[11px] text-gray-400 truncate">{{ b.is_today ? 'Hoy' : formatDate(b.date) }} · {{ describe(b) }}</p>
+              <p
+                v-for="ev in events(b)"
+                :key="ev.type"
+                class="text-[11px] truncate"
+                :class="ev.is_today ? 'text-amber-200 font-medium' : 'text-gray-400'"
+              >
+                <span aria-hidden="true">{{ ev.emoji }}</span> {{ ev.when }} · {{ ev.text }}
+              </p>
             </div>
             <button
               v-if="isMine(b)"
@@ -89,12 +102,9 @@
               @click="play"
             >🎉</button>
             <span
-              v-else
-              class="shrink-0 text-[11px] rounded-full px-2 py-0.5 border"
-              :class="b.is_today ? 'text-amber-100 border-amber-400/40 bg-amber-400/20' : isAnniversary(b) ? 'text-amber-200 border-amber-500/30 bg-amber-500/10' : 'text-rose-200 border-rose-500/30 bg-rose-500/10'"
-            >
-              {{ b.is_today ? '¡Hoy!' : b.years }}
-            </span>
+              v-else-if="b.is_today"
+              class="shrink-0 text-[11px] rounded-full px-2 py-0.5 border text-amber-100 border-amber-400/40 bg-amber-400/20"
+            >¡Hoy!</span>
           </div>
         </div>
       </div>
@@ -109,7 +119,8 @@
 <script setup lang="ts">
 import { computed, type PropType } from 'vue'
 
-// Items come from /api/birthdays: { type: 'birthday' | 'anniversary', date, years, is_today, user_id, ... }
+// Items come from /api/birthdays, one per person:
+// { user_id, full_name, photo, birthday: {date, years, is_today} | null, anniversary: {...} | null, date, is_today }
 const props = defineProps({
   birthdays: { type: Array as PropType<Array<Record<string, any>>>, default: () => [] },
   loading: { type: Boolean as PropType<boolean>, default: false }
@@ -120,12 +131,29 @@ const { celebrations, play } = useCelebration()
 
 const featured = computed(() => props.birthdays[0] || {})
 
-const isAnniversary = (b: Record<string, any>) => b?.type === 'anniversary'
-const emoji = (b: Record<string, any>) => (isAnniversary(b) ? '🏆' : '🎂')
 const yearsText = (n: number) => `${n} ${Number(n) === 1 ? 'año' : 'años'}`
-const describe = (b: Record<string, any>) => isAnniversary(b)
-  ? `${b.is_today ? 'Cumple' : 'Cumplirá'} ${yearsText(b.years)} en la empresa`
-  : `Cumple ${yearsText(b.years)}`
+
+// birthday line first, anniversary below it (same person, same row)
+const events = (b: Record<string, any>) => {
+  const out: Array<{ type: string; emoji: string; when: string; text: string; is_today: boolean }> = []
+  if (b?.birthday) {
+    out.push({
+      type: 'birthday', emoji: '🎂', is_today: !!b.birthday.is_today,
+      when: b.birthday.is_today ? 'Hoy' : formatDate(b.birthday.date),
+      text: `Cumple ${yearsText(b.birthday.years)}`,
+    })
+  }
+  if (b?.anniversary) {
+    out.push({
+      type: 'anniversary', emoji: '🏆', is_today: !!b.anniversary.is_today,
+      when: b.anniversary.is_today ? 'Hoy' : formatDate(b.anniversary.date),
+      text: `${yearsText(b.anniversary.years)} en la empresa`,
+    })
+  }
+  return out
+}
+
+const todayEmoji = (b: Record<string, any>) => (b?.birthday?.is_today ? '🎂' : '🏆')
 
 // the logged-in user's own celebration today can replay the confetti
 const isMine = (b: Record<string, any>) =>

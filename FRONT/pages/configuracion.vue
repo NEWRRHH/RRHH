@@ -680,6 +680,34 @@
                       </button>
                     </div>
                   </div>
+
+                  <!-- animations -->
+                  <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                      <span class="text-xs text-gray-400">Animaciones</span>
+                      <div class="flex gap-3 text-[11px]">
+                        <button type="button" class="text-gray-400 hover:text-white" @click="setAllEffects(kind.key, true)">Todas</button>
+                        <button type="button" class="text-gray-400 hover:text-white" @click="setAllEffects(kind.key, false)">Ninguna</button>
+                      </div>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                      <button
+                        v-for="fx in CELEBRATION_EFFECTS"
+                        :key="fx.key"
+                        type="button"
+                        :aria-pressed="celebrationTexts[kind.key].effects.includes(fx.key)"
+                        class="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition"
+                        :class="celebrationTexts[kind.key].effects.includes(fx.key)
+                          ? 'border-blue-500 bg-blue-600/20 text-white'
+                          : 'border-gray-700 text-gray-400 hover:bg-gray-800'"
+                        @click="toggleEffect(kind.key, fx.key)"
+                      >
+                        <span aria-hidden="true">{{ fx.emoji }}</span>{{ fx.name }}
+                        <svg v-if="celebrationTexts[kind.key].effects.includes(fx.key)" class="w-3 h-3 text-blue-300" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                      </button>
+                    </div>
+                    <p v-if="!celebrationTexts[kind.key].effects.length" class="text-[11px] text-gray-500 mt-1.5">Sin animaciones: solo se muestra el mensaje.</p>
+                  </div>
                 </div>
 
                 <!-- preview -->
@@ -692,6 +720,14 @@
                   <p class="mt-2 text-xs text-gray-300 break-words">
                     {{ previewCelebration(celebrationTexts[kind.key].message || defaultCelebrations[kind.key].message) }}
                   </p>
+                  <button
+                    type="button"
+                    class="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-medium text-white transition"
+                    :class="kind.key === 'birthday' ? 'bg-rose-500/80 hover:bg-rose-500' : 'bg-amber-500/80 hover:bg-amber-500'"
+                    @click="simulateCelebration(kind.key)"
+                  >
+                    ▶ Simular festejo
+                  </button>
                 </div>
               </div>
 
@@ -716,6 +752,7 @@ import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { DASHBOARD_POSITIONS, normalizeDashboardSlots, type DashboardSlots } from '~/utils/dashboardWidgets'
 import DashboardLayoutEditor from '../components/DashboardLayoutEditor.vue'
 import { useAuth } from '../composables/useAuth'
+import { CELEBRATION_EFFECTS, DEFAULT_CELEBRATION_EFFECTS, useCelebration, type CelebrationEffect } from '../composables/useCelebration'
 import AppSidebar from '../components/AppSidebar.vue'
 import AttendanceButton from '../components/AttendanceButton.vue'
 import UserMenu from '../components/UserMenu.vue'
@@ -955,7 +992,7 @@ async function loadCompanyLayout() {
     if (res?.max_limit) maxCardLimit.value = Number(res.max_limit)
     applyCompanyLayout(res)
     applyCardLimits(res?.limits)
-    if (res?.default_celebrations) defaultCelebrations.value = res.default_celebrations
+    if (res?.default_celebrations) defaultCelebrations.value = { ...defaultCelebrations.value, ...res.default_celebrations }
     applyCelebrations(res?.celebrations)
   } catch (e) {
     $swal.toast('error', 'No se pudo cargar el dashboard de la empresa')
@@ -1068,7 +1105,7 @@ async function saveCardLimits() {
 
 // ── Celebration texts (birthday / work anniversary overlay) ──
 type CelebrationKind = 'birthday' | 'anniversary'
-type CelebrationTexts = Record<CelebrationKind, { title: string; message: string }>
+type CelebrationTexts = Record<CelebrationKind, { title: string; message: string; effects: CelebrationEffect[] }>
 const CELEBRATION_TITLE_MAX = 80
 const CELEBRATION_MESSAGE_MAX = 300
 const celebrationKinds: Array<{ key: CelebrationKind; name: string; emoji: string; hint: string }> = [
@@ -1076,9 +1113,10 @@ const celebrationKinds: Array<{ key: CelebrationKind; name: string; emoji: strin
   { key: 'birthday', name: 'Cumpleaños', emoji: '🎂', hint: 'Se muestra el día del cumpleaños del empleado.' },
 ]
 const defaultCelebrations = ref<CelebrationTexts>({
-  birthday: { title: '¡Feliz cumpleaños, {nombre}!', message: 'Todo el equipo te desea un día increíble.' },
-  anniversary: { title: '¡Feliz aniversario, {nombre}!', message: 'Hoy cumples {años} con nosotros. ¡Gracias por ser parte del equipo!' },
+  birthday: { title: '¡Feliz cumpleaños, {nombre}!', message: 'Todo el equipo te desea un día increíble.', effects: [...DEFAULT_CELEBRATION_EFFECTS.birthday] },
+  anniversary: { title: '¡Feliz aniversario, {nombre}!', message: 'Hoy cumples {años} con nosotros. ¡Gracias por ser parte del equipo!', effects: [...DEFAULT_CELEBRATION_EFFECTS.anniversary] },
 })
+const { preview: previewCelebrationAnimation } = useCelebration()
 const celebrationTexts = ref<CelebrationTexts>(JSON.parse(JSON.stringify(defaultCelebrations.value)))
 const savedCelebrations = ref('')
 const celebrationsSaving = ref(false)
@@ -1086,10 +1124,13 @@ const celebrationsDirty = computed(() => JSON.stringify(celebrationTexts.value) 
 
 function applyCelebrations(input: Partial<CelebrationTexts> | null | undefined) {
   const next = {} as CelebrationTexts
+  const known = CELEBRATION_EFFECTS.map(e => e.key)
   for (const { key } of celebrationKinds) {
+    const effects = input?.[key]?.effects
     next[key] = {
       title: String(input?.[key]?.title || defaultCelebrations.value[key].title),
       message: String(input?.[key]?.message || defaultCelebrations.value[key].message),
+      effects: Array.isArray(effects) ? known.filter(k => effects.includes(k)) : [...defaultCelebrations.value[key].effects],
     }
   }
   celebrationTexts.value = next
@@ -1097,7 +1138,31 @@ function applyCelebrations(input: Partial<CelebrationTexts> | null | undefined) 
 }
 
 function resetCelebration(key: CelebrationKind) {
-  celebrationTexts.value[key] = { ...defaultCelebrations.value[key] }
+  const d = defaultCelebrations.value[key]
+  celebrationTexts.value[key] = { ...d, effects: [...d.effects] }
+}
+
+// keep catalog order so the "dirty" check doesn't depend on click order
+function toggleEffect(key: CelebrationKind, effect: CelebrationEffect) {
+  const set = new Set(celebrationTexts.value[key].effects)
+  set.has(effect) ? set.delete(effect) : set.add(effect)
+  celebrationTexts.value[key].effects = CELEBRATION_EFFECTS.map(e => e.key).filter(k => set.has(k))
+}
+
+function setAllEffects(key: CelebrationKind, all: boolean) {
+  celebrationTexts.value[key].effects = all ? CELEBRATION_EFFECTS.map(e => e.key) : []
+}
+
+// plays the overlay with the current (even unsaved) texts and effects
+function simulateCelebration(key: CelebrationKind) {
+  const t = celebrationTexts.value[key]
+  previewCelebrationAnimation({
+    type: key,
+    years: 3,
+    title: previewCelebration(t.title || defaultCelebrations.value[key].title),
+    message: previewCelebration(t.message || defaultCelebrations.value[key].message),
+    effects: [...t.effects],
+  })
 }
 
 function insertPlaceholder(key: CelebrationKind, field: 'title' | 'message', token: string) {
