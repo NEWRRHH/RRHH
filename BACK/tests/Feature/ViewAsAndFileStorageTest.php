@@ -131,16 +131,16 @@ class ViewAsAndFileStorageTest extends TestCase
             $this->assertTrue($disk->directoryExists("companies/acme/{$area}"));
         }
         $this->assertTrue(Storage::disk('public')->directoryExists('companies/acme/avatars'));
-        $this->assertTrue($disk->directoryExists('companies/acme/nominas/Juan Pérez - 30111222'));
-        $this->assertTrue($disk->directoryExists('companies/acme/nominas/Juan Pérez - 40999888'));
+        $this->assertTrue($disk->directoryExists('companies/acme/nominas/30111222'));
+        $this->assertTrue($disk->directoryExists('companies/acme/nominas/40999888'));
 
         // running it again doesn't duplicate folders
         $this->artisan('files:folders')->assertSuccessful();
         $this->assertCount(3, $disk->directories('companies/acme/nominas')); // 2 Juan + the admin
 
         // a payslip in each folder reaches the right person
-        $disk->put('companies/acme/nominas/Juan Pérez - 30111222/mayo.pdf', 'pdf');
-        $disk->put('companies/acme/nominas/Juan Pérez - 40999888/junio.pdf', 'pdf');
+        $disk->put('companies/acme/nominas/30111222/mayo.pdf', 'pdf');
+        $disk->put('companies/acme/nominas/40999888/junio.pdf', 'pdf');
         $this->artisan('nominas:sync')->assertSuccessful();
 
         $names = fn (User $u) => Document::withoutGlobalScopes()->where('user_id', $u->id)->pluck('original_name')->all();
@@ -214,15 +214,36 @@ class ViewAsAndFileStorageTest extends TestCase
         $this->assertTrue(Storage::disk('local')->directoryExists('companies/nano-tech/nominas'));
     }
 
+    public function test_old_name_folders_move_into_the_dni_folder(): void
+    {
+        $this->employee->forceFill(['first_name' => 'Juan', 'last_name' => 'Pérez', 'dni' => '30.111.222-a'])->save();
+        $disk = Storage::disk('local');
+        $disk->put('companies/acme/nominas/Juan Pérez - 30111222A/vieja.pdf', 'pdf');
+        $this->artisan('nominas:sync')->assertSuccessful();
+
+        $this->artisan('files:folders')->assertSuccessful();
+
+        // same file, now under the DNI; the document follows it
+        $this->assertFalse($disk->directoryExists('companies/acme/nominas/Juan Pérez - 30111222A'));
+        $disk->assertExists('companies/acme/nominas/30111222A/vieja.pdf');
+        $this->assertSame(
+            'companies/acme/nominas/30111222A/vieja.pdf',
+            Document::withoutGlobalScopes()->where('user_id', $this->employee->id)->value('filename'),
+        );
+        $token = $this->employee->createToken('test')->plainTextToken;
+        $id = Document::withoutGlobalScopes()->where('user_id', $this->employee->id)->value('id');
+        $this->as($token)->get("/api/documents/{$id}/download")->assertOk();
+    }
+
     public function test_new_employee_gets_a_payroll_folder(): void
     {
         $token = $this->admin->createToken('test')->plainTextToken;
         $this->as($token)->postJson('/api/employees', [
-            'name' => 'Lucía Gómez', 'first_name' => 'Lucía', 'last_name' => 'Gómez', 'dni' => '25555666',
+            'name' => 'Lucía Gómez', 'first_name' => 'Lucía', 'last_name' => 'Gómez', 'dni' => '25555666', 'social_security_number' => '280000000004',
             'email' => 'lucia@acme.test', 'password' => 'Secreta123!', 'password_confirmation' => 'Secreta123!',
         ])->assertSuccessful();
 
-        $this->assertTrue(Storage::disk('local')->directoryExists('companies/acme/nominas/Lucía Gómez - 25555666'));
+        $this->assertTrue(Storage::disk('local')->directoryExists('companies/acme/nominas/25555666'));
     }
 
     public function test_files_are_stored_per_company_on_the_configured_disk(): void

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Events\DocumentsUpdated;
 use App\Http\Controllers\Api\DocumentController;
 use App\Models\Document;
+use App\Models\PayrollBatchFile;
 use App\Models\User;
 use App\Support\FileStorage;
 use Illuminate\Support\Collection;
@@ -16,9 +17,10 @@ use Illuminate\Support\Str;
  *   companies/{company slug}/nominas/{employee folder}/<file>.pdf
  *
  * on FILES_DISK. `php artisan files:folders` (and every new employee) creates
- * the employee folder as "Juan Pérez - 30111222" (name - DNI, or name - id when
- * there is no DNI). A folder named only with the full name, DNI, email,
- * username or id also works; accents, case and separators don't matter.
+ * the employee folder named with the DNI ("30111222A"), the same key the
+ * gestoría uses for the payslips; older "Name - DNI" folders are moved into it.
+ * A folder named with the full name, email, username or id is also recognised;
+ * accents, case and separators don't matter.
  * Every new file becomes a "payroll" document of that employee, so it shows in
  * Documentos > Nóminas. Files already registered are skipped.
  */
@@ -38,21 +40,26 @@ class PayrollSync
         return $full !== '' ? $full : (string) ($user->name ?: $user->email);
     }
 
-    /** "Juan Pérez - 30111222" (DNI) or "Juan Pérez - 15" (id). */
+    /**
+     * Folder of an employee: their DNI ("30111222A"), the same key the
+     * gestoría uses to name the payslips. Without DNI: "sin-dni-{id}".
+     */
     public static function folderNameFor(User $user): string
     {
-        $name = str_replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], ' ', self::fullName($user));
-        $id = trim((string) $user->dni) !== '' ? trim((string) $user->dni) : (string) $user->id;
+        $dni = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string) $user->dni));
 
-        return trim(preg_replace('/\s+/', ' ', $name)) . ' - ' . $id;
+        return $dni !== '' ? $dni : 'sin-dni-' . $user->id;
     }
 
     /** Unique identifiers of a person (normalised): DNI, email, username, id. */
     private function idKeys(User $user): array
     {
-        return array_values(array_filter(array_map(
-            fn ($v) => self::normalize((string) $v),
-            [$user->dni, $user->email, $user->username, (string) $user->id],
+        // the DNI only by its letters/digits: "30.111.222-a" == "30111222A"
+        $dni = strtolower(preg_replace('/[^A-Za-z0-9]/', '', (string) $user->dni));
+
+        return array_values(array_filter(array_merge(
+            [$dni],
+            array_map(fn ($v) => self::normalize((string) $v), [$user->email, $user->username, (string) $user->id]),
         )));
     }
 
@@ -75,16 +82,19 @@ class PayrollSync
     public function owner(string $folder, Collection $users): array
     {
         $name = basename($folder);
+        // a DNI may be written "30.111.222-A": also compare letters/digits only
+        $variants = fn (string $v) => array_unique([self::normalize($v), strtolower(preg_replace('/[^A-Za-z0-9]/', '', $v))]);
+
         if (str_contains($name, ' - ')) {
-            $tail = self::normalize(Str::afterLast($name, ' - '));
-            $byId = $users->filter(fn (User $u) => in_array($tail, $this->idKeys($u), true));
+            $tail = $variants(Str::afterLast($name, ' - '));
+            $byId = $users->filter(fn (User $u) => (bool) array_intersect($tail, $this->idKeys($u)));
             if ($byId->count() === 1) {
                 return [$byId->first(), 'ok'];
             }
         }
 
-        $whole = self::normalize($name);
-        $matches = $users->filter(fn (User $u) => in_array($whole, $this->allKeys($u), true));
+        $whole = $variants($name);
+        $matches = $users->filter(fn (User $u) => (bool) array_intersect($whole, $this->allKeys($u)));
 
         return match ($matches->count()) {
             1 => [$matches->first(), 'ok'],
@@ -157,17 +167,46 @@ class PayrollSync
         }
         $users ??= $this->companyUsers($user->company_id);
         $root = FileStorage::folder($user->company_id, FileStorage::PAYROLL);
-        foreach (FileStorage::disk()->directories($root) as $dir) {
+        $target = $root . '/' . self::folderNameFor($user);
+        $disk = FileStorage::disk();
+
+        // older folders of this person ("Juan Pérez - 30111222", or created
+        // by hand): their files move into the DNI folder
+        foreach ($disk->directories($root) as $dir) {
+            if ($dir === $target) {
+                continue;
+            }
             [$owner] = $this->owner($dir, $users);
-            if ($owner && $owner->id === $user->id) {
-                return $dir;
+            if ($owner && $owner->id === $user->id && trim((string) $user->dni) !== '') {
+                $this->moveFolder($dir, $target);
+            } elseif ($owner && $owner->id === $user->id) {
+                return $dir; // no DNI yet: keep using the existing folder
             }
         }
 
-        $dir = $root . '/' . self::folderNameFor($user);
-        FileStorage::disk()->makeDirectory($dir);
+        $disk->makeDirectory($target);
 
-        return $dir;
+        return $target;
+    }
+
+    /**
+     * Moves every file of a folder into another one and updates the paths
+     * stored in the DB (documents, payroll batches). Removes the old folder.
+     */
+    private function moveFolder(string $from, string $to): void
+    {
+        $disk = FileStorage::disk();
+        $disk->makeDirectory($to);
+        foreach ($disk->allFiles($from) as $old) {
+            $new = $to . '/' . basename($old);
+            for ($i = 2; $disk->exists($new); $i++) {
+                $new = $to . '/' . pathinfo($old, PATHINFO_FILENAME) . '-' . $i . '.' . pathinfo($old, PATHINFO_EXTENSION);
+            }
+            $disk->move($old, $new);
+            Document::withoutGlobalScopes()->where('filename', $old)->update(['filename' => $new]);
+            PayrollBatchFile::withoutGlobalScopes()->where('path', $old)->update(['path' => $new]);
+        }
+        $disk->deleteDirectory($from);
     }
 
     /**

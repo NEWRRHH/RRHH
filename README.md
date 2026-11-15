@@ -158,7 +158,7 @@ docker compose down -v
 - Se guardan **por empresa, con su nombre** (el slug, fijo desde que se creó la empresa): `companies/nano-tech/documents|nominas|chat|avatars/...`.
 - Con la configuración por defecto **no hace falta tocar el `.env`**: en el servidor están en `BACK/storage/app/private/companies/`, y las fotos en `BACK/storage/app/public/companies/`.
 - Las carpetas se crean solas al crear una empresa o un empleado. Para las empresas y empleados que ya existían: `docker compose exec app php artisan files:folders`.
-- **Nóminas:** cada empleado tiene `companies/{empresa}/nominas/Nombre Apellido - DNI/`. Lo que se deja ahí lo registra el servicio `scheduler` en menos de un minuto, y el empleado ve un **globito en tiempo real** en el menú y en la tarjeta de Documentos.
+- **Nóminas:** las calcula la gestoría. RRHH las sube en el menú **Nóminas** (PDF nombrados con el DNI), revisa a quién va cada una y pulsa **Enviar**. Cada empleado las recibe en Documentos → Nóminas con un globito en tiempo real. También se pueden dejar en `companies/{empresa}/nominas/{DNI}/`. Por eso el DNI y el nº de la Seguridad Social son obligatorios.
 - Para usar S3, R2, MinIO o Spaces se cambian `FILES_DISK` y `PUBLIC_FILES_DISK` en el `.env`.
 - Límite de 10 MB por archivo.
 

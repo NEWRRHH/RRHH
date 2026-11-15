@@ -504,7 +504,7 @@ Todo archivo se guarda **por empresa, con el nombre de la empresa** (su slug, qu
 
 ```
 companies/nano-tech/documents/{id empleado}/...         documentos subidos por el empleado
-companies/nano-tech/nominas/Juan Pérez - 30111222/...   nóminas (una carpeta por empleado, ver abajo)
+companies/nano-tech/nominas/30111222A/...              nóminas (una carpeta por empleado, con su DNI)
 companies/nano-tech/chat/{id remitente}/...             adjuntos del chat
 companies/nano-tech/avatars/...                         fotos de perfil
 ```
@@ -522,19 +522,27 @@ companies/nano-tech/avatars/...                         fotos de perfil
 
 ### Nóminas
 
-RRHH, o el proveedor de nóminas, deja cada archivo en la carpeta del empleado:
+La gestoría calcula las nóminas; la app las reparte. Hay dos formas de cargarlas:
+
+**1. Módulo Nóminas (recomendado)** — menú **Nóminas**, para quien tenga el permiso "Gestionar nóminas" (RRHH y Admin por defecto):
+
+1. Elige el mes y sube la carpeta o los PDF que manda la gestoría, **nombrados con el DNI** de cada empleado: `30111222A.pdf`, `nomina_30111222A_2026-05.pdf`, etc. Se acepta también el DNI sin la letra.
+2. Cada PDF se asigna solo al empleado de ese DNI. Los que no coinciden quedan marcados para que elijas el empleado a mano. Ves también qué empleados se quedan sin nómina ese mes.
+3. Pulsa **Enviar**: cada nómina va a `companies/{empresa}/nominas/{DNI}/nomina-AAAA-MM.pdf` y al empleado le aparece en **Documentos → Nóminas** con un **globito en tiempo real**.
+4. Queda el historial de envíos por mes.
+
+Por eso el **DNI y el número de la Seguridad Social son obligatorios** al crear o editar un empleado, y el DNI no se puede repetir en la empresa.
+
+**2. Dejando el archivo en la carpeta del empleado** (p. ej. si la gestoría tiene acceso al almacenamiento):
 
 ```
-companies/nano-tech/nominas/Juan Pérez - 30111222/nomina-2026-05.pdf
+companies/nano-tech/nominas/30111222A/nomina-2026-05.pdf
 ```
 
-- La carpeta se crea sola con el formato **`Nombre Apellido - DNI`**, o `Nombre Apellido - id` si el empleado no tiene DNI. El DNI distingue a dos personas que se llamen igual.
-- También sirve una carpeta creada a mano con solo el nombre completo, el DNI, el email, el usuario o el id. No importan acentos, mayúsculas ni separadores: `Juan Pérez`, `JUAN_PEREZ` y `juan-perez` son la misma.
-- Si una carpeta solo con el nombre coincide con varias personas, no se asigna a nadie; agrégale ` - DNI`.
-- **En menos de un minuto** el servicio `scheduler` la registra y al empleado le aparece un **globito rojo en tiempo real**: en el menú Documentos, en la tarjeta Documentos del dashboard y en la pestaña Nóminas, con la etiqueta "Nueva" en el archivo. El globito se va cuando abre la pestaña Nóminas.
-- Si el `scheduler` no está corriendo, la nómina igual aparece cuando el empleado abre Documentos, pero sin aviso previo. Compruébalo con `docker compose ps scheduler`.
+- La carpeta se llama con el **DNI** (solo letras y números) y se crea sola al dar de alta al empleado o con `files:folders`. Las carpetas antiguas `Nombre Apellido - DNI` se mueven a la del DNI al ejecutar `files:folders` (las rutas se actualizan en la base).
+- **En menos de un minuto** el servicio `scheduler` la registra y al empleado le aparece el **globito**. Si el `scheduler` no corre, aparece cuando el empleado abre Documentos. Compruébalo con `docker compose ps scheduler`.
+- Si borras un archivo de la carpeta, desaparece también de la app.
 - `docker compose exec app php artisan nominas:sync` registra todas las empresas de una vez y lista las carpetas que no coinciden con ningún empleado.
-- Formatos: PDF, imágenes, Word y Excel.
 
 ### Pasar a S3 / Cloudflare R2 / MinIO / DigitalOcean Spaces
 

@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\AnnouncementController;
 use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\HolidayController;
 use App\Http\Controllers\Api\NationalHolidayController;
+use App\Http\Controllers\Api\PayrollController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\ScheduleController;
@@ -148,6 +149,15 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     // documents center
     Route::get('/documents', [DocumentController::class, 'index']);
     Route::post('/documents/upload', [DocumentController::class, 'upload']);
+    // Nóminas module (payroll.manage): upload the gestoría's payslips and send them
+    Route::get('/payroll/batches', [PayrollController::class, 'index']);
+    Route::post('/payroll/batches', [PayrollController::class, 'store']);
+    Route::get('/payroll/batches/{id}', [PayrollController::class, 'show'])->whereNumber('id');
+    Route::post('/payroll/batches/{id}/files', [PayrollController::class, 'upload'])->whereNumber('id');
+    Route::put('/payroll/batches/{id}/files/{fileId}', [PayrollController::class, 'assign'])->whereNumber(['id', 'fileId']);
+    Route::delete('/payroll/batches/{id}/files/{fileId}', [PayrollController::class, 'removeFile'])->whereNumber(['id', 'fileId']);
+    Route::post('/payroll/batches/{id}/send', [PayrollController::class, 'send'])->whereNumber('id');
+    Route::delete('/payroll/batches/{id}', [PayrollController::class, 'destroy'])->whereNumber('id');
     // new documents (payslips) badge, updated in real time (DocumentsUpdated)
     Route::get('/documents/unread', [DocumentController::class, 'unread']);
     Route::post('/documents/read', [DocumentController::class, 'markRead']);

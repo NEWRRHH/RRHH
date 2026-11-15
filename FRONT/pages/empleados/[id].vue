@@ -140,83 +140,206 @@
               </div>
             </section>
 
-            <section v-else-if="activeTab === 'estadisticas'" class="rounded-2xl border border-gray-800 bg-gray-900 p-3 sm:p-5">
-              <h2 class="text-white font-semibold mb-4">Estadísticas del mes</h2>
-              <div class="grid grid-cols-2 xl:grid-cols-4 gap-3">
-                <div class="rounded-xl border border-gray-800 bg-gray-800/60 p-3">
+            <section v-else-if="activeTab === 'estadisticas'" class="space-y-4">
+              <!-- header: month -->
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <h2 class="text-white font-semibold">Estadísticas de <span class="capitalize">{{ monthLabel }}</span></h2>
+                <div class="flex items-center gap-2">
+                  <button class="h-9 w-9 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800" aria-label="Mes anterior" @click="changeMonth(-1)">&#8249;</button>
+                  <div class="h-9 min-w-[150px] px-3 rounded-lg border border-gray-700 bg-gray-800 text-sm text-white flex items-center justify-center capitalize">{{ monthLabel }}</div>
+                  <button class="h-9 w-9 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800" aria-label="Mes siguiente" @click="changeMonth(1)">&#8250;</button>
+                </div>
+              </div>
+
+              <!-- KPI tiles -->
+              <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div class="rounded-2xl border border-gray-800 bg-gray-900 p-4">
                   <div class="text-xs text-gray-400">Horas trabajadas</div>
-                  <div class="text-2xl font-bold text-white tabular-nums">{{ attendanceSummary.worked_hhmm || '00:00' }}</div>
+                  <div class="mt-1 flex items-baseline gap-1.5">
+                    <span class="text-2xl font-bold text-white tabular-nums">{{ attendanceSummary.worked_hhmm || '00:00' }}</span>
+                    <span class="text-xs text-gray-500 tabular-nums">/ {{ attendanceSummary.target_hhmm || '00:00' }}</span>
+                  </div>
+                  <div class="mt-3 h-1.5 rounded-full bg-gray-800 overflow-hidden" role="img" :aria-label="`${workedVsTargetPercent}% del objetivo`">
+                    <div class="h-full rounded-full" :style="{ width: `${workedVsTargetPercent}%`, backgroundColor: VIZ.series }"></div>
+                  </div>
+                  <div class="mt-1.5 text-[11px] text-gray-400">{{ attendanceSummary.compliance_percent || 0 }}% del objetivo</div>
                 </div>
-                <div class="rounded-xl border border-gray-800 bg-gray-800/60 p-3">
-                  <div class="text-xs text-gray-400">Objetivo mensual</div>
-                  <div class="text-2xl font-bold text-white tabular-nums">{{ attendanceSummary.target_hhmm || '00:00' }}</div>
-                </div>
-                <div class="rounded-xl border border-gray-800 bg-gray-800/60 p-3">
-                  <div class="text-xs text-gray-400">Cumplimiento</div>
-                  <div class="text-2xl font-bold text-white">{{ attendanceSummary.compliance_percent || 0 }}%</div>
-                </div>
-                <div class="rounded-xl border border-gray-800 bg-gray-800/60 p-3">
-                  <div class="text-xs text-gray-400">Días con fichaje</div>
-                  <div class="text-2xl font-bold text-white">{{ attendanceSummary.worked_days || 0 }} / {{ attendanceSummary.working_days || 0 }}</div>
-                  <div class="text-xs text-gray-500 mt-1">Faltantes: {{ attendanceSummary.missing_days || 0 }}</div>
-                </div>
-              </div>
 
-              <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mt-3">
-                <div class="rounded-xl border border-gray-800 bg-gray-800/60 p-3">
-                  <div class="text-xs text-gray-400">Solicitudes</div>
-                  <div class="text-2xl font-bold text-white">{{ attendanceSummary.requests_total || 0 }}</div>
-                </div>
-                <div class="rounded-xl border border-gray-800 bg-gray-800/60 p-3">
-                  <div class="text-xs text-gray-400">Pendientes</div>
-                  <div class="text-2xl font-bold text-amber-300">{{ attendanceSummary.requests_pending || 0 }}</div>
-                </div>
-                <div class="rounded-xl border border-gray-800 bg-gray-800/60 p-3">
-                  <div class="text-xs text-gray-400">Aprobadas</div>
-                  <div class="text-2xl font-bold text-emerald-300">{{ attendanceSummary.requests_approved || 0 }}</div>
-                </div>
-                <div class="rounded-xl border border-gray-800 bg-gray-800/60 p-3">
-                  <div class="text-xs text-gray-400">Rechazadas</div>
-                  <div class="text-2xl font-bold text-red-300">{{ attendanceSummary.requests_rejected || 0 }}</div>
-                </div>
-              </div>
-
-              <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
-                <div class="rounded-xl border border-gray-800 bg-gray-800/40 p-4">
-                  <div class="text-sm text-gray-200 mb-3">Horas por día</div>
-                  <div class="space-y-2">
-                    <div v-for="b in dailyBars" :key="b.date" class="grid grid-cols-[74px_1fr_48px] items-center gap-2">
-                      <div class="text-[11px] text-gray-400">{{ b.label }}</div>
-                      <div class="h-2 rounded-full bg-gray-700 overflow-hidden">
-                        <div class="h-2 rounded-full bg-cyan-400" :style="{ width: `${b.percent}%` }"></div>
-                      </div>
-                      <div class="text-[11px] text-gray-300 tabular-nums text-right">{{ b.hhmm }}</div>
-                    </div>
-                    <div v-if="!dailyBars.length" class="text-xs text-gray-500">Sin datos para graficar.</div>
+                <div class="rounded-2xl border border-gray-800 bg-gray-900 p-4">
+                  <div class="text-xs text-gray-400">Asistencia</div>
+                  <div class="mt-1 flex items-baseline gap-1.5">
+                    <span class="text-2xl font-bold text-white tabular-nums">{{ workedDaysPercent }}%</span>
+                    <span class="text-xs text-gray-500 tabular-nums">{{ attendanceSummary.worked_days || 0 }}/{{ attendanceSummary.working_days || 0 }} días</span>
+                  </div>
+                  <div class="mt-3 h-1.5 rounded-full bg-gray-800 overflow-hidden">
+                    <div class="h-full rounded-full" :style="{ width: `${workedDaysPercent}%`, backgroundColor: VIZ.series }"></div>
+                  </div>
+                  <div class="mt-1.5 text-[11px]" :class="stats.absences ? 'text-red-300' : 'text-gray-400'">
+                    {{ stats.absences }} ausencia(s) sin fichaje
                   </div>
                 </div>
 
-                <div class="rounded-xl border border-gray-800 bg-gray-800/40 p-4">
-                  <div class="text-sm text-gray-200 mb-3">Distribución del mes</div>
-                  <div class="space-y-3">
-                    <div>
-                      <div class="flex justify-between text-xs text-gray-400 mb-1">
-                        <span>Trabajado vs Objetivo</span>
-                        <span>{{ attendanceSummary.compliance_percent || 0 }}%</span>
-                      </div>
-                      <div class="h-3 rounded-full bg-gray-700 overflow-hidden">
-                        <div class="h-3 rounded-full bg-emerald-400" :style="{ width: `${workedVsTargetPercent}%` }"></div>
+                <div class="rounded-2xl border border-gray-800 bg-gray-900 p-4">
+                  <div class="text-xs text-gray-400">Puntualidad</div>
+                  <div class="mt-1 flex items-baseline gap-1.5">
+                    <span class="text-2xl font-bold text-white tabular-nums">{{ stats.punctualityPct === null ? '—' : `${stats.punctualityPct}%` }}</span>
+                    <span class="text-xs text-gray-500">a tiempo</span>
+                  </div>
+                  <div class="mt-3 text-[11px] text-gray-400 space-y-0.5">
+                    <div>Entrada media: <span class="text-gray-200 tabular-nums">{{ stats.avgEntry || '—' }}</span><template v-if="stats.scheduleStart"> · horario {{ stats.scheduleStart }}</template></div>
+                    <div :class="stats.lateDays ? 'text-amber-300' : ''">{{ stats.lateDays }} llegada(s) tarde (+{{ LATE_TOLERANCE }} min)</div>
+                  </div>
+                </div>
+
+                <div class="rounded-2xl border border-gray-800 bg-gray-900 p-4">
+                  <div class="text-xs text-gray-400">Promedio por día</div>
+                  <div class="mt-1 flex items-baseline gap-1.5">
+                    <span class="text-2xl font-bold text-white tabular-nums">{{ stats.avgDay || '—' }}</span>
+                    <span v-if="stats.dailyTarget" class="text-xs text-gray-500 tabular-nums">/ {{ stats.dailyTarget }}</span>
+                  </div>
+                  <div class="mt-3 text-[11px] text-gray-400 space-y-0.5">
+                    <div>Horas extra: <span class="text-gray-200 tabular-nums">{{ stats.overtime }}</span></div>
+                    <div>Horas de menos: <span class="text-gray-200 tabular-nums">{{ stats.shortfall }}</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- hours per day vs daily target -->
+              <div class="rounded-2xl border border-gray-800 bg-gray-900 p-4">
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                  <h3 class="text-sm font-semibold text-white">Horas por día</h3>
+                  <div class="flex items-center gap-4 text-[11px] text-gray-400">
+                    <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm" :style="{ backgroundColor: VIZ.series }"></span> Trabajado</span>
+                    <span v-if="stats.dailyTargetMin" class="inline-flex items-center gap-1.5"><span class="w-4 border-t-2 border-dashed border-gray-400"></span> Objetivo {{ stats.dailyTarget }}</span>
+                    <span class="inline-flex items-center gap-1.5"><span class="w-3 h-1 rounded-sm" :style="{ backgroundColor: VIZ.critical }"></span> Ausencia</span>
+                  </div>
+                </div>
+                <div v-if="!stats.days.length" class="py-10 text-center text-sm text-gray-500">No hay días laborables en este mes.</div>
+                <div v-else class="relative">
+                  <!-- y scale -->
+                  <div class="absolute inset-y-0 left-0 w-8 flex flex-col justify-between text-[10px] text-gray-500 tabular-nums pb-5" aria-hidden="true">
+                    <span>{{ Math.round(stats.maxMin / 60) }}h</span><span>{{ Math.round(stats.maxMin / 120) }}h</span><span>0h</span>
+                  </div>
+                  <div class="ml-8 relative h-48">
+                    <!-- grid + daily target, same box as the bars (pb-5 = day labels) -->
+                    <div class="absolute inset-0 pb-5 pointer-events-none" aria-hidden="true">
+                      <div class="relative h-full">
+                        <div class="absolute inset-x-0 top-0 border-t border-gray-800"></div>
+                        <div class="absolute inset-x-0 top-1/2 border-t border-gray-800"></div>
+                        <div class="absolute inset-x-0 bottom-0 border-t border-gray-700"></div>
+                        <div
+                          v-if="stats.dailyTargetMin"
+                          class="absolute inset-x-0 z-10 border-t-2 border-dashed border-gray-400/70"
+                          :style="{ bottom: `${(stats.dailyTargetMin / stats.maxMin) * 100}%` }"
+                        ></div>
                       </div>
                     </div>
-                    <div>
-                      <div class="flex justify-between text-xs text-gray-400 mb-1">
-                        <span>Días fichados</span>
-                        <span>{{ workedDaysPercent }}%</span>
-                      </div>
-                      <div class="h-3 rounded-full bg-gray-700 overflow-hidden">
-                        <div class="h-3 rounded-full bg-blue-400" :style="{ width: `${workedDaysPercent}%` }"></div>
+                    <div class="absolute inset-0 flex items-end gap-[2px] pb-5">
+                      <div
+                        v-for="d in stats.days"
+                        :key="d.date"
+                        class="group relative flex-1 h-full flex flex-col justify-end items-center"
+                        tabindex="0"
+                        :aria-label="`${d.label}: ${d.worked ? d.hhmm : d.future ? 'pendiente' : 'sin fichaje'}`"
+                      >
+                        <div
+                          v-if="d.minutes > 0"
+                          class="w-full max-w-[18px] rounded-t-[4px] transition-opacity group-hover:opacity-80"
+                          :style="{ height: `${Math.max(2, (d.minutes / stats.maxMin) * 100)}%`, backgroundColor: VIZ.series }"
+                        ></div>
+                        <div v-else-if="d.absent" class="w-full max-w-[18px] h-1 rounded-sm" :style="{ backgroundColor: VIZ.critical }"></div>
+                        <div v-else class="w-full max-w-[18px] h-px bg-gray-700"></div>
+                        <span class="absolute -bottom-5 text-[9px] text-gray-500 tabular-nums">{{ d.day }}</span>
+                        <!-- tooltip -->
+                        <div class="pointer-events-none absolute bottom-full mb-1 hidden group-hover:block group-focus:block z-20 whitespace-nowrap rounded-lg border border-gray-700 bg-gray-950 px-2.5 py-1.5 text-[11px] text-gray-200 shadow-xl">
+                          <div class="font-medium capitalize">{{ d.label }}</div>
+                          <div class="tabular-nums">{{ d.worked ? `${d.hhmm} trabajadas` : d.future ? 'Pendiente' : d.holiday ? `Festivo: ${d.holiday}` : 'Sin fichaje' }}</div>
+                          <div v-if="d.entry" class="text-gray-400 tabular-nums">Entrada {{ d.entry }}<template v-if="d.lateMin > LATE_TOLERANCE"> · {{ d.lateMin }} min tarde</template></div>
+                        </div>
                       </div>
                     </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <!-- punctuality: minutes early/late vs scheduled start -->
+                <div class="rounded-2xl border border-gray-800 bg-gray-900 p-4">
+                  <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <h3 class="text-sm font-semibold text-white">Puntualidad de entrada</h3>
+                    <div class="flex items-center gap-4 text-[11px] text-gray-400">
+                      <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm" :style="{ backgroundColor: VIZ.good }"></span> Antes / a tiempo</span>
+                      <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm" :style="{ backgroundColor: VIZ.serious }"></span> Tarde</span>
+                    </div>
+                  </div>
+                  <p v-if="!stats.scheduleStart" class="text-sm text-gray-500 py-6 text-center">El empleado no tiene horario asignado.</p>
+                  <p v-else-if="!stats.entries.length" class="text-sm text-gray-500 py-6 text-center">Sin fichajes este mes.</p>
+                  <div v-else class="space-y-1">
+                    <div v-for="e in stats.entries" :key="e.date" class="grid grid-cols-[52px_1fr_1fr_64px] items-center gap-2 text-[11px]">
+                      <span class="text-gray-400 tabular-nums">{{ e.short }}</span>
+                      <!-- early side (right-aligned towards 0) -->
+                      <div class="flex justify-end">
+                        <div v-if="e.diff <= 0" class="h-3 rounded-l-[4px]" :style="{ width: `${Math.max(3, (Math.min(-e.diff, stats.maxDiff) / stats.maxDiff) * 100)}%`, backgroundColor: VIZ.good }"></div>
+                      </div>
+                      <div class="flex border-l border-gray-600">
+                        <div v-if="e.diff > 0" class="h-3 rounded-r-[4px]" :style="{ width: `${Math.max(3, (Math.min(e.diff, stats.maxDiff) / stats.maxDiff) * 100)}%`, backgroundColor: e.diff > LATE_TOLERANCE ? VIZ.serious : VIZ.good }"></div>
+                      </div>
+                      <span class="text-right tabular-nums" :class="e.diff > LATE_TOLERANCE ? 'text-amber-300' : 'text-gray-300'">
+                        {{ e.entry }} <span class="text-gray-500">({{ e.diff > 0 ? '+' : '' }}{{ e.diff }}′)</span>
+                      </span>
+                    </div>
+                    <p class="pt-2 text-[10px] text-gray-500">Minutos respecto a la entrada del horario ({{ stats.scheduleStart }}). Tolerancia: {{ LATE_TOLERANCE }} min.</p>
+                  </div>
+                </div>
+
+                <div class="space-y-4">
+                  <!-- month distribution -->
+                  <div class="rounded-2xl border border-gray-800 bg-gray-900 p-4">
+                    <h3 class="text-sm font-semibold text-white mb-3">Días laborables del mes</h3>
+                    <div class="flex h-4 w-full gap-[2px] overflow-hidden rounded-[4px]" role="img" :aria-label="stats.distribution.map(s => `${s.label}: ${s.value}`).join(', ')">
+                      <div
+                        v-for="s in stats.distribution.filter(s => s.value > 0)"
+                        :key="s.key"
+                        class="h-full first:rounded-l-[4px] last:rounded-r-[4px]"
+                        :style="{ flexGrow: s.value, backgroundColor: s.color }"
+                        :title="`${s.label}: ${s.value}`"
+                      ></div>
+                    </div>
+                    <ul class="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                      <li v-for="s in stats.distribution" :key="s.key" class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-sm shrink-0" :style="{ backgroundColor: s.color }"></span>
+                        <span class="text-gray-400 flex-1">{{ s.label }}</span>
+                        <span class="text-gray-100 tabular-nums font-medium">{{ s.value }}</span>
+                      </li>
+                    </ul>
+                  </div>
+
+                  <!-- requests by status -->
+                  <div class="rounded-2xl border border-gray-800 bg-gray-900 p-4">
+                    <div class="flex items-baseline justify-between mb-3">
+                      <h3 class="text-sm font-semibold text-white">Solicitudes del mes</h3>
+                      <span class="text-xs text-gray-400 tabular-nums">{{ attendanceSummary.requests_total || 0 }} en total</span>
+                    </div>
+                    <p v-if="!attendanceSummary.requests_total" class="text-sm text-gray-500">Sin solicitudes este mes.</p>
+                    <template v-else>
+                      <div class="flex h-4 w-full gap-[2px] overflow-hidden rounded-[4px]">
+                        <div
+                          v-for="s in requestSegments.filter(s => s.value > 0)"
+                          :key="s.key"
+                          class="h-full"
+                          :style="{ flexGrow: s.value, backgroundColor: s.color }"
+                          :title="`${s.label}: ${s.value}`"
+                        ></div>
+                      </div>
+                      <ul class="mt-3 grid grid-cols-3 gap-2 text-xs">
+                        <li v-for="s in requestSegments" :key="s.key" class="rounded-lg bg-gray-800/60 px-2.5 py-2">
+                          <div class="flex items-center gap-1.5 text-gray-400">
+                            <span aria-hidden="true">{{ s.icon }}</span>{{ s.label }}
+                          </div>
+                          <div class="text-lg font-bold text-white tabular-nums">{{ s.value }}</div>
+                        </li>
+                      </ul>
+                    </template>
                   </div>
                 </div>
               </div>
@@ -281,12 +404,12 @@
                       <input v-model="form.birth_date" type="date" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
                     </div>
                     <div>
-                      <label class="block text-xs text-gray-400 mb-1">DNI</label>
-                      <input v-model="form.dni" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
+                      <label class="block text-xs text-gray-400 mb-1">DNI / NIE * <span class="text-gray-500 font-normal">(las nóminas se reparten por DNI)</span></label>
+                      <input v-model="form.dni" required maxlength="30" autocapitalize="characters" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
                     </div>
                     <div>
-                      <label class="block text-xs text-gray-400 mb-1">Nro seguridad social</label>
-                      <input v-model="form.social_security_number" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
+                      <label class="block text-xs text-gray-400 mb-1">Nº de la Seguridad Social *</label>
+                      <input v-model="form.social_security_number" required maxlength="50" inputmode="numeric" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
                     </div>
                     <div>
                       <label class="block text-xs text-gray-400 mb-1">Tipo de contrato</label>
@@ -546,6 +669,103 @@ const selectedTemplates = computed(() => {
   const ids = new Set<number>(selectedScheduleTemplateIds.value)
   return scheduleTemplates.value.filter((tpl: any) => ids.has(Number(tpl.id)))
 })
+
+// ── Estadísticas (RRHH) ──
+// Colors: categorical slot 1 for "worked", the status palette for good /
+// late / absent (validated on the dark surface, see the dataviz guide).
+const VIZ = {
+  series: '#3987e5',
+  good: '#0ca30c',
+  warning: '#fab219',
+  serious: '#ec835a',
+  critical: '#d03b3b',
+  neutral: '#6b7280',
+  pending: '#374151',
+}
+/** minutes after the scheduled start that still count as on time */
+const LATE_TOLERANCE = 5
+
+const scheduleInfo = ref<{ start_time?: string | null; daily_target_minutes?: number | null }>({})
+
+const hhmmToMin = (v?: string | null) => {
+  const m = String(v || '').match(/^(\d{1,2}):(\d{2})/)
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null
+}
+const minToHHMM = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(Math.round(min % 60)).padStart(2, '0')}`
+
+const stats = computed(() => {
+  const rows = Array.isArray(attendanceRows.value) ? attendanceRows.value : []
+  const todayIso = localIsoDate()
+  const startMin = hhmmToMin(scheduleInfo.value?.start_time)
+  const dailyTargetMin = Number(scheduleInfo.value?.daily_target_minutes || 0)
+
+  const days = rows.map((r: any) => {
+    const minutes = parseHHMM(r?.hours_worked) || 0
+    const entryMin = hhmmToMin(r?.start_time)
+    const worked = minutes > 0 || entryMin !== null
+    const future = String(r.date) > todayIso
+    const working = r.is_working_day !== false
+    const date = parseDate(r.date)
+    return {
+      date: String(r.date),
+      day: date ? date.getDate() : '',
+      label: date ? date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' }) : r.date,
+      short: date ? date.toLocaleDateString('es-ES', { weekday: 'short', day: '2-digit' }) : r.date,
+      minutes,
+      hhmm: minToHHMM(minutes),
+      worked,
+      future,
+      working,
+      holiday: r.holiday || null,
+      absent: working && !worked && !future,
+      entry: entryMin !== null ? minToHHMM(entryMin) : null,
+      entryMin,
+      lateMin: entryMin !== null && startMin !== null ? entryMin - startMin : 0,
+    }
+  })
+
+  const workedDays = days.filter((d) => d.minutes > 0)
+  const entries = days
+    .filter((d) => d.entryMin !== null && startMin !== null)
+    .map((d) => ({ date: d.date, short: d.short, entry: d.entry, diff: d.lateMin }))
+  const onTime = entries.filter((e) => e.diff <= LATE_TOLERANCE).length
+  const overtime = workedDays.reduce((acc, d) => acc + (dailyTargetMin ? Math.max(0, d.minutes - dailyTargetMin) : 0), 0)
+  const shortfall = workedDays.reduce((acc, d) => acc + (dailyTargetMin ? Math.max(0, dailyTargetMin - d.minutes) : 0), 0)
+  const maxWorked = days.reduce((acc, d) => Math.max(acc, d.minutes), 0)
+  const avgEntryMin = entries.length ? Math.round(entries.reduce((a, e) => a + (hhmmToMin(e.entry) || 0), 0) / entries.length) : null
+
+  const count = (fn: (d: any) => boolean) => days.filter(fn).length
+  return {
+    days,
+    entries,
+    // y axis: whole hours, a bit above the highest bar / target
+    maxMin: Math.max(60, Math.ceil(Math.max(maxWorked, dailyTargetMin) * 1.1 / 60) * 60),
+    maxDiff: Math.max(15, ...entries.map((e) => Math.abs(e.diff))),
+    dailyTargetMin,
+    dailyTarget: dailyTargetMin ? minToHHMM(dailyTargetMin) : null,
+    scheduleStart: startMin !== null ? minToHHMM(startMin) : null,
+    punctualityPct: entries.length ? Math.round((onTime / entries.length) * 100) : null,
+    lateDays: entries.length - onTime,
+    avgEntry: avgEntryMin !== null ? minToHHMM(avgEntryMin) : null,
+    avgDay: workedDays.length ? minToHHMM(workedDays.reduce((a, d) => a + d.minutes, 0) / workedDays.length) : null,
+    overtime: minToHHMM(overtime),
+    shortfall: minToHHMM(shortfall),
+    absences: count((d) => d.absent),
+    distribution: [
+      { key: 'worked', label: 'Trabajados', value: count((d) => d.working && d.worked), color: VIZ.series },
+      { key: 'absent', label: 'Ausencias', value: count((d) => d.absent), color: VIZ.critical },
+      { key: 'holiday', label: 'Festivos', value: count((d) => !d.working && !!d.holiday), color: VIZ.neutral },
+      { key: 'future', label: 'Por venir', value: count((d) => d.working && d.future && !d.worked), color: VIZ.pending },
+    ],
+  }
+})
+
+const requestSegments = computed(() => [
+  { key: 'pending', label: 'Pendientes', icon: '⏳', value: Number(attendanceSummary.value?.requests_pending || 0), color: VIZ.warning },
+  { key: 'approved', label: 'Aprobadas', icon: '✓', value: Number(attendanceSummary.value?.requests_approved || 0), color: VIZ.good },
+  { key: 'rejected', label: 'Rechazadas', icon: '✕', value: Number(attendanceSummary.value?.requests_rejected || 0), color: VIZ.critical },
+])
+
 const dailyBars = computed(() => {
   const rows = Array.isArray(attendanceRows.value) ? attendanceRows.value : []
   const withHours = rows
@@ -714,6 +934,7 @@ async function loadAttendance() {
     })
     attendanceRows.value = res?.rows || []
     attendanceSummary.value = res?.summary || attendanceSummary.value
+    scheduleInfo.value = res?.schedule || {}
   } catch (e) {
     console.error('employee attendance load failed', e)
     attendanceRows.value = []

@@ -155,6 +155,7 @@ class AuthController extends Controller
         // "Ver como" session (read-only): who is looking and until when
         $payload['viewed_by'] = $this->viewAsViewer($request);
         $payload['can_view_as'] = $user->hasPermission('employees.view_as');
+        $payload['can_manage_payroll'] = $user->hasPermission('payroll.manage');
         $payload['is_admin'] = $user->isAdmin();
         // birthday / work anniversary today -> the frontend plays a celebration
         $payload['celebrations_today'] = app(CelebrationService::class)->todayFor($user);

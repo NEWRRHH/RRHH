@@ -182,6 +182,11 @@ const canSeeDocuments = computed(() => {
   const u: any = user.value || {}
   return Boolean(u?.can_view_documents) || (Array.isArray(u?.permissions) && u.permissions.includes('documents.view'))
 })
+// Nóminas module: upload the gestoría payslips and send them (payroll.manage)
+const canManagePayroll = computed(() => {
+  const u: any = user.value || {}
+  return Boolean(u?.can_manage_payroll) || (Array.isArray(u?.permissions) && u.permissions.includes('payroll.manage'))
+})
 const canSeeReports = computed(() => {
   const u: any = user.value || {}
   return Boolean(u?.can_view_reports) || (Array.isArray(u?.permissions) && u.permissions.includes('reports.view'))
@@ -294,6 +299,14 @@ const navItems = computed(() => [
       <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6M9 8h6M7 4h10a2 2 0 012 2v12a2 2 0 01-2 2H7a2 2 0 01-2-2V6a2 2 0 012-2z"/>
     </svg>`,
     badge: requestsCount
+  }] : []),
+  ...(canManagePayroll.value ? [{
+    label: 'Nóminas',
+    to: '/nominas',
+    active: route.path.startsWith('/nominas'),
+    icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+    </svg>`
   }] : []),
   ...(canSeeDocuments.value ? [{
     label: 'Documentos',

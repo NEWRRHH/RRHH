@@ -66,7 +66,7 @@ class CompanyRegistrationTest extends TestCase
 
         $this->withToken($token)->getJson('/api/employees')->assertOk()->assertJsonCount(1, 'employees');
         $this->withToken($token)->postJson('/api/employees', [
-            'name' => 'Juan', 'email' => 'juan@acme.test', 'password' => 'Secreta123!', 'password_confirmation' => 'Secreta123!',
+            'name' => 'Juan', 'dni' => '11111111A', 'social_security_number' => '280000000001', 'email' => 'juan@acme.test', 'password' => 'Secreta123!', 'password_confirmation' => 'Secreta123!',
         ])->assertCreated();
     }
 

@@ -167,7 +167,7 @@ class TenantIsolationTest extends TestCase
     public function test_cannot_reference_other_company_ids(): void
     {
         $this->actingAsAdminOf($this->a);
-        $base = ['name' => 'Nuevo', 'password' => 'Nuevo1234!', 'password_confirmation' => 'Nuevo1234!'];
+        $base = ['name' => 'Nuevo', 'dni' => '22222222B', 'social_security_number' => '280000000002', 'password' => 'Nuevo1234!', 'password_confirmation' => 'Nuevo1234!'];
 
         $this->postJson('/api/employees', $base + ['email' => 'n1@alpha.test', 'team_id' => $this->b['team']->id])
             ->assertStatus(422)->assertJsonValidationErrors('team_id');
@@ -204,7 +204,7 @@ class TenantIsolationTest extends TestCase
         $this->assertSame($companyA, Role::withoutGlobalScopes()->find($roleId)->company_id);
 
         $employeeId = $this->postJson('/api/employees', [
-            'name' => 'Nuevo', 'email' => 'nuevo@alpha.test', 'password' => 'Nuevo1234!', 'password_confirmation' => 'Nuevo1234!',
+            'name' => 'Nuevo', 'dni' => '33333333C', 'social_security_number' => '280000000003', 'email' => 'nuevo@alpha.test', 'password' => 'Nuevo1234!', 'password_confirmation' => 'Nuevo1234!',
             'role_id' => $this->a['roles']['employee'],
         ])->assertCreated()->json('employee.id');
         $this->assertSame($companyA, User::withoutGlobalScopes()->find($employeeId)->company_id);

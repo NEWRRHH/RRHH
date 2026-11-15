@@ -11,7 +11,7 @@ use Illuminate\Console\Command;
 /**
  * Creates the folder tree of every company up front:
  *
- *   companies/{slug}/documents, chat, nominas/{"Juan Pérez - 30111222"}, avatars
+ *   companies/{slug}/documents, chat, nominas/{DNI}, avatars
  *
  * so RRHH can drop payslips right away. Safe to run again (only adds what is
  * missing). New companies and new employees get their folders automatically.

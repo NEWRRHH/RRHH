@@ -37,6 +37,7 @@ final class DefaultRoles
         'holidays.manage',
         'dashboard.manage',
         'employees.view_as',
+        'payroll.manage',
     ];
 
     /** Self-service permissions of a regular employee. */

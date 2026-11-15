@@ -231,12 +231,12 @@
               </select>
             </div>
             <div>
-              <label class="block text-xs text-gray-400 mb-1">DNI</label>
-              <input v-model="createForm.dni" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
+              <label class="block text-xs text-gray-400 mb-1">DNI / NIE * <span class="text-gray-500 font-normal">(las nóminas se reparten por DNI)</span></label>
+              <input v-model="createForm.dni" required maxlength="30" autocapitalize="characters" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
             </div>
             <div>
-              <label class="block text-xs text-gray-400 mb-1">Nro seguridad social</label>
-              <input v-model="createForm.social_security_number" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
+              <label class="block text-xs text-gray-400 mb-1">Nº de la Seguridad Social *</label>
+              <input v-model="createForm.social_security_number" required maxlength="50" inputmode="numeric" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
             </div>
             <div>
               <label class="block text-xs text-gray-400 mb-1">Fecha de nacimiento</label>
