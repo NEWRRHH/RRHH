@@ -26,18 +26,21 @@
           </div>
         </div>
 
-        <div v-if="requested" class="rounded-xl bg-teal-500/5 border border-teal-500/10 px-4 py-3">
-          <div class="text-xs text-gray-400">Días de vacaciones solicitadas</div>
-          <div class="text-3xl font-extrabold text-teal-300 leading-none tabular-nums mt-1">
-            {{ daysText(requested) }}
+        <!-- requested + remaining: smaller, side by side (like the hours card) -->
+        <div class="grid gap-3" :class="requested ? 'grid-cols-2' : 'grid-cols-1'">
+          <div v-if="requested" class="rounded-xl bg-teal-500/5 border border-teal-500/10 px-4 py-3">
+            <div class="text-xs text-gray-400">Días solicitados</div>
+            <div class="text-xl font-bold text-teal-300 tabular-nums mt-0.5">
+              {{ daysText(requested) }}
+            </div>
           </div>
-        </div>
 
-        <!-- always shown: it's what the person can still request -->
-        <div class="rounded-xl bg-teal-500/5 border border-teal-500/10 px-4 py-3">
-          <div class="text-xs text-gray-400">Días de vacaciones restantes</div>
-          <div class="text-3xl font-extrabold text-emerald-300 leading-none tabular-nums mt-1">
-            {{ remaining != null ? daysText(remaining) : '--' }}
+          <!-- always shown: it's what the person can still request -->
+          <div class="rounded-xl bg-teal-500/5 border border-teal-500/10 px-4 py-3">
+            <div class="text-xs text-gray-400">Días restantes</div>
+            <div class="text-xl font-bold text-emerald-300 tabular-nums mt-0.5">
+              {{ remaining != null ? daysText(remaining) : '--' }}
+            </div>
           </div>
         </div>
       </div>
