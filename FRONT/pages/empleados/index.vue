@@ -257,6 +257,15 @@
               </select>
             </div>
             <div>
+              <label class="block text-xs text-gray-400 mb-1">Modalidad de trabajo</label>
+              <select v-model="createForm.work_mode" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white">
+                <option value="">Sin definir (oficina; teletrabajo a pedido)</option>
+                <option value="office">Solo oficina</option>
+                <option value="remote">Solo teletrabajo</option>
+              </select>
+              <p class="mt-1 text-[11px] text-gray-500">{{ workModeHint(createForm.work_mode) }}</p>
+            </div>
+            <div>
               <label class="block text-xs text-gray-400 mb-1">Inicio de contrato</label>
               <input v-model="createForm.contract_start_date" type="date" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
             </div>
@@ -377,6 +386,7 @@ const createForm = ref<any>({
   dni: '',
   social_security_number: '',
   contract_type: '',
+  work_mode: '',
   contract_start_date: '',
   vacation_days_total: 0,
   schedule_template_ids: [],
@@ -512,6 +522,7 @@ function resetCreateForm() {
     dni: '',
     social_security_number: '',
     contract_type: '',
+    work_mode: '',
     contract_start_date: '',
     vacation_days_total: 0,
     schedule_template_ids: [],
@@ -645,6 +656,7 @@ async function submitCreateEmployee() {
     data.append('dni', createForm.value.dni || '')
     data.append('social_security_number', createForm.value.social_security_number || '')
     data.append('contract_type', createForm.value.contract_type || '')
+    data.append('work_mode', createForm.value.work_mode || '')
     data.append('contract_start_date', createForm.value.contract_start_date || '')
     data.append('vacation_days_total', String(Number(createForm.value.vacation_days_total || 0)))
 
@@ -720,4 +732,11 @@ onBeforeMount(async () => {
 
   await loadEmployees()
 })
+
+// Modalidad de trabajo: '' = office + remote on request, office / remote = fixed
+function workModeHint(mode: string) {
+  if (mode === 'remote') return 'Siempre de teletrabajo, sin necesidad de solicitarlo.'
+  if (mode === 'office') return 'Siempre en la oficina; no puede solicitar teletrabajo.'
+  return 'En la oficina; teletrabajo solo los días que solicite y se aprueben.'
+}
 </script>

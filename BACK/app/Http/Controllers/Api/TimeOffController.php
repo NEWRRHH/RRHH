@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 use App\Models\Attendance;
 use App\Models\Event;
 use App\Models\EventType;
+use App\Models\User;
 use App\Services\ScheduleService;
 use App\Support\WorkTime;
 
@@ -230,6 +231,8 @@ class TimeOffController extends Controller
         $eventTypes = EventType::table()
             ->whereNull('deleted_at')
             ->where(fn ($q) => $q->whereNull('code')->orWhere('code', '<>', EventType::ATTENDANCE_REQUEST))
+            // with a fixed modalidad (solo oficina / solo teletrabajo) there's no remote work to ask for
+            ->when($user->work_mode !== null, fn ($q) => $q->where(fn ($w) => $w->whereNull('code')->orWhere('code', '<>', EventType::REMOTE_WORK)))
             ->orderBy('name', 'asc')
             ->get(['id', 'name', 'code']);
 
@@ -348,7 +351,7 @@ class TimeOffController extends Controller
             'color' => 'nullable|string|max:20',
         ]);
 
-        if ($typeError = $this->checkRequestType((int) $data['event_type_id'], $data['description'] ?? null)) {
+        if ($typeError = $this->checkRequestType((int) $data['event_type_id'], $data['description'] ?? null, $user)) {
             return response()->json(['message' => $typeError], 422);
         }
         $data['title'] = $this->eventTypeName((int) $data['event_type_id']);
@@ -509,11 +512,18 @@ class TimeOffController extends Controller
      * Rules of the request type: attendance requests ("Fichaje") are only made
      * from Reportes > Ausencias, and General / Permiso need a description.
      */
-    private function checkRequestType(int $typeId, ?string $description): ?string
+    private function checkRequestType(int $typeId, ?string $description, ?User $user = null): ?string
     {
         $code = EventType::table()->where('id', $typeId)->value('code');
         if ($code === EventType::ATTENDANCE_REQUEST) {
             return 'Los fichajes se solicitan desde Reportes > Ausencias.';
+        }
+        // modalidad fija (users.work_mode): nothing to request
+        if ($code === EventType::REMOTE_WORK && $user?->work_mode === User::WORK_MODE_OFFICE) {
+            return 'Tu modalidad de trabajo es solo oficina: no puedes solicitar teletrabajo.';
+        }
+        if ($code === EventType::REMOTE_WORK && $user?->work_mode === User::WORK_MODE_REMOTE) {
+            return 'Tu modalidad de trabajo es teletrabajo: no hace falta solicitarlo.';
         }
         if (in_array($code, EventType::DESCRIPTION_REQUIRED, true) && trim((string) $description) === '') {
             return 'La descripción es obligatoria para este tipo de evento.';
@@ -561,7 +571,7 @@ class TimeOffController extends Controller
             'color' => 'nullable|string|max:20',
         ]);
 
-        if ($typeError = $this->checkRequestType((int) $data['event_type_id'], $data['description'] ?? null)) {
+        if ($typeError = $this->checkRequestType((int) $data['event_type_id'], $data['description'] ?? null, $user)) {
             return response()->json(['message' => $typeError], 422);
         }
         $data['title'] = $this->eventTypeName((int) $data['event_type_id']);

@@ -299,6 +299,15 @@
                       </select>
                     </div>
                     <div>
+                      <label class="block text-xs text-gray-400 mb-1">Modalidad de trabajo</label>
+                      <select v-model="form.work_mode" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white">
+                        <option value="">Sin definir (oficina; teletrabajo a pedido)</option>
+                        <option value="office">Solo oficina</option>
+                        <option value="remote">Solo teletrabajo</option>
+                      </select>
+                      <p class="mt-1 text-[11px] text-gray-500">{{ workModeHint(form.work_mode) }}</p>
+                    </div>
+                    <div>
                       <label class="block text-xs text-gray-400 mb-1">Inicio de contrato</label>
                       <input v-model="form.contract_start_date" type="date" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
                     </div>
@@ -489,6 +498,7 @@ const form = ref<any>({
   dni: '',
   social_security_number: '',
   contract_type: '',
+  work_mode: '',
   contract_start_date: '',
   vacation_days_total: 0,
   password: '',
@@ -671,6 +681,7 @@ async function loadEmployee() {
     form.value.dni = employee.dni || ''
     form.value.social_security_number = employee.social_security_number || ''
     form.value.contract_type = employee.contract_type || ''
+    form.value.work_mode = employee.work_mode || ''
     form.value.contract_start_date = employee.contract_start_date || ''
     form.value.vacation_days_total = Number(employee.vacation_days_total || 0)
     preview.value = resolvePhotoUrl(employee.photo || employee.profile_photo_path)
@@ -741,6 +752,7 @@ async function saveProfile() {
     data.append('dni', form.value.dni || '')
     data.append('social_security_number', form.value.social_security_number || '')
     data.append('contract_type', form.value.contract_type || '')
+    data.append('work_mode', form.value.work_mode || '')
     data.append('contract_start_date', form.value.contract_start_date || '')
     data.append('vacation_days_total', String(Number(form.value.vacation_days_total || 0)))
     if (form.value.password) {
@@ -830,5 +842,12 @@ onBeforeMount(async () => {
 })
 
 
+
+// Modalidad de trabajo: '' = office + remote on request, office / remote = fixed
+function workModeHint(mode: string) {
+  if (mode === 'remote') return 'Siempre de teletrabajo, sin necesidad de solicitarlo.'
+  if (mode === 'office') return 'Siempre en la oficina; no puede solicitar teletrabajo.'
+  return 'En la oficina; teletrabajo solo los días que solicite y se aprueben.'
+}
 </script>
 

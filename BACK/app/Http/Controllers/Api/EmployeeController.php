@@ -176,6 +176,8 @@ class EmployeeController extends Controller
             'dni' => 'nullable|string|max:30',
             'social_security_number' => 'nullable|string|max:50',
             'contract_type' => 'nullable|string|max:50',
+            // modalidad: null = office + remote on request, office = always office, remote = always remote
+            'work_mode' => 'nullable|in:office,remote',
             'contract_start_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
             'vacation_days_total' => 'nullable|integer|min:0|max:365',
             'start_time' => 'nullable|date_format:H:i',
@@ -209,6 +211,7 @@ class EmployeeController extends Controller
         $employee->dni = $data['dni'] ?? null;
         $employee->social_security_number = $data['social_security_number'] ?? null;
         $employee->contract_type = $data['contract_type'] ?? null;
+        $employee->work_mode = $data['work_mode'] ?? null;
         $employee->contract_start_date = $data['contract_start_date'] ?? null;
         $employee->vacation_days_total = isset($data['vacation_days_total']) ? (int) $data['vacation_days_total'] : 0;
 
@@ -572,6 +575,8 @@ class EmployeeController extends Controller
             'dni' => 'nullable|string|max:30',
             'social_security_number' => 'nullable|string|max:50',
             'contract_type' => 'nullable|string|max:50',
+            // modalidad: null = office + remote on request, office = always office, remote = always remote
+            'work_mode' => 'nullable|in:office,remote',
             'contract_start_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
             'vacation_days_total' => 'nullable|integer|min:0|max:365',
             'password' => ['nullable','confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
@@ -609,6 +614,7 @@ class EmployeeController extends Controller
         $employee->dni = $data['dni'] ?? null;
         $employee->social_security_number = $data['social_security_number'] ?? null;
         $employee->contract_type = $data['contract_type'] ?? null;
+        $employee->work_mode = $data['work_mode'] ?? null;
         $employee->contract_start_date = $data['contract_start_date'] ?? null;
         $employee->vacation_days_total = isset($data['vacation_days_total']) ? (int) $data['vacation_days_total'] : (int) ($employee->vacation_days_total ?? 0);
         if ($request->hasFile('photo')) {

@@ -68,6 +68,37 @@ class PresenceTest extends TestCase
         $this->postJson("/api/timeoff/requests/{$id}/review", ['decision' => 'approved'])->assertOk();
     }
 
+    public function test_fixed_work_mode(): void
+    {
+        // "solo teletrabajo": remote every day without asking, can't request it
+        $this->remote->forceFill(['work_mode' => User::WORK_MODE_REMOTE])->save();
+        // "solo oficina": never remote, can't request it either
+        $this->onVacation->forceFill(['work_mode' => User::WORK_MODE_OFFICE])->save();
+
+        Sanctum::actingAs($this->remote);
+        $types = collect($this->getJson('/api/timeoff/calendar?year=2026')->json('event_types'))->pluck('code');
+        $this->assertNotContains(EventType::REMOTE_WORK, $types);
+        $this->postJson('/api/timeoff/events', [
+            'event_type_id' => $this->type(EventType::REMOTE_WORK),
+            'start_date' => '2026-06-18', 'end_date' => '2026-06-18', 'all_day' => true,
+        ])->assertStatus(422);
+
+        Sanctum::actingAs($this->onVacation);
+        $this->postJson('/api/timeoff/events', [
+            'event_type_id' => $this->type(EventType::REMOTE_WORK),
+            'start_date' => '2026-06-18', 'end_date' => '2026-06-18', 'all_day' => true,
+        ])->assertStatus(422)->assertJsonPath('message', 'Tu modalidad de trabajo es solo oficina: no puedes solicitar teletrabajo.');
+        $this->postJson('/api/attendance/start')->assertOk();
+
+        $presence = $this->getJson('/api/presence/today')->assertOk();
+        $this->assertSame([$this->remote->id], $presence->json('remote'));   // without any request
+        $this->assertSame([$this->onVacation->id], $presence->json('office'));
+
+        // RRHH sets the modalidad from the employee form
+        Sanctum::actingAs($this->admin);
+        $this->getJson("/api/employees/{$this->remote->id}")->assertOk()->assertJsonPath('employee.work_mode', 'remote');
+    }
+
     public function test_remote_work_vacation_and_office_presence(): void
     {
         // "Teletrabajo" is a request type of the Vacaciones screen (title = type)

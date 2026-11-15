@@ -5,11 +5,13 @@ namespace App\Services;
 use App\Models\Attendance;
 use App\Models\Event;
 use App\Models\EventType;
+use App\Models\User;
 use Carbon\Carbon;
 
 /**
  * Where each person of the company is today:
- * - remote:   approved "Teletrabajo" covering today (house icon)
+ * - remote:   work_mode "remote" (always), or approved "Teletrabajo" covering
+ *             today for people without a fixed mode (house icon)
  * - vacation: approved "Vacaciones" covering today
  * - office:   clocked in today and not on remote work (building icon)
  * Tenant scoped (current company).
@@ -37,8 +39,18 @@ class PresenceService
             ->map(fn ($id) => (int) $id)
             ->all();
 
-        $remote = $approvedToday(EventType::REMOTE_WORK);
-        $vacation = array_values(array_diff($approvedToday(EventType::VACATION), $remote));
+        // modalidad (users.work_mode): "remote" = always remote, "office" =
+        // never remote (old requests ignored), null = remote on approved days
+        $modes = User::query()->whereNull('disabled_at')->whereNotNull('work_mode')->pluck('work_mode', 'id');
+        $alwaysRemote = $modes->filter(fn ($m) => $m === User::WORK_MODE_REMOTE)->keys()->map(fn ($id) => (int) $id)->all();
+        $officeOnly = $modes->filter(fn ($m) => $m === User::WORK_MODE_OFFICE)->keys()->map(fn ($id) => (int) $id)->all();
+
+        // vacation wins over remote work
+        $vacation = $approvedToday(EventType::VACATION);
+        $remote = array_values(array_diff(
+            array_merge(array_diff($approvedToday(EventType::REMOTE_WORK), $officeOnly), $alwaysRemote),
+            $vacation,
+        ));
 
         $working = Attendance::table()
             ->whereDate('date', $day->toDateString())
