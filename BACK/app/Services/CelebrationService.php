@@ -45,42 +45,48 @@ class CelebrationService
     }
 
     /**
-     * One row per person with their next birthday and next anniversary
-     * (either may be null), soonest of the two first. Keeps the card at one
-     * line per employee instead of two.
+     * The `$limit` next celebrations of the company (Configuración > Límites),
+     * grouped one row per person: a row only shows the events that made it
+     * into those next ones (birthday and/or anniversary, the other is null).
+     * Someone whose birthday just passed and whose anniversary is far away
+     * is not listed.
      */
-    public function upcoming(?Carbon $today = null): Collection
+    public function upcoming(?Carbon $today = null, ?int $limit = null): Collection
     {
         $today = ($today ?? Carbon::today())->copy()->startOfDay();
 
-        return User::query()
+        $events = User::query()
             ->where(fn ($q) => $q->whereNotNull('birth_date')->orWhereNotNull('hire_date'))
             ->get()
-            ->map(function (User $u) use ($today) {
-                $events = collect($this->eventsFor($u, $today))->keyBy('type');
-                if ($events->isEmpty()) {
-                    return null;
-                }
-                $pick = fn ($e) => $e ? ['date' => $e['date'], 'years' => $e['years'], 'is_today' => $e['is_today']] : null;
-                $first = $events->first();
-
-                return [
-                    'id' => $u->id,
-                    'user_id' => $u->id,
-                    'first_name' => $first['first_name'],
-                    'last_name' => $first['last_name'],
-                    'full_name' => $first['full_name'],
-                    'photo' => $first['photo'],
-                    'birthday' => $pick($events->get('birthday')),
-                    'anniversary' => $pick($events->get('anniversary')),
-                    // soonest of the two, used for sorting and the "today" highlight
-                    'date' => $events->min('date'),
-                    'is_today' => $events->contains('is_today', true),
-                ];
-            })
-            ->filter()
-            ->sortBy(fn ($row) => $row['date'] . str_pad((string) $row['id'], 10, '0', STR_PAD_LEFT))
+            ->flatMap(fn (User $u) => $this->eventsFor($u, $today))
+            ->sortBy(fn ($e) => $e['date'] . ($e['type'] === 'birthday' ? '0' : '1') . str_pad((string) $e['user_id'], 10, '0', STR_PAD_LEFT))
             ->values();
+
+        if ($limit !== null) {
+            $events = $events->take($limit);
+        }
+
+        $pick = fn ($e) => $e ? ['date' => $e['date'], 'years' => $e['years'], 'is_today' => $e['is_today']] : null;
+
+        // groupBy keeps the order of each person's first (soonest) event
+        return $events->groupBy('user_id')->map(function (Collection $personEvents) use ($pick) {
+            $byType = $personEvents->keyBy('type');
+            $first = $personEvents->first();
+
+            return [
+                'id' => $first['user_id'],
+                'user_id' => $first['user_id'],
+                'first_name' => $first['first_name'],
+                'last_name' => $first['last_name'],
+                'full_name' => $first['full_name'],
+                'photo' => $first['photo'],
+                'birthday' => $pick($byType->get('birthday')),
+                'anniversary' => $pick($byType->get('anniversary')),
+                // soonest shown event, used for the "today" highlight
+                'date' => $first['date'],
+                'is_today' => $personEvents->contains('is_today', true),
+            ];
+        })->values();
     }
 
     /**

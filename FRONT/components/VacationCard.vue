@@ -14,32 +14,29 @@
 
       <div v-if="loading" class="space-y-3 animate-pulse">
         <div class="h-14 rounded-xl bg-gray-800"></div>
-        <div class="h-px bg-gray-800"></div>
         <div class="h-16 rounded-xl bg-gray-800"></div>
       </div>
 
       <div v-else class="flex flex-col gap-3 relative">
-        <div class="rounded-xl bg-teal-500/5 border border-teal-500/10 px-4 py-3">
-          <div class="text-xs text-gray-400 mt-1">Proximas vacaciones en</div>
-          <div class="text-3xl font-extrabold text-teal-300 leading-none tabular-nums">
-            {{ daysUntilVacation ?? '--' }} dias
-          </div>
-        </div>
-
-        <div class="h-px bg-gray-800"></div>
-
-        <div class="rounded-xl bg-teal-500/5 border border-teal-500/10 px-4 py-3">
-          <div class="text-xs text-gray-400">Dias de vacaciones</div>
+        <!-- only when there are requested vacations ahead -->
+        <div v-if="hasUpcoming" class="rounded-xl bg-teal-500/5 border border-teal-500/10 px-4 py-3">
+          <div class="text-xs text-gray-400">Próximas vacaciones</div>
           <div class="text-3xl font-extrabold text-teal-300 leading-none tabular-nums mt-1">
-            {{ vacationDaysTotal ?? '--' }} dias
+            {{ daysUntilVacation === 0 ? 'Hoy' : `en ${daysText(daysUntilVacation!)}` }}
           </div>
         </div>
 
         <div class="rounded-xl bg-teal-500/5 border border-teal-500/10 px-4 py-3">
-          <div class="text-xs text-gray-400">Pendientes a solicitar</div>
-          <div class="text-3xl font-extrabold text-emerald-300 leading-none tabular-nums mt-1">
-            {{ pendingToRequest ?? '--' }} dias
+          <div class="text-xs text-gray-400">Días de vacaciones restantes</div>
+          <div class="flex items-baseline gap-2 mt-1">
+            <span class="text-3xl font-extrabold text-emerald-300 leading-none tabular-nums">
+              {{ remaining ?? '--' }}
+            </span>
+            <span class="text-sm text-gray-400">
+              {{ remaining === 1 ? 'día' : 'días' }}<template v-if="vacationDaysTotal != null"> de {{ vacationDaysTotal }}</template>
+            </span>
           </div>
+          <p v-if="!hasUpcoming" class="mt-2 text-[11px] text-gray-500">No tienes vacaciones solicitadas.</p>
         </div>
       </div>
     </div>
@@ -47,11 +44,17 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
+import { computed } from 'vue'
+
+const props = defineProps<{
   daysUntilVacation?: number | null
   vacationDaysTotal?: number | null
   pendingToRequest?: number | null
   remainingVacationDays?: number | null
   loading?: boolean
 }>()
+
+const hasUpcoming = computed(() => props.daysUntilVacation != null && props.daysUntilVacation >= 0)
+const remaining = computed(() => props.remainingVacationDays ?? props.pendingToRequest ?? null)
+const daysText = (n: number) => `${n} ${n === 1 ? 'día' : 'días'}`
 </script>

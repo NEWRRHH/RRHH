@@ -64,6 +64,32 @@ class CelebrationTest extends TestCase
         $this->assertNull($res[1]['anniversary']);
     }
 
+    public function test_card_only_shows_the_next_configured_celebrations(): void
+    {
+        // employee: anniversary today, birthday in 5 days
+        $this->employee->forceFill(['birth_date' => '1990-06-20', 'hire_date' => '2023-06-15'])->save();
+        // admin: birthday was yesterday (next one in a year), no hire date
+        $this->admin->forceFill(['birth_date' => '1985-06-14'])->save();
+
+        Sanctum::actingAs($this->admin);
+
+        // limit 1: only the anniversary, the far birthday line is not shown
+        $res = $this->getJson('/api/birthdays?limit=1')->assertOk()->assertJsonCount(1)->json();
+        $this->assertSame($this->employee->id, $res[0]['user_id']);
+        $this->assertNotNull($res[0]['anniversary']);
+        $this->assertNull($res[0]['birthday']);
+
+        // limit 2: both events of the employee, still one row; the admin whose
+        // birthday just passed is not listed
+        $res = $this->getJson('/api/birthdays?limit=2')->assertOk()->assertJsonCount(1)->json();
+        $this->assertNotNull($res[0]['birthday']);
+        $this->assertNotNull($res[0]['anniversary']);
+
+        // with room for every event the admin appears last
+        $res = $this->getJson('/api/birthdays?limit=10')->assertOk()->assertJsonCount(2)->json();
+        $this->assertSame($this->admin->id, $res[1]['user_id']);
+    }
+
     public function test_hire_day_itself_and_future_hires_are_not_anniversaries(): void
     {
         $this->employee->forceFill(['birth_date' => null, 'hire_date' => '2026-06-15'])->save();

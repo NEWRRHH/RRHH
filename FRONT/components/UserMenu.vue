@@ -1,11 +1,17 @@
 <template>
   <div class="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-  <!-- Notifications bell: live unread count (updated over WebSocket in useAuth) -->
-  <NuxtLink
-    to="/notificaciones"
+  <!-- Notifications bell: live unread count (updated over WebSocket in useAuth);
+       opens the 5 latest conversations, "Ver todas" goes to /notificaciones -->
+  <div class="relative bell-container">
+  <button
+    type="button"
     class="relative w-10 h-10 rounded-full flex items-center justify-center text-gray-300 hover:text-white hover:bg-gray-800 transition"
+    :class="{ 'bg-gray-800 text-white': bellOpen }"
     :aria-label="unreadCount > 0 ? `Notificaciones: ${unreadCount} sin leer` : 'Notificaciones'"
     :title="unreadCount > 0 ? `${unreadCount} sin leer` : 'Notificaciones'"
+    aria-haspopup="true"
+    :aria-expanded="bellOpen"
+    @click.stop="toggleBell"
   >
     <svg class="w-5 h-5" :class="{ 'bell-ring': ringing }" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
       <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.4-1.4a2 2 0 01-.6-1.4V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
@@ -17,7 +23,55 @@
     >
       {{ unreadCount > 99 ? '99+' : unreadCount }}
     </span>
-  </NuxtLink>
+  </button>
+
+  <div
+    v-if="bellOpen"
+    class="fixed sm:absolute left-2 right-2 sm:left-auto sm:right-0 top-16 sm:top-auto sm:mt-2 sm:w-80 z-[70] rounded-xl border border-gray-700 bg-gray-900 shadow-2xl shadow-black/60 overflow-hidden"
+    role="dialog"
+    aria-label="Últimas notificaciones"
+  >
+    <div class="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+      <span class="text-sm font-semibold text-white">Notificaciones</span>
+      <span v-if="unreadCount > 0" class="text-[11px] px-2 py-0.5 rounded-full bg-red-600/20 text-red-300">{{ unreadCount }} sin leer</span>
+    </div>
+
+    <div v-if="bellLoading && !bellItems.length" class="p-3 space-y-2">
+      <div v-for="i in 3" :key="i" class="h-12 rounded-lg bg-gray-800 animate-pulse"></div>
+    </div>
+    <div v-else-if="!bellItems.length" class="px-4 py-8 text-center text-sm text-gray-500">No tienes notificaciones.</div>
+    <ul v-else class="max-h-[60vh] overflow-y-auto divide-y divide-gray-800">
+      <li v-for="c in bellItems" :key="c.user.id">
+        <button
+          type="button"
+          class="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-gray-800/70 transition"
+          @click="openConversation(c.user.id)"
+        >
+          <div class="w-9 h-9 shrink-0 rounded-full overflow-hidden bg-gray-700 flex items-center justify-center text-xs font-semibold text-gray-200">
+            <img v-if="c.user.photo" :src="c.user.photo" class="w-full h-full object-cover" alt="" />
+            <span v-else>{{ (c.user.name || '?').charAt(0).toUpperCase() }}</span>
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <span class="text-sm truncate" :class="c.unread_count ? 'text-white font-semibold' : 'text-gray-200'">{{ c.user.name || 'Usuario' }}</span>
+              <span class="ml-auto shrink-0 text-[10px] text-gray-500">{{ timeAgo(c.last_at) }}</span>
+            </div>
+            <p class="text-xs truncate" :class="c.unread_count ? 'text-gray-200' : 'text-gray-400'">{{ c.last_message || 'Sin mensajes' }}</p>
+          </div>
+          <span v-if="c.unread_count" class="shrink-0 mt-1 min-w-[18px] h-[18px] px-1 rounded-full bg-blue-600 text-white text-[10px] font-semibold leading-[18px] text-center">{{ c.unread_count }}</span>
+        </button>
+      </li>
+    </ul>
+
+    <NuxtLink
+      to="/notificaciones"
+      class="block border-t border-gray-800 px-4 py-2.5 text-center text-sm text-blue-300 hover:bg-gray-800 hover:text-blue-200 transition"
+      @click="bellOpen = false"
+    >
+      Ver todas las notificaciones
+    </NuxtLink>
+  </div>
+  </div>
 
   <div class="relative flex-shrink-0 avatar-container">
     <button @click.stop="toggle" class="relative">
@@ -75,6 +129,41 @@ watch(lastReceivedMessage, (msg) => {
 })
 onBeforeUnmount(() => { if (ringTimer) clearTimeout(ringTimer) })
 
+// ── Bell dropdown: 5 most recent conversations ──
+const bellOpen = ref(false)
+const bellLoading = ref(false)
+const bellItems = ref<any[]>([])
+
+async function loadBellItems() {
+  if (!authenticated.value) return
+  bellLoading.value = true
+  try {
+    const res: any = await $fetch('/api/notifications/conversations')
+    bellItems.value = (res?.conversations || [])
+      .filter((c: any) => c.last_at)
+      .sort((a: any, b: any) => (parseDate(b.last_at)?.getTime() || 0) - (parseDate(a.last_at)?.getTime() || 0))
+      .slice(0, 5)
+  } catch (e) {
+    console.error('failed to load notifications', e)
+  } finally {
+    bellLoading.value = false
+  }
+}
+
+function toggleBell() {
+  bellOpen.value = !bellOpen.value
+  open.value = false
+  if (bellOpen.value) loadBellItems()
+}
+
+function openConversation(userId: number) {
+  bellOpen.value = false
+  router.push({ path: '/notificaciones', query: { user: String(userId) } })
+}
+
+// a new message while the dropdown is open: refresh the list
+watch(lastReceivedMessage, () => { if (bellOpen.value) loadBellItems() })
+
 // Shared clock-in status (useAuth): updated by the clock-in pill and over
 // WebSocket from the user's other tabs/devices, so the dot changes live.
 const { attendanceStatus } = useAuth()
@@ -105,6 +194,9 @@ onMounted(() => {
     if (!target.closest('.avatar-container')) {
       open.value = false
     }
+    if (!target.closest('.bell-container')) {
+      bellOpen.value = false
+    }
   })
   loadAttendanceStatus()
 })
@@ -118,6 +210,7 @@ const initial = computed(() => {
 
 function toggle() {
   open.value = !open.value
+  bellOpen.value = false
 }
 
 function logoutAndClose() {

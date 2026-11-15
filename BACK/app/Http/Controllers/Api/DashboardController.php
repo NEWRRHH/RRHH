@@ -435,7 +435,7 @@ class DashboardController extends Controller
     }
 
     /**
-     * Upcoming birthdays and work anniversaries, one row per person, soonest
+     * The next ?limit= birthdays/anniversaries grouped one row per person, soonest
      * first (authenticated). Each row: person + birthday / anniversary
      * ({date, years, is_today} or null) + date / is_today of the soonest.
      */
@@ -444,7 +444,7 @@ class DashboardController extends Controller
         // ?limit= comes from the company's card limit (Configuración > Límites).
         $limit = max(1, min(DashboardLayoutService::MAX_LIMIT, (int) $request->query('limit', DashboardLayoutService::DEFAULT_LIMIT)));
 
-        return response()->json($celebrations->upcoming()->take($limit)->values());
+        return response()->json($celebrations->upcoming(null, $limit));
     }
 
     /**

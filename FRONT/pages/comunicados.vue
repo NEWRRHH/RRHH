@@ -44,6 +44,20 @@
               </div>
 
               <div>
+                <label for="announcement-priority" class="block text-xs text-gray-400 mb-1">Prioridad</label>
+                <div class="relative">
+                  <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full" :class="announcementPriority(form.priority).dot" aria-hidden="true"></span>
+                  <select
+                    id="announcement-priority"
+                    v-model="form.priority"
+                    class="w-full rounded-xl bg-gray-800 border border-gray-700 pl-8 pr-3 py-2 text-white text-sm"
+                  >
+                    <option v-for="p in ANNOUNCEMENT_PRIORITIES" :key="p.key" :value="p.key">{{ p.label }}</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
                 <label class="block text-xs text-gray-400 mb-2">Destino</label>
                 <div class="grid grid-cols-2 gap-2">
                   <button
@@ -85,6 +99,15 @@
           <section class="rounded-2xl border border-gray-800 bg-gray-900 p-4 sm:p-5 min-w-0">
             <div class="flex items-center justify-between gap-3 mb-4">
               <h2 class="text-white font-semibold">{{ canManage ? 'Historial' : 'Comunicados' }}</h2>
+              <!-- filter by priority -->
+              <select
+                v-model="priorityFilter"
+                aria-label="Filtrar por prioridad"
+                class="ml-auto !mb-0 max-w-[150px] rounded-lg bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-gray-200"
+              >
+                <option value="">Todas</option>
+                <option v-for="p in ANNOUNCEMENT_PRIORITIES" :key="p.key" :value="p.key">{{ p.label }}</option>
+              </select>
               <button class="text-xs text-gray-300 border border-gray-700 rounded-lg px-2.5 py-1.5 hover:bg-gray-800" @click="loadAnnouncements">
                 Actualizar
               </button>
@@ -95,12 +118,20 @@
             </div>
 
             <div v-else class="space-y-2">
-              <article v-for="a in announcements" :key="a.id" class="rounded-xl border border-gray-800 bg-gray-800/60 p-3">
+              <article
+                v-for="a in filteredAnnouncements"
+                :key="a.id"
+                class="rounded-xl border border-gray-800 border-l-4 bg-gray-800/60 p-3"
+                :class="announcementPriority(a.priority).accent"
+              >
                 <div class="flex flex-wrap items-start gap-2">
                   <div class="min-w-0 flex-1 basis-48">
                     <h3 class="text-sm font-semibold text-white break-words">{{ a.title }}</h3>
                     <p class="text-xs text-gray-400">{{ a.author }} · {{ formatDate(a.created_at) }}</p>
                   </div>
+                  <span class="shrink-0 text-[11px] rounded-full px-2 py-1 border" :class="announcementPriority(a.priority).badge">
+                    {{ announcementPriority(a.priority).label }}
+                  </span>
                   <span
                     class="shrink-0 max-w-full truncate text-[11px] rounded-full px-2 py-1 border"
                     :class="a.scope === 'team' ? 'border-amber-500/50 bg-amber-500/15 text-amber-100' : 'border-blue-500/50 bg-blue-500/15 text-blue-100'"
@@ -110,8 +141,8 @@
                 </div>
                 <p class="mt-2 text-sm text-gray-200 whitespace-pre-wrap break-words">{{ a.body }}</p>
               </article>
-              <div v-if="!announcements.length" class="text-sm text-gray-500 text-center py-10">
-                Todavia no hay comunicados.
+              <div v-if="!filteredAnnouncements.length" class="text-sm text-gray-500 text-center py-10">
+                {{ announcements.length ? 'No hay comunicados con esa prioridad.' : 'Todavía no hay comunicados.' }}
               </div>
             </div>
           </section>
@@ -144,10 +175,15 @@ const loading = ref(false)
 const saving = ref(false)
 const teams = ref<any[]>([])
 const announcements = ref<any[]>([])
-const form = ref<{ title: string; body: string; scope: 'all' | 'team'; team_id: string }>({
+const priorityFilter = ref<'' | AnnouncementPriority>('')
+const filteredAnnouncements = computed(() =>
+  priorityFilter.value ? announcements.value.filter((a) => (a.priority || 'normal') === priorityFilter.value) : announcements.value,
+)
+const form = ref<{ title: string; body: string; scope: 'all' | 'team'; team_id: string; priority: AnnouncementPriority }>({
   title: '',
   body: '',
   scope: 'all',
+  priority: 'normal',
   team_id: '',
 })
 const { $swal } = useNuxtApp()
@@ -211,10 +247,11 @@ async function createAnnouncement() {
         title: form.value.title.trim(),
         body: form.value.body.trim(),
         scope: form.value.scope,
+        priority: form.value.priority,
         team_id: form.value.scope === 'team' ? Number(form.value.team_id) : null,
       },
     })
-    form.value = { title: '', body: '', scope: 'all', team_id: '' }
+    form.value = { title: '', body: '', scope: 'all', team_id: '', priority: 'normal' }
     $swal.toast('success', 'Comunicado enviado')
     await loadAnnouncements()
   } catch (e: any) {

@@ -137,7 +137,7 @@ import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 definePageMeta({ auth: true })
 
 declare const $fetch: any
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import AttendanceButton from '../components/AttendanceButton.vue'
 import UserMenu from '../components/UserMenu.vue'
@@ -145,6 +145,7 @@ import AppSidebar from '../components/AppSidebar.vue'
 
 const { user, authenticated, apiBase, fetchUser, fetchUnread, logout, lastReceivedMessage, lastReadReceipt } = useAuth()
 const router = useRouter()
+const route = useRoute()
 const sidebar = ref<{ open: boolean } | null>(null)
 
 const onLogout = async () => {
@@ -257,7 +258,13 @@ onMounted(() => {
   }
   window.addEventListener('resize', resizeHandler)
 
-  loadConversations()
+  // ?user=ID (from the bell dropdown) opens that conversation
+  loadConversations().then(() => {
+    const uid = Number(route.query.user)
+    if (!uid) return
+    const conv = conversations.value.find((c) => c.user.id === uid)
+    if (conv) selectConversation(conv.user)
+  })
 
   // Watch the shared reactive state set by useAuth's single Echo listener.
   // This avoids subscribing to Echo here (which caused stale closures and
@@ -283,6 +290,13 @@ onBeforeUnmount(() => {
     stopReadReceiptWatch()
     stopReadReceiptWatch = null
   }
+})
+
+// bell dropdown while already on this page: only the query changes
+watch(() => route.query.user, (val) => {
+  const uid = Number(val)
+  const conv = uid ? conversations.value.find((c) => c.user.id === uid) : null
+  if (conv) selectConversation(conv.user)
 })
 
 let stopRealtimeWatch: null | (() => void) = null
