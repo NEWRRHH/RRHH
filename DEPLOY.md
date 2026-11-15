@@ -16,6 +16,7 @@ Paso a paso para levantar el proyecto **en desarrollo** (tu PC) y **en producci�
 8. [Dependencias: instalar paquetes en front y back](#8-dependencias-instalar-paquetes-en-front-y-back)
 9. [Comandos útiles](#9-comandos-útiles)
 10. [Problemas frecuentes](#10-problemas-frecuentes)
+11. [Archivos subidos: dónde se guardan, nóminas y cómo migrarlos](#11-archivos-subidos-dónde-se-guardan-nóminas-y-cómo-migrarlos)
 
 ---
 
@@ -314,6 +315,14 @@ Las marcadas con ⚙️ las genera `env-check`. Las marcadas con ✍️ las pone
 |----------|-------|
 | `NUXT_COOKIE_SECURE` | `true` (se sirve por HTTPS). |
 
+### Archivos subidos
+
+| Variable | Valor | Notas |
+|----------|-------|-------|
+| `FILES_DISK` | `local` | Documentos, nóminas y adjuntos del chat (privados). `local` = este servidor; `s3` = S3 / R2 / MinIO / Spaces. |
+| `PUBLIC_FILES_DISK` | `public` | Fotos de perfil. `public` = este servidor; `s3` = bucket. |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`, `AWS_BUCKET`, `AWS_URL`, `AWS_ENDPOINT`, `AWS_USE_PATH_STYLE_ENDPOINT` | — | Solo si usas `s3`. Ver [sección 11](#11-archivos-subidos-dónde-se-guardan-nóminas-y-cómo-migrarlos). |
+
 ### Mail
 
 | Variable | Notas |
@@ -435,9 +444,18 @@ docker compose logs env-check          # credenciales que faltan (producción)
 docker compose logs migrate            # resultado de las migraciones (producción)
 docker compose logs tunnel | Select-String trycloudflare   # URL del túnel rápido
 
-# Artisan
+# Artisan (siempre dentro del contenedor "app")
 docker compose exec app php artisan <comando>
 docker compose exec app php artisan migrate:status
+
+# Nóminas: registrar las subidas a las carpetas de cada empleado
+docker compose exec app php artisan nominas:sync
+docker compose exec app php artisan nominas:sync --company=1
+
+# Archivos: reorganizar por empresa o mover a otro almacenamiento
+docker compose exec app php artisan files:move --dry-run
+docker compose exec app php artisan files:move
+docker compose exec app php artisan files:move --to=s3 --to-public=s3
 
 # Reiniciar / parar
 docker compose restart front
@@ -466,4 +484,59 @@ Get-Content backup.sql | docker compose exec -T back_db sh -c 'mysql -uroot -p"$
 | `Blocked request. This host is not allowed` (desarrollo) | Añade el dominio a `PUBLIC_HOSTS` en el `.env` raíz y ejecuta `docker compose up -d front`. |
 | Error 502 en el gateway | Algún servicio no arrancó: `docker compose ps` y los logs del que esté caído. |
 | Las fotos o documentos no cargan | Falta el enlace de `storage`. En producción lo crea `migrate`. En desarrollo: `docker compose exec app php artisan storage:link`. |
+| Al subir un archivo de más de 2 MB falla | El contenedor `app` no tomó `BACK/docker/php/uploads.ini` (límite 12 MB). Ejecuta `docker compose up -d app` (recrea el contenedor; `restart` no alcanza). Comprueba con `docker compose exec app php -r 'echo ini_get("upload_max_filesize");'`. |
+| Una nómina no aparece en Documentos | La carpeta no coincide con ningún empleado o coincide con varios. `docker compose exec app php artisan nominas:sync` lo indica. Nombra la carpeta con el DNI. |
 | La URL `trycloudflare` dejó de funcionar | Cambia en cada reinicio del túnel. Vuelve a consultarla en los logs, o usa dominio propio. |
+
+---
+
+## 11. Archivos subidos: dónde se guardan, nóminas y cómo migrarlos
+
+### Dónde se guardan
+
+Todo archivo se guarda **por empresa**:
+
+```
+companies/{id empresa}/documents/{id empleado}/...     documentos subidos por el empleado
+companies/{id empresa}/nominas/{carpeta empleado}/...  nóminas (ver abajo)
+companies/{id empresa}/chat/{id remitente}/...         adjuntos del chat
+companies/{id empresa}/avatars/...                     fotos de perfil
+```
+
+- Con `FILES_DISK=local` los archivos privados están en `BACK/storage/app/private/`. Con `PUBLIC_FILES_DISK=public` las fotos están en `BACK/storage/app/public/`.
+- **Copias de seguridad:** además de la base de datos, guarda la carpeta `BACK/storage/app/`. Si usas S3, el bucket.
+- Límite por archivo: **10 MB**. PHP acepta hasta 12 MB gracias a `BACK/docker/php/uploads.ini`, montado en el contenedor `app`.
+- El tamaño de documentos, nóminas y adjuntos cuenta para el almacenamiento del plan de la empresa.
+
+### Nóminas
+
+RRHH, o el proveedor de nóminas, deja cada archivo en la carpeta del empleado:
+
+```
+companies/{id empresa}/nominas/{carpeta empleado}/nomina-2026-05.pdf
+```
+
+- La **carpeta del empleado** puede llamarse con su nombre completo, DNI, email, usuario o id.
+- No importan acentos, mayúsculas ni separadores: `Juan Pérez`, `JUAN_PEREZ` y `juan-perez` son la misma.
+- **Usa el DNI** si hay empleados con el mismo nombre: una carpeta que coincide con varias personas no se asigna a nadie.
+- La nómina aparece sola en **Documentos → Nóminas** del empleado la próxima vez que lo abre.
+- `docker compose exec app php artisan nominas:sync` registra todas las empresas de una vez y lista las carpetas que no coinciden con ningún empleado.
+- Formatos: PDF, imágenes, Word y Excel.
+
+### Pasar a S3 / Cloudflare R2 / MinIO / DigitalOcean Spaces
+
+1. Instala el driver, una sola vez, y haz commit de `BACK/composer.json` y `BACK/composer.lock`:
+   ```powershell
+   docker compose exec app composer require league/flysystem-aws-s3-v3 "^3.0"
+   ```
+2. Completa las variables `AWS_*` en el `.env` raíz. Para R2, MinIO o Spaces también `AWS_ENDPOINT`; `AWS_URL` es la URL pública del bucket, para las fotos.
+3. Copia los archivos existentes al nuevo almacenamiento. Actualiza las rutas en la base y conserva los originales:
+   ```powershell
+   docker compose exec app php artisan files:move --to=s3 --to-public=s3 --dry-run   # revisar
+   docker compose exec app php artisan files:move --to=s3 --to-public=s3
+   ```
+4. Cambia en el `.env` `FILES_DISK=s3` y `PUBLIC_FILES_DISK=s3`, y aplica: `docker compose up -d app`.
+5. Cuando compruebes que todo carga, puedes borrar los originales con `--delete-source` en una nueva pasada, o a mano.
+
+Sin cambiar de almacenamiento, `docker compose exec app php artisan files:move` reordena en el mismo disco los archivos antiguos (de antes de la carpeta `companies/`).
+
