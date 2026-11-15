@@ -237,10 +237,14 @@ class DashboardController extends Controller
             'welcome.title' => 'nullable|string|max:80',
             'welcome.subtitle' => 'nullable|string|max:180',
             'welcome.show_date' => 'nullable|boolean',
+            'widths' => 'nullable|array',
+            'widths.*' => 'integer|min:1|max:' . DashboardLayoutService::MAX_WIDTH,
+        ], [
+            'widths.*.max' => 'Una tarjeta puede ocupar como máximo ' . DashboardLayoutService::MAX_WIDTH . ' columnas.',
         ]);
 
-        $layout = $layouts->saveCompanyLayout($request->user(), $data['slots'], $data['welcome']);
-        Audit::log('dashboard.company_layout_updated', null, ['slots' => $layout['slots']]);
+        $layout = $layouts->saveCompanyLayout($request->user(), $data['slots'], $data['welcome'], $data['widths'] ?? null);
+        Audit::log('dashboard.company_layout_updated', null, ['slots' => $layout['slots'], 'widths' => $layout['widths']]);
 
         return response()->json(['status' => 'ok', 'layout' => $layout]);
     }

@@ -13,7 +13,7 @@
           </svg>
         </button>
         <h1 class="text-base font-semibold text-white hidden sm:block">Configuración</h1>
-        <div v-if="activeTab === 'permissions'" class="relative flex items-center ml-2 sm:ml-8 max-w-[120px] sm:max-w-none">
+        <div v-if="activeTab === 'permissions'" class="relative hidden md:flex items-center ml-8">
           <input
             v-model="searchQuery"
             type="search"
@@ -30,7 +30,7 @@
         </div>
       </header>
 
-      <main class="relative z-10 flex-1 min-h-0 p-6 overflow-auto">
+      <main class="relative z-10 flex-1 min-h-0 p-4 sm:p-6 overflow-auto">
         <div class="max-w-5xl mx-auto space-y-4">
           <!-- Plan & limits (company admins) -->
           <div v-if="planUsage" class="rounded-2xl border border-gray-800 bg-gray-900 px-5 py-4 flex flex-wrap items-center gap-x-8 gap-y-2 text-sm">
@@ -50,11 +50,11 @@
             </div>
             <span class="text-xs text-gray-500">Para ampliar el plan contacta con el soporte.</span>
           </div>
-          <div class="inline-flex max-w-full overflow-x-auto rounded-xl border border-gray-700 p-1 bg-gray-900">
+          <div class="flex w-max max-w-full overflow-x-auto rounded-xl border border-gray-700 p-1 bg-gray-900">
             <button
               v-for="tab in tabs"
               :key="tab.id"
-              class="mx-0.5 px-4 py-2 rounded-lg text-sm transition whitespace-nowrap"
+              class="shrink-0 mx-0.5 px-3 sm:px-4 py-2 rounded-lg text-sm transition whitespace-nowrap"
               :class="activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
               @click="selectTab(tab.id)"
             >
@@ -77,7 +77,7 @@
 
             <template v-else>
               <!-- Welcome message + live preview -->
-              <div class="rounded-2xl border border-gray-800 bg-gray-900 p-5">
+              <div class="rounded-2xl border border-gray-800 bg-gray-900 p-4 sm:p-5">
                 <h3 class="text-sm font-semibold text-white mb-4">Mensaje de bienvenida</h3>
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
                   <div class="space-y-4">
@@ -119,7 +119,7 @@
               </div>
 
               <!-- Cards -->
-              <div class="rounded-2xl border border-gray-800 bg-gray-900 p-5">
+              <div class="rounded-2xl border border-gray-800 bg-gray-900 p-4 sm:p-5">
                 <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
                   <div>
                     <h3 class="text-sm font-semibold text-white">Tarjetas</h3>
@@ -129,7 +129,7 @@
                     Restablecer diseño original
                   </button>
                 </div>
-                <DashboardLayoutEditor v-model="companySlots" />
+                <DashboardLayoutEditor v-model="companySlots" v-model:widths="companyWidths" />
               </div>
 
               <p v-if="layoutUpdatedAt" class="text-xs text-gray-600">Última modificación: {{ parseDate(layoutUpdatedAt)?.toLocaleString('es-ES') }}</p>
@@ -154,8 +154,22 @@
             </div>
           </section>
 
-          <section v-else-if="activeTab === 'permissions'" class="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-4">
+          <section v-else-if="activeTab === 'permissions'" class="rounded-2xl border border-gray-800 bg-gray-900 p-4 sm:p-5 space-y-4">
             <h2 class="text-white font-semibold">Roles y permisos</h2>
+
+            <!-- phones/tablets: the role search lives here instead of the header -->
+            <div class="relative md:hidden">
+              <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
+              <input
+                v-model="searchQuery"
+                type="search"
+                placeholder="Buscar rol..."
+                aria-label="Buscar rol"
+                class="!mb-0 w-full pl-9 pr-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
 
             <div v-if="permissionsLoading" class="space-y-3">
               <div v-for="i in 4" :key="'sk-perm-' + i" class="rounded-xl border border-gray-800 bg-gray-950 overflow-hidden">
@@ -169,11 +183,11 @@
               </div>
             </div>
 
-            <div v-else-if="!canManagePermissions" class="text-sm text-gray-400">No tienes permisos para gestionar esta seccion.</div>
+            <div v-else-if="!canManagePermissions" class="text-sm text-gray-400">No tienes permisos para gestionar esta sección.</div>
 
             <div v-else class="space-y-3">
               <p class="text-sm text-gray-400">
-                Cada usuario tiene un unico rol. Asigna permisos a cada rol: los cambios se aplican a todos los usuarios con ese rol.
+                Cada usuario tiene un único rol. Asigna permisos a cada rol: los cambios se aplican a todos los usuarios con ese rol.
                 El rol de administrador tiene siempre todos los permisos.
               </p>
 
@@ -210,8 +224,8 @@
               <template v-else>
                 <div v-for="role in filteredPermissionRoles" :key="role.id" class="rounded-xl border border-gray-800 bg-gray-950 overflow-hidden">
                   <!-- Accordion header -->
-                  <div class="w-full flex items-center justify-between gap-3 px-5 py-4 hover:bg-gray-800/40 transition">
-                    <button class="flex-1 flex items-center gap-3 text-left min-w-0" @click="toggleRoleExpanded(role.id)">
+                  <div class="w-full flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 sm:px-5 py-3 sm:py-4 hover:bg-gray-800/40 transition">
+                    <button class="flex-1 basis-56 flex flex-wrap items-center gap-x-3 gap-y-1 text-left min-w-0" @click="toggleRoleExpanded(role.id)">
                       <span class="font-medium text-white truncate">{{ role.name }}</span>
                       <span v-if="role.is_admin" class="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-medium">Administrador</span>
                       <span v-else class="text-xs px-2 py-0.5 rounded-full bg-blue-600/20 text-blue-400 font-medium relative">
@@ -254,7 +268,7 @@
                   </div>
 
                   <!-- Accordion body -->
-                  <div v-if="expandedRoles.includes(role.id)" class="border-t border-gray-800 px-5 py-4 space-y-3">
+                  <div v-if="expandedRoles.includes(role.id)" class="border-t border-gray-800 px-3 sm:px-5 py-4 space-y-3">
                     <p v-if="role.is_admin" class="text-sm text-gray-400">
                       Este rol tiene acceso total y todos los permisos. No se puede editar ni eliminar.
                     </p>
@@ -282,7 +296,7 @@
                       </div>
 
                       <!-- Bulk actions -->
-                      <div class="flex items-center gap-2">
+                      <div class="flex flex-wrap items-center gap-2">
                         <button
                           class="px-3 py-1.5 rounded-lg bg-green-600/20 border border-green-700/30 text-green-300 text-xs font-medium hover:bg-green-600/30 transition"
                           @click="selectAllPermissions(role.id)"
@@ -324,7 +338,7 @@
                           <div
                             v-for="p in group.permissions"
                             :key="p.code"
-                            class="flex items-center justify-between gap-4 rounded-lg bg-gray-900 px-4 py-3"
+                            class="flex items-center justify-between gap-3 sm:gap-4 rounded-lg bg-gray-900 px-3 sm:px-4 py-3"
                           >
                             <div class="min-w-0">
                               <div class="text-sm text-gray-200 font-medium">{{ p.name }}</div>
@@ -363,16 +377,16 @@
             </div>
           </section>
 
-          <section v-else-if="activeTab === 'schedules'" class="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-4">
-            <div class="flex items-center justify-between gap-3">
+          <section v-else-if="activeTab === 'schedules'" class="rounded-2xl border border-gray-800 bg-gray-900 p-4 sm:p-5 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
               <h2 class="text-white font-semibold">Jornadas laborales</h2>
-              <div class="flex items-center gap-2">
+              <div class="flex flex-wrap items-center gap-2">
                 <button
                   v-if="editingScheduleId"
                   class="px-3 py-2 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800"
                   @click="cancelEditScheduleTemplate"
                 >
-                  Cancelar edicion
+                  Cancelar edición
                 </button>
                 <button
                   class="px-3 py-2 rounded-lg bg-blue-600 text-white disabled:opacity-50"
@@ -384,7 +398,7 @@
               </div>
             </div>
 
-            <p class="text-sm text-gray-400">Define horarios y dias laborales en la tabla schedules para reutilizarlos al crear usuarios.</p>
+            <p class="text-sm text-gray-400">Define horarios y días laborales para reutilizarlos al crear usuarios.</p>
 
             <div class="rounded-xl border border-gray-800 bg-gray-950 p-4 space-y-3">
               <h3 class="text-sm text-white font-semibold">Nueva jornada</h3>
@@ -422,31 +436,27 @@
               <table v-else class="min-w-full text-sm">
                 <thead class="bg-gray-800/60 text-gray-300">
                   <tr>
-                    <th class="text-left px-4 py-2">Horario</th>
-                    <th class="text-left px-4 py-2">Dias</th>
-                    <th class="text-right px-4 py-2">Acciones</th>
+                    <th class="text-left px-3 sm:px-4 py-2">Horario</th>
+                    <th class="text-left px-3 sm:px-4 py-2">Días</th>
+                    <th class="text-right px-2 sm:px-4 py-2"><span class="sr-only">Acciones</span></th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="s in scheduleTemplates" :key="s.id" class="border-t border-gray-800 text-gray-200">
-                    <td class="px-4 py-2">{{ s.start_time }} - {{ s.end_time }}</td>
-                    <td class="px-4 py-2">{{ (s.days || []).join(', ') }}</td>
-                    <td class="px-4 py-2 text-right">
-                      <div class="inline-flex items-center gap-2">
+                    <td class="px-3 sm:px-4 py-2 whitespace-nowrap tabular-nums">{{ s.start_time }} - {{ s.end_time }}</td>
+                    <td class="px-3 sm:px-4 py-2">{{ (s.days || []).join(', ') }}</td>
+                    <td class="px-2 sm:px-4 py-2 text-right w-px">
+                      <RowActionsMenu :label="`Acciones de la jornada ${s.start_time} - ${s.end_time}`">
+                        <button type="button" class="row-action" @click="editScheduleTemplate(s)">Editar</button>
                         <button
-                          class="px-2 py-1 rounded border border-gray-700 text-xs text-gray-200 hover:bg-gray-800"
-                          @click="editScheduleTemplate(s)"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          class="px-2 py-1 rounded border border-red-700 text-xs text-red-300 hover:bg-red-900/20 disabled:opacity-50"
+                          type="button"
+                          class="row-action row-action--danger"
                           :disabled="scheduleDeletingId === s.id"
                           @click="deleteScheduleTemplate(s.id)"
                         >
                           {{ scheduleDeletingId === s.id ? 'Eliminando...' : 'Eliminar' }}
                         </button>
-                      </div>
+                      </RowActionsMenu>
                     </td>
                   </tr>
                 </tbody>
@@ -455,16 +465,16 @@
           </section>
 
 
-          <section v-else-if="activeTab === 'equipos'" class="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-4">
-            <div class="flex items-center justify-between gap-3">
-              <h2 class="text-white font-semibold">Gestion de Equipos</h2>
-              <div class="flex items-center gap-2">
+          <section v-else-if="activeTab === 'equipos'" class="rounded-2xl border border-gray-800 bg-gray-900 p-4 sm:p-5 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <h2 class="text-white font-semibold">Gestión de equipos</h2>
+              <div class="flex flex-wrap items-center gap-2">
                 <button
                   v-if="editingTeamId"
                   class="px-3 py-2 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800 text-xs transition"
                   @click="cancelEditTeam"
                 >
-                  Cancelar edicion
+                  Cancelar edición
                 </button>
                 <button
                   class="px-4 py-2 rounded-lg bg-blue-600 text-white text-xs font-medium disabled:opacity-50 hover:bg-blue-500 transition"
@@ -518,35 +528,31 @@
               <table v-else class="min-w-full text-sm">
                 <thead class="bg-gray-800/60 text-gray-300">
                   <tr>
-                    <th class="text-left px-4 py-2">Nombre</th>
-                    <th class="text-center px-4 py-2">Miembros</th>
-                    <th class="text-right px-4 py-2">Acciones</th>
+                    <th class="text-left px-3 sm:px-4 py-2">Nombre</th>
+                    <th class="text-center px-3 sm:px-4 py-2">Miembros</th>
+                    <th class="text-right px-2 sm:px-4 py-2"><span class="sr-only">Acciones</span></th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="t in teams" :key="t.id" class="border-t border-gray-800 text-gray-200 hover:bg-gray-800/30 transition">
-                    <td class="px-4 py-3 font-medium">{{ t.name }}</td>
-                    <td class="px-4 py-3 text-center">
+                    <td class="px-3 sm:px-4 py-3 font-medium break-words">{{ t.name }}</td>
+                    <td class="px-3 sm:px-4 py-3 text-center">
                       <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs" :class="t.members_count > 0 ? 'bg-blue-600/20 text-blue-400' : 'bg-gray-800 text-gray-500'">
                         {{ t.members_count }}
                       </span>
                     </td>
-                    <td class="px-4 py-3 text-right">
-                      <div class="inline-flex items-center gap-2">
+                    <td class="px-2 sm:px-4 py-3 text-right w-px">
+                      <RowActionsMenu :label="`Acciones del equipo ${t.name}`">
+                        <button type="button" class="row-action" @click="editTeam(t)">Editar</button>
                         <button
-                          class="px-2 py-1 rounded border border-gray-700 text-xs text-gray-200 hover:bg-gray-800 transition"
-                          @click="editTeam(t)"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          class="px-2 py-1 rounded border border-red-700 text-xs text-red-300 hover:bg-red-900/20 disabled:opacity-50 transition"
+                          type="button"
+                          class="row-action row-action--danger"
                           :disabled="teamDeletingId === t.id"
                           @click="deleteTeam(t.id)"
                         >
                           {{ teamDeletingId === t.id ? 'Eliminando...' : 'Eliminar' }}
                         </button>
-                      </div>
+                      </RowActionsMenu>
                     </td>
                   </tr>
                 </tbody>
@@ -554,7 +560,7 @@
             </div>
           </section>
 
-          <section v-else-if="activeTab === 'limits'" class="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-4">
+          <section v-else-if="activeTab === 'limits'" class="rounded-2xl border border-gray-800 bg-gray-900 p-4 sm:p-5 space-y-4">
             <div>
               <h2 class="text-white font-semibold">Límites de tarjetas</h2>
               <p class="text-sm text-gray-400 mt-1">
@@ -605,7 +611,7 @@
             </form>
           </section>
 
-          <section v-else-if="activeTab === 'celebrations'" class="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-4">
+          <section v-else-if="activeTab === 'celebrations'" class="rounded-2xl border border-gray-800 bg-gray-900 p-4 sm:p-5 space-y-4">
             <div>
               <h2 class="text-white font-semibold">Mensajes de festejo</h2>
               <p class="text-sm text-gray-400 mt-1">
@@ -749,7 +755,7 @@
 <script setup lang="ts">
 import { computed, onBeforeMount, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
-import { DASHBOARD_POSITIONS, normalizeDashboardSlots, type DashboardSlots } from '~/utils/dashboardWidgets'
+import { DASHBOARD_POSITIONS, normalizeDashboardSlots, normalizeDashboardWidths, type DashboardSlots, type DashboardWidths } from '~/utils/dashboardWidgets'
 import DashboardLayoutEditor from '../components/DashboardLayoutEditor.vue'
 import { useAuth } from '../composables/useAuth'
 import { CELEBRATION_EFFECTS, DEFAULT_CELEBRATION_EFFECTS, useCelebration, type CelebrationEffect } from '../composables/useCelebration'
@@ -960,13 +966,14 @@ type WelcomeSettings = { title: string; subtitle: string; show_date: boolean }
 const layoutLoading = ref(false)
 const layoutSaving = ref(false)
 const companySlots = ref<DashboardSlots>(Array(DASHBOARD_POSITIONS).fill(null))
+const companyWidths = ref<DashboardWidths>(normalizeDashboardWidths(null))
 const welcome = ref<WelcomeSettings>({ title: '', subtitle: '', show_date: true })
 const defaultSlots = ref<DashboardSlots>([])
 const defaultWelcome = ref<WelcomeSettings>({ title: 'Bienvenido', subtitle: '', show_date: true })
 const layoutUpdatedAt = ref<string | null>(null)
 const savedLayoutSnapshot = ref('')
 
-const layoutSnapshot = () => JSON.stringify({ slots: companySlots.value, welcome: welcome.value })
+const layoutSnapshot = () => JSON.stringify({ slots: companySlots.value, welcome: welcome.value, widths: companyWidths.value })
 const layoutDirty = computed(() => !layoutLoading.value && savedLayoutSnapshot.value !== '' && layoutSnapshot() !== savedLayoutSnapshot.value)
 
 const previewName = computed(() => String((user.value as any)?.first_name || (user.value as any)?.name || 'Ana').split(' ')[0])
@@ -974,6 +981,7 @@ const todayLabel = new Date().toLocaleDateString('es-ES', { weekday: 'long', day
 
 function applyCompanyLayout(res: any) {
   companySlots.value = normalizeDashboardSlots(res?.slots)
+  companyWidths.value = normalizeDashboardWidths(res?.widths)
   const w = res?.welcome || {}
   welcome.value = { title: String(w.title || ''), subtitle: String(w.subtitle || ''), show_date: w.show_date !== false }
   layoutUpdatedAt.value = res?.updated_at || null
@@ -1006,7 +1014,7 @@ async function saveCompanyLayout() {
   try {
     const res: any = await $fetch('/api/settings/dashboard', {
       method: 'PUT',
-      body: { slots: companySlots.value, welcome: welcome.value },
+      body: { slots: companySlots.value, welcome: welcome.value, widths: companyWidths.value },
     })
     applyCompanyLayout(res?.layout)
     $swal.toast('success', 'Dashboard de la empresa guardado')
@@ -1022,18 +1030,20 @@ function discardLayoutChanges() {
   if (!savedLayoutSnapshot.value) return
   const saved = JSON.parse(savedLayoutSnapshot.value)
   companySlots.value = saved.slots
+  companyWidths.value = saved.widths
   welcome.value = saved.welcome
 }
 
 async function restoreLayoutDefaults() {
   const ok = await $swal.confirm(
     'Restablecer diseño original',
-    'Se volverá a la disposición de fábrica de las tarjetas y al mensaje de bienvenida por defecto. No se guarda hasta que pulses "Guardar".',
+    'Se volverá a la disposición de fábrica de las tarjetas (todas de 1 columna) y al mensaje de bienvenida por defecto. No se guarda hasta que pulses "Guardar".',
     'Restablecer',
     'Cancelar',
   )
   if (!ok) return
   companySlots.value = [...defaultSlots.value]
+  companyWidths.value = normalizeDashboardWidths(null)
   welcome.value = { ...defaultWelcome.value }
 }
 

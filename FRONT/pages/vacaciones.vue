@@ -18,29 +18,32 @@
         </div>
       </header>
 
-      <main class="relative z-10 flex-1 min-h-0 p-6 overflow-auto space-y-4">
-        <div class="flex flex-wrap items-center gap-3">
-          <div class="inline-flex rounded-xl border border-gray-700 p-1 bg-gray-900">
-            <button
-              class="px-3 py-1.5 rounded-lg text-sm transition"
-              :class="viewMode === 'year' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
-              @click="viewMode = 'year'"
-            >
-              Anual
-            </button>
-            <button
-              class="px-3 py-1.5 rounded-lg text-sm transition"
-              :class="viewMode === 'month' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
-              @click="viewMode = 'month'"
-            >
-              Mensual
-            </button>
-          </div>
+      <main class="relative z-10 flex-1 min-h-0 p-4 sm:p-6 overflow-auto space-y-4">
+        <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+          <!-- view toggle + year stay together on one line, also on phones -->
+          <div class="flex items-center gap-2 sm:gap-3">
+            <div class="inline-flex rounded-xl border border-gray-700 p-1 bg-gray-900">
+              <button
+                class="px-3 py-1.5 rounded-lg text-sm transition"
+                :class="viewMode === 'year' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
+                @click="viewMode = 'year'"
+              >
+                Anual
+              </button>
+              <button
+                class="px-3 py-1.5 rounded-lg text-sm transition"
+                :class="viewMode === 'month' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
+                @click="viewMode = 'month'"
+              >
+                Mensual
+              </button>
+            </div>
 
-          <div class="inline-flex items-center gap-2 rounded-xl border border-gray-700 px-2 py-1 bg-gray-900">
-            <button class="w-8 h-8 rounded-lg text-gray-300 hover:bg-gray-800" @click="changeYear(-1)">&#60;</button>
-            <span class="text-white font-semibold w-16 text-center">{{ selectedYear }}</span>
-            <button class="w-8 h-8 rounded-lg text-gray-300 hover:bg-gray-800" @click="changeYear(1)">&#62;</button>
+            <div class="inline-flex items-center gap-0.5 sm:gap-2 rounded-xl border border-gray-700 px-1 sm:px-2 py-1 bg-gray-900">
+              <button class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg text-gray-300 hover:bg-gray-800" aria-label="Año anterior" @click="changeYear(-1)">&#60;</button>
+              <span class="text-white font-semibold w-12 sm:w-16 text-center tabular-nums">{{ selectedYear }}</span>
+              <button class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg text-gray-300 hover:bg-gray-800" aria-label="Año siguiente" @click="changeYear(1)">&#62;</button>
+            </div>
           </div>
 
           <div

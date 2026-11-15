@@ -43,15 +43,15 @@
               </div>
 
               <!-- Main content card skeleton -->
-              <div class="rounded-2xl border border-gray-800 bg-gray-900 p-5">
+              <div class="rounded-2xl border border-gray-800 bg-gray-900 p-3 sm:p-5">
                 <div class="h-5 w-48 rounded bg-gray-800 mb-6"></div>
 
-                <div class="flex items-start gap-6">
+                <div class="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6">
                   <!-- Avatar skeleton -->
                   <div class="w-24 h-24 rounded-full bg-gray-800 shrink-0"></div>
 
                   <!-- Fields grid skeleton -->
-                  <div class="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div class="w-full flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div v-for="i in 10" :key="'field-' + i" class="space-y-1.5">
                       <div class="h-3 w-16 rounded bg-gray-800"></div>
                       <div class="h-9 w-full rounded-lg bg-gray-800"></div>
@@ -85,7 +85,7 @@
                 <button
                   v-for="tab in tabs"
                   :key="tab.id"
-                  class="px-4 py-2 rounded-lg text-sm transition whitespace-nowrap"
+                  class="px-3 sm:px-4 py-2 rounded-lg text-sm transition whitespace-nowrap"
                   :class="activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
                   @click="activeTab = tab.id"
                 >
@@ -94,7 +94,7 @@
               </div>
             </div>
 
-            <section v-if="activeTab === 'fichajes'" class="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-4">
+            <section v-if="activeTab === 'fichajes'" class="rounded-2xl border border-gray-800 bg-gray-900 p-3 sm:p-5 space-y-4">
               <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <h2 class="text-white font-semibold">Fichajes mensuales</h2>
                 <div class="flex items-center gap-2 flex-wrap">
@@ -105,27 +105,28 @@
               </div>
 
               <div class="overflow-x-auto rounded-xl border border-gray-800">
-                <table class="min-w-[760px] sm:min-w-full text-xs sm:text-sm">
+                <!-- phones: date / in / out / hours; pause columns from md, status from sm -->
+                <table class="w-full text-xs sm:text-sm">
                   <thead class="bg-gray-800/60 text-gray-300">
                     <tr>
-                      <th class="text-left px-3 py-2">Fecha</th>
-                      <th class="text-left px-3 py-2">Entrada</th>
-                      <th class="text-left px-3 py-2">Pausa</th>
-                      <th class="text-left px-3 py-2">Reanuda</th>
-                      <th class="text-left px-3 py-2">Salida</th>
-                      <th class="text-left px-3 py-2">Horas</th>
-                      <th class="text-left px-3 py-2">Estado</th>
+                      <th class="text-left px-2 sm:px-3 py-2">Fecha</th>
+                      <th class="text-left px-2 sm:px-3 py-2">Entrada</th>
+                      <th class="hidden md:table-cell text-left px-3 py-2">Pausa</th>
+                      <th class="hidden md:table-cell text-left px-3 py-2">Reanuda</th>
+                      <th class="text-left px-2 sm:px-3 py-2">Salida</th>
+                      <th class="text-left px-2 sm:px-3 py-2">Horas</th>
+                      <th class="hidden sm:table-cell text-left px-3 py-2">Estado</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr v-for="r in attendanceRows" :key="r.date" class="border-t border-gray-800 text-gray-200">
-                      <td class="px-3 py-2">{{ formatDate(r.date) }}<span v-if="r.holiday" class="block text-[10px] text-blue-300">Festivo: {{ r.holiday }}</span></td>
-                      <td class="px-3 py-2">{{ r.start_time || '--:--' }}</td>
-                      <td class="px-3 py-2">{{ r.pause_time || '--:--' }}</td>
-                      <td class="px-3 py-2">{{ r.resume_time || '--:--' }}</td>
-                      <td class="px-3 py-2">{{ r.end_time || '--:--' }}</td>
-                      <td class="px-3 py-2 font-semibold">{{ r.hours_worked || '--:--' }}</td>
-                      <td class="px-3 py-2">
+                      <td class="px-2 sm:px-3 py-2">{{ formatDate(r.date) }}<span v-if="r.holiday" class="block text-[10px] text-blue-300">Festivo: {{ r.holiday }}</span></td>
+                      <td class="px-2 sm:px-3 py-2 tabular-nums">{{ r.start_time || '--:--' }}</td>
+                      <td class="hidden md:table-cell px-3 py-2 tabular-nums">{{ r.pause_time || '--:--' }}</td>
+                      <td class="hidden md:table-cell px-3 py-2 tabular-nums">{{ r.resume_time || '--:--' }}</td>
+                      <td class="px-2 sm:px-3 py-2 tabular-nums">{{ r.end_time || '--:--' }}</td>
+                      <td class="px-2 sm:px-3 py-2 font-semibold tabular-nums">{{ r.hours_worked || '--:--' }}</td>
+                      <td class="hidden sm:table-cell px-3 py-2">
                         <span class="text-xs px-2 py-1 rounded-full border" :class="r.status === 'en_trabajo' ? 'border-emerald-500/50 text-emerald-300 bg-emerald-500/10' : 'border-gray-700 text-gray-300 bg-gray-800'">
                           {{ r.status || '-' }}
                         </span>
@@ -139,9 +140,9 @@
               </div>
             </section>
 
-            <section v-else-if="activeTab === 'estadisticas'" class="rounded-2xl border border-gray-800 bg-gray-900 p-5">
-              <h2 class="text-white font-semibold mb-4">Estadisticas del mes</h2>
-              <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+            <section v-else-if="activeTab === 'estadisticas'" class="rounded-2xl border border-gray-800 bg-gray-900 p-3 sm:p-5">
+              <h2 class="text-white font-semibold mb-4">Estadísticas del mes</h2>
+              <div class="grid grid-cols-2 xl:grid-cols-4 gap-3">
                 <div class="rounded-xl border border-gray-800 bg-gray-800/60 p-3">
                   <div class="text-xs text-gray-400">Horas trabajadas</div>
                   <div class="text-2xl font-bold text-white tabular-nums">{{ attendanceSummary.worked_hhmm || '00:00' }}</div>
@@ -155,13 +156,13 @@
                   <div class="text-2xl font-bold text-white">{{ attendanceSummary.compliance_percent || 0 }}%</div>
                 </div>
                 <div class="rounded-xl border border-gray-800 bg-gray-800/60 p-3">
-                  <div class="text-xs text-gray-400">Dias con fichaje</div>
+                  <div class="text-xs text-gray-400">Días con fichaje</div>
                   <div class="text-2xl font-bold text-white">{{ attendanceSummary.worked_days || 0 }} / {{ attendanceSummary.working_days || 0 }}</div>
                   <div class="text-xs text-gray-500 mt-1">Faltantes: {{ attendanceSummary.missing_days || 0 }}</div>
                 </div>
               </div>
 
-              <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mt-3">
+              <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mt-3">
                 <div class="rounded-xl border border-gray-800 bg-gray-800/60 p-3">
                   <div class="text-xs text-gray-400">Solicitudes</div>
                   <div class="text-2xl font-bold text-white">{{ attendanceSummary.requests_total || 0 }}</div>
@@ -182,7 +183,7 @@
 
               <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
                 <div class="rounded-xl border border-gray-800 bg-gray-800/40 p-4">
-                  <div class="text-sm text-gray-200 mb-3">Horas por dia (grafico de barras)</div>
+                  <div class="text-sm text-gray-200 mb-3">Horas por día</div>
                   <div class="space-y-2">
                     <div v-for="b in dailyBars" :key="b.date" class="grid grid-cols-[74px_1fr_48px] items-center gap-2">
                       <div class="text-[11px] text-gray-400">{{ b.label }}</div>
@@ -196,7 +197,7 @@
                 </div>
 
                 <div class="rounded-xl border border-gray-800 bg-gray-800/40 p-4">
-                  <div class="text-sm text-gray-200 mb-3">Distribucion del mes</div>
+                  <div class="text-sm text-gray-200 mb-3">Distribución del mes</div>
                   <div class="space-y-3">
                     <div>
                       <div class="flex justify-between text-xs text-gray-400 mb-1">
@@ -209,7 +210,7 @@
                     </div>
                     <div>
                       <div class="flex justify-between text-xs text-gray-400 mb-1">
-                        <span>Dias fichados</span>
+                        <span>Días fichados</span>
                         <span>{{ workedDaysPercent }}%</span>
                       </div>
                       <div class="h-3 rounded-full bg-gray-700 overflow-hidden">
@@ -221,10 +222,11 @@
               </div>
             </section>
 
-            <section v-else-if="activeTab === 'perfil'" class="rounded-2xl border border-gray-800 bg-gray-900 p-5">
+            <section v-else-if="activeTab === 'perfil'" class="rounded-2xl border border-gray-800 bg-gray-900 p-3 sm:p-5">
               <h2 class="text-white font-semibold mb-4">Perfil del empleado</h2>
               <form class="space-y-5" @submit.prevent="saveProfile">
-                <div class="flex items-start gap-6">
+                <!-- phones: photo on top, fields below -->
+                <div class="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6">
                   <div class="flex-shrink-0">
                     <div class="w-24 h-24 rounded-full bg-gray-700 overflow-hidden">
                       <img v-if="preview" :src="preview" class="w-full h-full object-cover" />
@@ -234,7 +236,7 @@
                     <input id="photo" type="file" class="hidden" @change="onPhotoChange" />
                   </div>
 
-                  <div class="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div class="w-full min-w-0 flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label class="block text-xs text-gray-400 mb-1">Nombre</label>
                       <input v-model="form.name" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
@@ -244,7 +246,7 @@
                       <input v-model="form.email" type="email" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
                     </div>
                     <div>
-                      <label class="block text-xs text-gray-400 mb-1">Telefono</label>
+                      <label class="block text-xs text-gray-400 mb-1">Teléfono</label>
                       <input v-model="form.phone" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
                     </div>
                     <div>
@@ -272,7 +274,7 @@
                       <input v-model="form.hire_date" type="date" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
                     </div>
                     <div>
-                      <label class="block text-xs text-gray-400 mb-1">Fecha de cumpleanos</label>
+                      <label class="block text-xs text-gray-400 mb-1">Fecha de cumpleaños</label>
                       <input v-model="form.birth_date" type="date" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
                     </div>
                     <div>
@@ -289,8 +291,8 @@
                         <option value="">Sin definir</option>
                         <option value="indefinido">Indefinido</option>
                         <option value="temporal">Temporal</option>
-                        <option value="practicas">Practicas</option>
-                        <option value="autonomo">Autonomo</option>
+                        <option value="practicas">Prácticas</option>
+                        <option value="autonomo">Autónomo</option>
                       </select>
                     </div>
                     <div>
@@ -298,23 +300,23 @@
                       <input v-model="form.contract_start_date" type="date" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
                     </div>
                     <div>
-                      <label class="block text-xs text-gray-400 mb-1">Dias de vacaciones</label>
+                      <label class="block text-xs text-gray-400 mb-1">Días de vacaciones</label>
                       <input v-model.number="form.vacation_days_total" type="number" min="0" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
                     </div>
                   </div>
                 </div>
 
                 <div class="pt-4 border-t border-gray-800">
-                  <h3 class="text-sm text-gray-300 mb-2">Cambiar contrasena</h3>
+                  <h3 class="text-sm text-gray-300 mb-2">Cambiar contraseña</h3>
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <PasswordInput v-model="form.password" placeholder="Nueva contrasena" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
-                    <PasswordInput v-model="form.password_confirmation" placeholder="Confirmar contrasena" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
+                    <PasswordInput v-model="form.password" placeholder="Nueva contraseña" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
+                    <PasswordInput v-model="form.password_confirmation" placeholder="Confirmar contraseña" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
                   </div>
                 </div>
 
                 <div v-if="canViewWorkDays" class="pt-4 border-t border-gray-800">
                   <h3 class="text-sm text-gray-200 mb-3">Jornadas asignadas</h3>
-                  <p class="text-xs text-gray-400 mb-3">Selecciona una o varias jornadas sin solapar dias.</p>
+                  <p class="text-xs text-gray-400 mb-3">Selecciona una o varias jornadas sin solapar días.</p>
                   <div v-if="selectedTemplates.length" class="mb-3 flex flex-wrap gap-2">
                     <span
                       v-for="tpl in selectedTemplates"
@@ -370,31 +372,35 @@
             </form>
           </section>
 
-            <section v-else class="rounded-2xl border border-gray-800 bg-gray-900 p-5">
+            <section v-else class="rounded-2xl border border-gray-800 bg-gray-900 p-3 sm:p-5">
               <h2 class="text-white font-semibold mb-4">Documentos del empleado</h2>
               <div class="overflow-x-auto rounded-xl border border-gray-800">
-                <table class="min-w-full text-sm">
+                <table class="w-full text-sm">
                   <thead class="bg-gray-800/60 text-gray-300">
                     <tr>
                       <th class="text-left px-3 py-2">Documento</th>
-                      <th class="text-left px-3 py-2">Categoria</th>
-                      <th class="text-left px-3 py-2">Fecha</th>
-                      <th class="text-left px-3 py-2">Tamano</th>
-                      <th class="text-right px-3 py-2">Accion</th>
+                      <th class="hidden sm:table-cell text-left px-3 py-2">Categoría</th>
+                      <th class="hidden sm:table-cell text-left px-3 py-2">Fecha</th>
+                      <th class="hidden md:table-cell text-left px-3 py-2">Tamaño</th>
+                      <th class="text-right px-3 py-2"><span class="sr-only sm:not-sr-only">Acción</span></th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr v-for="d in employeeDocuments" :key="d.id" class="border-t border-gray-800 text-gray-200">
-                      <td class="px-3 py-2">
+                      <td class="px-3 py-2 max-w-0 w-full sm:max-w-none sm:w-auto">
                         <div class="truncate">{{ d.original_name || d.filename }}</div>
                         <div class="text-xs text-gray-500 truncate">{{ d.description || '-' }}</div>
+                        <div class="sm:hidden text-[11px] text-gray-500 truncate capitalize">{{ d.category || '-' }} · {{ formatDate(d.created_at) }} · {{ formatSize(d.size) }}</div>
                       </td>
-                      <td class="px-3 py-2 capitalize">{{ d.category || '-' }}</td>
-                      <td class="px-3 py-2">{{ formatDate(d.created_at) }}</td>
-                      <td class="px-3 py-2">{{ formatSize(d.size) }}</td>
+                      <td class="hidden sm:table-cell px-3 py-2 capitalize">{{ d.category || '-' }}</td>
+                      <td class="hidden sm:table-cell px-3 py-2">{{ formatDate(d.created_at) }}</td>
+                      <td class="hidden md:table-cell px-3 py-2">{{ formatSize(d.size) }}</td>
                       <td class="px-3 py-2 text-right">
-                        <button class="px-2.5 py-1.5 rounded-lg border border-gray-700 text-xs text-gray-200 hover:bg-gray-800 disabled:opacity-50" :disabled="downloadingDocId === d.id" @click="downloadEmployeeDocument(d)">
-                          {{ downloadingDocId === d.id ? 'Bajando...' : 'Descargar' }}
+                        <button class="inline-flex items-center px-2.5 py-1.5 rounded-lg border border-gray-700 text-xs text-gray-200 hover:bg-gray-800 disabled:opacity-50" :disabled="downloadingDocId === d.id" :aria-label="`Descargar ${d.original_name || d.filename}`" @click="downloadEmployeeDocument(d)">
+                          <svg class="w-4 h-4 sm:hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+                          </svg>
+                          <span class="hidden sm:inline">{{ downloadingDocId === d.id ? 'Bajando...' : 'Descargar' }}</span>
                         </button>
                       </td>
                     </tr>

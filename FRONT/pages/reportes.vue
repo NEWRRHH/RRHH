@@ -22,7 +22,8 @@
       </header>
 
       <main class="relative z-10 flex-1 min-h-0 p-3 sm:p-4 lg:p-6 overflow-auto">
-        <div class="h-full flex flex-col gap-4">
+        <!-- fixed-height panels with inner scroll only on desktop; phones scroll the page -->
+        <div class="xl:h-full flex flex-col gap-4">
           <div class="max-w-full">
             <div class="flex flex-wrap rounded-xl border border-gray-700 p-1 bg-gray-900 gap-1">
               <button
@@ -59,8 +60,11 @@
             {{ requestNotice.text }}
           </div>
 
-          <div v-if="activeTab === 'monthly'" class="h-full grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-4">
-            <aside class="bg-gray-900 border border-gray-800 rounded-3xl p-4 flex flex-col min-h-0 shadow-sm">
+          <div v-if="activeTab === 'monthly'" class="xl:h-full xl:min-h-0 grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-4">
+            <aside
+              class="bg-gray-900 border border-gray-800 rounded-3xl p-4 flex-col min-h-0 shadow-sm"
+              :class="canViewAll ? 'flex' : 'hidden xl:flex'"
+            >
               <h2 class="text-sm font-semibold text-white mb-3">
                 {{ canViewAll ? 'Usuarios' : 'Mis fichajes' }}
               </h2>
@@ -76,7 +80,19 @@
                 </select>
               </div>
 
-              <div class="flex-1 overflow-y-auto space-y-2 pr-1">
+              <!-- phones/tablets: a dropdown instead of the long list of people -->
+              <div v-if="canViewAll" class="xl:hidden">
+                <label class="block text-xs text-gray-400 mb-1">Usuario</label>
+                <select
+                  :value="selectedUserId ?? ''"
+                  class="w-full bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded-xl px-2.5 py-2 focus:outline-none"
+                  @change="selectUser(Number(($event.target as HTMLSelectElement).value))"
+                >
+                  <option v-for="u in users" :key="u.id" :value="u.id">{{ u.full_name }}{{ u.team_name ? ` · ${u.team_name}` : '' }}</option>
+                </select>
+              </div>
+
+              <div class="hidden xl:block flex-1 overflow-y-auto space-y-2 pr-1">
                 <button
                   v-for="u in users"
                   :key="u.id"
@@ -102,7 +118,7 @@
               </div>
             </aside>
 
-            <section class="bg-gray-900 border border-gray-800 rounded-3xl p-5 flex flex-col min-h-0 overflow-hidden shadow-sm">
+            <section class="min-w-0 bg-gray-900 border border-gray-800 rounded-3xl p-3 sm:p-5 flex flex-col xl:min-h-0 xl:overflow-hidden shadow-sm">
               <div class="flex flex-col gap-3 mb-5 lg:flex-row lg:items-center lg:justify-between">
                 <div class="flex flex-wrap items-center gap-2">
                   <button
@@ -178,24 +194,32 @@
                 </label>
               </div>
 
-              <div class="flex-1 min-h-0 overflow-y-auto overflow-x-auto rounded-2xl border border-gray-800">
-                <div class="min-w-[760px] sm:min-w-[840px] lg:min-w-[980px]">
-                  <div class="grid grid-cols-[120px_90px_minmax(0,1fr)] sm:grid-cols-[150px_110px_minmax(0,1fr)] px-3 py-2 text-gray-400 text-xs sm:text-sm border-b border-gray-800 bg-gray-800/50 sticky top-0 z-10">
+              <!-- fits the screen: narrower date/hours columns and fewer hour labels on phones -->
+              <div class="xl:flex-1 xl:min-h-0 overflow-y-auto rounded-2xl border border-gray-800">
+                <div class="lg:min-w-[760px]">
+                  <div class="grid grid-cols-[68px_48px_minmax(0,1fr)] sm:grid-cols-[150px_110px_minmax(0,1fr)] gap-x-2 px-2 sm:px-3 py-2 text-gray-400 text-xs sm:text-sm border-b border-gray-800 bg-gray-800/50 sticky top-0 z-10">
                     <div>Fecha</div>
                     <div>Horas</div>
-                    <div class="relative">
-                      <div class="flex justify-between">
-                        <span v-for="h in hourMarks" :key="h">{{ h }}:00</span>
-                      </div>
+                    <div class="relative h-4 sm:h-5">
+                      <span
+                        v-for="(h, idx) in hourMarks"
+                        :key="h"
+                        class="absolute top-0 text-[10px] sm:text-xs tabular-nums whitespace-nowrap"
+                        :class="[
+                          idx === 0 ? '' : idx === hourMarks.length - 1 ? '-translate-x-full' : '-translate-x-1/2',
+                          h % 3 === 0 ? '' : 'hidden md:inline'
+                        ]"
+                        :style="{ left: `${hourTicks[idx]}%` }"
+                      >{{ h }}:00</span>
                     </div>
                   </div>
 
                   <div
                     v-for="row in monthRows"
                     :key="row.date"
-                    class="grid grid-cols-[120px_90px_minmax(0,1fr)] sm:grid-cols-[150px_110px_minmax(0,1fr)] px-3 py-3 border-b border-gray-800 items-center"
+                    class="grid grid-cols-[68px_48px_minmax(0,1fr)] sm:grid-cols-[150px_110px_minmax(0,1fr)] gap-x-2 px-2 sm:px-3 py-3 border-b border-gray-800 items-center"
                   >
-                    <div class="text-gray-200 text-xs sm:text-sm">
+                    <div class="min-w-0 text-gray-200 text-xs sm:text-sm">
                       <div class="font-medium">{{ shortDate(row.date) }}</div>
                       <div class="text-xs text-gray-500 uppercase">{{ row.weekday }}</div>
                       <div v-if="row.holiday" class="mt-0.5 text-[10px] text-blue-300 truncate" :title="row.holiday">Festivo: {{ row.holiday }}</div>
@@ -227,8 +251,11 @@
             </section>
           </div>
 
-          <div v-else-if="activeTab === 'absences'" class="h-full grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-4">
-            <aside class="bg-gray-900 border border-gray-800 rounded-3xl p-4 flex flex-col min-h-0 shadow-sm">
+          <div v-else-if="activeTab === 'absences'" class="xl:h-full xl:min-h-0 grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-4">
+            <aside
+              class="bg-gray-900 border border-gray-800 rounded-3xl p-4 flex-col min-h-0 shadow-sm"
+              :class="canViewAll ? 'flex' : 'hidden xl:flex'"
+            >
               <h2 class="text-sm font-semibold text-white mb-3">
                 {{ canViewAll ? 'Usuarios' : 'Mis ausencias' }}
               </h2>
@@ -244,7 +271,19 @@
                 </select>
               </div>
 
-              <div class="flex-1 overflow-y-auto space-y-2 pr-1">
+              <!-- phones/tablets: a dropdown instead of the long list of people -->
+              <div v-if="canViewAll" class="xl:hidden">
+                <label class="block text-xs text-gray-400 mb-1">Usuario</label>
+                <select
+                  :value="selectedUserId ?? ''"
+                  class="w-full bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded-xl px-2.5 py-2 focus:outline-none"
+                  @change="selectUser(Number(($event.target as HTMLSelectElement).value))"
+                >
+                  <option v-for="u in users" :key="u.id" :value="u.id">{{ u.full_name }}{{ u.team_name ? ` · ${u.team_name}` : '' }}</option>
+                </select>
+              </div>
+
+              <div class="hidden xl:block flex-1 overflow-y-auto space-y-2 pr-1">
                 <button
                   v-for="u in users"
                   :key="u.id"
@@ -270,7 +309,7 @@
               </div>
             </aside>
 
-            <section class="bg-gray-900 border border-gray-800 rounded-3xl p-5 flex flex-col min-h-0 overflow-hidden shadow-sm">
+            <section class="min-w-0 bg-gray-900 border border-gray-800 rounded-3xl p-3 sm:p-5 flex flex-col xl:min-h-0 xl:overflow-hidden shadow-sm">
               <div class="flex flex-col gap-3 mb-5 lg:flex-row lg:items-center lg:justify-between">
                 <div class="flex flex-wrap items-center gap-2">
                   <button
@@ -310,22 +349,22 @@
                 Se listan solo dias laborables sin fichaje, excluyendo vacaciones y dias con comprobante cargado.
               </p>
 
-              <div class="flex-1 min-h-0 overflow-y-auto rounded-2xl border border-gray-800">
-                <div class="grid grid-cols-[160px_120px_minmax(0,1fr)] px-4 py-3 text-gray-400 text-xs sm:text-sm border-b border-gray-800 bg-gray-800/50 sticky top-0 z-10">
+              <div class="xl:flex-1 xl:min-h-0 overflow-y-auto rounded-2xl border border-gray-800">
+                <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:grid-cols-[160px_120px_minmax(0,1fr)] gap-x-2 px-3 sm:px-4 py-3 text-gray-400 text-xs sm:text-sm border-b border-gray-800 bg-gray-800/50 sticky top-0 z-10">
                   <div>Fecha</div>
-                  <div>Dia</div>
+                  <div>Día</div>
                   <div>Estado</div>
                 </div>
 
                 <div
                   v-for="row in absencesRows"
                   :key="`absence-${row.date}`"
-                  class="grid grid-cols-[160px_120px_minmax(0,1fr)] px-4 py-3 border-b border-gray-800 items-center"
+                  class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:grid-cols-[160px_120px_minmax(0,1fr)] gap-x-2 px-3 sm:px-4 py-3 border-b border-gray-800 items-center"
                 >
                   <div class="text-gray-200 text-sm font-medium">{{ shortDate(row.date) }}</div>
                   <div class="text-gray-400 text-sm">{{ row.weekday }}</div>
                   <div>
-                    <span class="px-2.5 py-1 rounded-full text-xs border border-red-500/40 bg-red-500/15 text-red-200 uppercase tracking-wide">
+                    <span class="whitespace-nowrap px-2 sm:px-2.5 py-1 rounded-full text-[10px] sm:text-xs border border-red-500/40 bg-red-500/15 text-red-200 uppercase tracking-wide">
                       Sin fichaje
                     </span>
                   </div>
@@ -338,21 +377,21 @@
             </section>
           </div>
 
-          <div v-else class="h-full grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-4">
-            <section class="bg-gray-900 border border-gray-800 rounded-3xl p-5 flex flex-col min-h-0 shadow-sm">
-              <div class="flex items-center justify-between mb-4">
+          <div v-else class="xl:h-full xl:min-h-0 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-4">
+            <section class="min-w-0 bg-gray-900 border border-gray-800 rounded-3xl p-3 sm:p-5 flex flex-col xl:min-h-0 shadow-sm">
+              <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <div>
                   <h2 class="text-white font-semibold text-lg">Trabajando ahora</h2>
                   <p class="text-xs text-gray-400 mt-1">Personas con jornada activa hoy</p>
                 </div>
-                <div class="flex items-center gap-2">
-                  <div class="px-3 py-1 rounded-full border border-emerald-500/40 bg-emerald-500/15 text-emerald-100 text-xs font-medium">
+                <div class="flex flex-wrap items-center gap-2">
+                  <div class="whitespace-nowrap px-3 py-1 rounded-full border border-emerald-500/40 bg-emerald-500/15 text-emerald-100 text-xs font-medium">
                     {{ whoIsInWorkingCount }} trabajando
                   </div>
                   <select
                     v-if="canViewAllWhoIsIn"
                     v-model="whoIsInTeamFilter"
-                    class="h-9 rounded-xl bg-gray-800 border border-gray-700 text-gray-200 text-sm px-2.5"
+                    class="h-9 min-w-0 max-w-[180px] rounded-xl bg-gray-800 border border-gray-700 text-gray-200 text-sm px-2.5"
                   >
                     <option value="">Todos los equipos</option>
                     <option v-for="t in whoIsInTeams" :key="t.id" :value="String(t.id)">{{ t.name }}</option>
@@ -382,7 +421,7 @@
               </div>
             </section>
 
-            <aside class="bg-gray-900 border border-gray-800 rounded-3xl p-5 flex flex-col min-h-0 shadow-sm">
+            <aside class="min-w-0 bg-gray-900 border border-gray-800 rounded-3xl p-3 sm:p-5 flex flex-col xl:min-h-0 shadow-sm">
               <div class="flex items-center justify-between mb-4">
                 <h3 class="text-sm font-semibold text-white">Detalle de fichajes</h3>
                 <button class="text-xs text-gray-300 border border-gray-700 rounded-lg px-2.5 py-1.5 hover:bg-gray-800" @click="loadWhoIsInData">

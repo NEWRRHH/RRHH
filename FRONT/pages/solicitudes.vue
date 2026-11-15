@@ -19,12 +19,13 @@
         </div>
       </header>
 
-      <main class="relative z-10 flex-1 min-h-0 p-6 overflow-auto space-y-4">
-        <div class="inline-flex rounded-xl border border-gray-700 p-1 bg-gray-900 w-max">
+      <main class="relative z-10 flex-1 min-h-0 p-4 sm:p-6 overflow-auto space-y-4">
+        <!-- scrolls sideways on narrow phones instead of overflowing the page -->
+        <div class="flex max-w-full w-max overflow-x-auto rounded-xl border border-gray-700 p-1 bg-gray-900">
           <button
             v-for="f in filters"
             :key="f.id"
-            class="px-4 py-2 rounded-lg text-sm transition"
+            class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-2 rounded-lg text-sm transition"
             :class="statusFilter === f.id ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
             @click="changeFilter(f.id)"
           >
@@ -33,7 +34,7 @@
         </div>
         <div v-if="loading" class="space-y-4">
           <div class="flex gap-4">
-            <div class="w-48 space-y-3" v-if="canReview">
+            <div class="hidden xl:block w-48 space-y-3" v-if="canReview">
               <div v-for="i in 5" :key="'sldr-' + i" class="h-12 rounded-xl bg-gray-800 animate-pulse"></div>
             </div>
             <div class="flex-1 grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -59,13 +60,17 @@
         </div>
 
         <div
-          v-else
+          v-if="!loading"
           class="grid gap-4"
           :class="canReview ? 'grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)]' : 'grid-cols-1'"
         >
-          <aside v-if="canReview" class="rounded-2xl border border-gray-800 bg-gray-900 p-3 max-h-[75vh] overflow-auto">
+          <!-- requesters: horizontal chips on phones/tablets, side list on desktop -->
+          <aside
+            v-if="canReview"
+            class="min-w-0 flex gap-2 overflow-x-auto pb-1 xl:block xl:pb-3 xl:rounded-2xl xl:border xl:border-gray-800 xl:bg-gray-900 xl:p-3 xl:max-h-[75vh] xl:overflow-auto"
+          >
             <button
-              class="w-full text-left px-3 py-2 rounded-lg mb-2"
+              class="shrink-0 whitespace-nowrap text-left px-3 py-2 rounded-lg text-sm xl:w-full xl:mb-2"
               :class="selectedRequesterId === null ? 'bg-blue-600/20 border border-blue-500 text-white' : 'bg-gray-800 border border-gray-700 text-gray-200 hover:bg-gray-700'"
               @click="selectedRequesterId = null"
             >
@@ -74,7 +79,7 @@
             <button
               v-for="u in requesterItems"
               :key="u.id"
-              class="w-full text-left px-3 py-2 rounded-lg mb-2"
+              class="shrink-0 max-w-[220px] text-left px-3 py-2 rounded-lg text-sm xl:max-w-none xl:w-full xl:mb-2"
               :class="selectedRequesterId === u.id ? 'bg-blue-600/20 border border-blue-500 text-white' : 'bg-gray-800 border border-gray-700 text-gray-200 hover:bg-gray-700'"
               @click="selectedRequesterId = u.id"
             >
@@ -85,36 +90,36 @@
             </button>
           </aside>
 
-          <section>
+          <section class="min-w-0">
             <div v-if="!filteredRequests.length" class="text-gray-500">No hay solicitudes para este filtro.</div>
             <div v-else class="grid grid-cols-1 xl:grid-cols-2 gap-4">
               <article
                 v-for="item in filteredRequests"
                 :key="item.id"
-                class="rounded-2xl border border-gray-800 bg-gray-900 p-4 space-y-3"
+                class="min-w-0 rounded-2xl border border-gray-800 bg-gray-900 p-4 space-y-3"
               >
                 <div class="flex items-start justify-between gap-3">
-                  <div>
-                    <p class="text-white font-semibold">{{ item.title }}</p>
-                    <p class="text-xs text-gray-400">{{ item.event_type_name }} - {{ item.start_date }} a {{ item.end_date }}</p>
+                  <div class="min-w-0">
+                    <p class="text-white font-semibold break-words">{{ item.title }}</p>
+                    <p class="text-xs text-gray-400">{{ item.event_type_name }} · {{ item.start_date }} a {{ item.end_date }}</p>
                     <p v-if="!item.all_day" class="text-xs text-blue-300">Horario: {{ item.start_time }} - {{ item.end_time }}</p>
-                    <p class="text-xs text-gray-400 mt-1">Solicita: {{ item.requester.full_name }}</p>
+                    <p class="text-xs text-gray-400 mt-1 break-words">Solicita: {{ item.requester.full_name }}</p>
                   </div>
-                  <span class="px-2 py-1 rounded-full text-[11px] border uppercase tracking-wide" :class="statusBadgeClass(item.approval_status)">
+                  <span class="shrink-0 px-2 py-1 rounded-full text-[11px] border uppercase tracking-wide" :class="statusBadgeClass(item.approval_status)">
                     {{ statusLabel(item.approval_status) }}
                   </span>
                 </div>
 
-                <p v-if="item.description" class="text-sm text-gray-300">{{ item.description }}</p>
+                <p v-if="item.description" class="text-sm text-gray-300 whitespace-pre-wrap break-words">{{ item.description }}</p>
                 <div class="text-xs text-gray-400 flex items-center gap-2">
                   <span>Color solicitado:</span>
                   <span class="inline-block w-4 h-4 rounded border border-gray-700" :style="{ backgroundColor: item.color || '#3B82F6' }" />
                 </div>
-                <p v-if="item.approval_comment" class="text-sm text-amber-200 border border-amber-500/30 bg-amber-500/10 rounded-lg px-3 py-2">
+                <p v-if="item.approval_comment" class="text-sm text-amber-200 border border-amber-500/30 bg-amber-500/10 rounded-lg px-3 py-2 break-words">
                   Comentario RRHH: {{ item.approval_comment }}
                 </p>
 
-                <div v-if="item.approval_status === 'pending' && canReview" class="flex gap-2 pt-1">
+                <div v-if="item.approval_status === 'pending' && canReview" class="grid grid-cols-2 sm:flex gap-2 pt-1">
                   <button class="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm hover:bg-emerald-500 disabled:opacity-60" :disabled="savingId === item.id" @click="review(item.id, 'approved')">
                     Aprobar
                   </button>

@@ -16,9 +16,13 @@
         </div>
       </header>
 
-      <main class="relative z-10 flex-1 min-h-0 p-6 overflow-auto">
-        <div class="max-w-6xl mx-auto grid grid-cols-1 xl:grid-cols-[360px_minmax(0,1fr)] gap-4">
-          <section class="rounded-2xl border border-gray-800 bg-gray-900 p-5 h-max">
+      <main class="relative z-10 flex-1 min-h-0 p-4 sm:p-6 overflow-auto">
+        <div
+          class="mx-auto grid grid-cols-1 gap-4"
+          :class="canManage ? 'max-w-6xl lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)]' : 'max-w-3xl'"
+        >
+          <!-- only who can publish (announcements.manage) sees the form; everybody else just reads -->
+          <section v-if="canManage" class="rounded-2xl border border-gray-800 bg-gray-900 p-4 sm:p-5 h-max">
             <h2 class="text-white font-semibold mb-4">Nuevo comunicado</h2>
             <form class="space-y-3" @submit.prevent="createAnnouncement">
               <div>
@@ -78,9 +82,9 @@
             </form>
           </section>
 
-          <section class="rounded-2xl border border-gray-800 bg-gray-900 p-5">
-            <div class="flex items-center justify-between mb-4">
-              <h2 class="text-white font-semibold">Historial</h2>
+          <section class="rounded-2xl border border-gray-800 bg-gray-900 p-4 sm:p-5 min-w-0">
+            <div class="flex items-center justify-between gap-3 mb-4">
+              <h2 class="text-white font-semibold">{{ canManage ? 'Historial' : 'Comunicados' }}</h2>
               <button class="text-xs text-gray-300 border border-gray-700 rounded-lg px-2.5 py-1.5 hover:bg-gray-800" @click="loadAnnouncements">
                 Actualizar
               </button>
@@ -92,19 +96,19 @@
 
             <div v-else class="space-y-2">
               <article v-for="a in announcements" :key="a.id" class="rounded-xl border border-gray-800 bg-gray-800/60 p-3">
-                <div class="flex items-start gap-2">
-                  <div class="min-w-0 flex-1">
-                    <h3 class="text-sm font-semibold text-white truncate">{{ a.title }}</h3>
+                <div class="flex flex-wrap items-start gap-2">
+                  <div class="min-w-0 flex-1 basis-48">
+                    <h3 class="text-sm font-semibold text-white break-words">{{ a.title }}</h3>
                     <p class="text-xs text-gray-400">{{ a.author }} · {{ formatDate(a.created_at) }}</p>
                   </div>
                   <span
-                    class="text-[11px] rounded-full px-2 py-1 border"
+                    class="shrink-0 max-w-full truncate text-[11px] rounded-full px-2 py-1 border"
                     :class="a.scope === 'team' ? 'border-amber-500/50 bg-amber-500/15 text-amber-100' : 'border-blue-500/50 bg-blue-500/15 text-blue-100'"
                   >
                     {{ a.scope === 'team' ? `Equipo: ${a.team_name || '-'}` : 'Todos' }}
                   </span>
                 </div>
-                <p class="mt-2 text-sm text-gray-200 whitespace-pre-wrap">{{ a.body }}</p>
+                <p class="mt-2 text-sm text-gray-200 whitespace-pre-wrap break-words">{{ a.body }}</p>
               </article>
               <div v-if="!announcements.length" class="text-sm text-gray-500 text-center py-10">
                 Todavia no hay comunicados.
@@ -119,7 +123,7 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeMount, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeMount, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import AppSidebar from '../components/AppSidebar.vue'
@@ -147,6 +151,11 @@ const form = ref<{ title: string; body: string; scope: 'all' | 'team'; team_id: 
   team_id: '',
 })
 const { $swal } = useNuxtApp()
+
+const canManage = computed(() => {
+  const u: any = user.value || {}
+  return Boolean(u.can_manage_announcements) || (Array.isArray(u.permissions) && u.permissions.includes('announcements.manage'))
+})
 
 function openSidebar() {
   if (sidebar.value) sidebar.value.open = true
@@ -225,12 +234,9 @@ function formatDate(dt?: string) {
 onBeforeMount(async () => {
   await fetchUser()
 
-  const canAccess = Boolean((user.value as any)?.can_access_announcements) || Boolean((user.value as any)?.can_manage_announcements) || (Array.isArray((user.value as any)?.permissions) && (user.value as any).permissions.includes('announcements.manage'))
-  if (!canAccess) {
-    return router.push('/dashboard')
-  }
-
-  await loadTeams()
+  // Everybody reads (the API only returns "Todos" + their own team's);
+  // the form and the team list need announcements.manage.
+  if (canManage.value) await loadTeams()
   await loadAnnouncements()
 })
 

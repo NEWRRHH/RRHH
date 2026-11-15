@@ -48,6 +48,9 @@ class DashboardLayoutService
         'team' => 'visible',
     ];
 
+    /** How many of the 3 desktop columns a card may span (set by RRHH). */
+    public const MAX_WIDTH = 3;
+
     public const DEFAULT_LIMIT = 5;
 
     public const MAX_LIMIT = 50;
@@ -108,6 +111,7 @@ class DashboardLayoutService
             'welcome' => $this->welcome($row?->settings['welcome'] ?? null),
             'limits' => $this->limits($row?->settings['limits'] ?? null),
             'celebrations' => $this->celebrations($row?->settings['celebrations'] ?? null),
+            'widths' => $this->widths($row?->settings['widths'] ?? null),
             'configured' => (bool) $row,
             'updated_at' => $row?->updated_at?->toIso8601String(),
         ];
@@ -125,7 +129,8 @@ class DashboardLayoutService
             'slots' => $own ?? $company['slots'],
             'source' => $own !== null ? 'user' : 'company',
             'company_slots' => $company['slots'],
-            'settings' => ['welcome' => $company['welcome'], 'limits' => $company['limits']],
+            // widths are the company's even when the user rearranged their cards
+            'settings' => ['welcome' => $company['welcome'], 'limits' => $company['limits'], 'widths' => $company['widths']],
             'widgets' => $this->catalog(),
         ];
     }
@@ -160,9 +165,14 @@ class DashboardLayoutService
         DashboardWidget::table()->where('user_id', $user->id)->delete();
     }
 
-    public function saveCompanyLayout(User $editor, array $slots, array $welcome): array
+    public function saveCompanyLayout(User $editor, array $slots, array $welcome, ?array $widths = null): array
     {
-        return $this->store($editor, $this->validateSlots($slots), ['welcome' => $this->welcome($welcome)]);
+        $settings = ['welcome' => $this->welcome($welcome)];
+        if ($widths !== null) {
+            $settings['widths'] = $this->widths($widths);
+        }
+
+        return $this->store($editor, $this->validateSlots($slots), $settings);
     }
 
     /**
@@ -194,6 +204,7 @@ class DashboardLayoutService
                 'welcome' => $current['welcome'],
                 'limits' => $current['limits'],
                 'celebrations' => $current['celebrations'],
+                'widths' => $current['widths'],
             ], $settings),
             'updated_by' => $editor->id,
         ]);
@@ -309,6 +320,23 @@ class DashboardLayoutService
             if (is_string($key) && isset(self::WIDGETS[$key]) && ! in_array($key, $out, true)) {
                 $out[$i] = $key;
             }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Columns each card spans on desktop, 1..MAX_WIDTH (default 1). The
+     * frontend narrows a card when the positions to its right are taken.
+     *
+     * @return array<string, int>
+     */
+    public function widths(?array $input): array
+    {
+        $out = [];
+        foreach (array_keys(self::WIDGETS) as $key) {
+            $value = is_numeric($input[$key] ?? null) ? (int) $input[$key] : 1;
+            $out[$key] = max(1, min(self::MAX_WIDTH, $value));
         }
 
         return $out;

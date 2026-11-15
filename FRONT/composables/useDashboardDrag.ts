@@ -54,6 +54,9 @@ export function useDashboardDrag(
       instances.push(Sortable.create(list, {
         group,
         draggable: '[data-dash-key]',
+        // controls inside a card (e.g. the width buttons) stay clickable
+        filter: '[data-dash-nodrag]',
+        preventOnFilter: false,
         sort: false,
         animation: 150,
         // same behaviour on desktop and touch devices

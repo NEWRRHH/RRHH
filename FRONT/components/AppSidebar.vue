@@ -166,10 +166,6 @@ const canSeeEmployees = computed(() => {
   const u: any = user.value || {}
   return Boolean(u?.can_view_employee_details) || (Array.isArray(u?.permissions) && u.permissions.includes('employees.view_details'))
 })
-const canSeeAnnouncements = computed(() => {
-  const u: any = user.value || {}
-  return Boolean(u?.can_access_announcements) || Boolean(u?.can_manage_announcements) || (Array.isArray(u?.permissions) && u.permissions.includes('announcements.manage'))
-})
 const canSeeVacations = computed(() => {
   const u: any = user.value || {}
   return Boolean(u?.can_view_vacations) || (Array.isArray(u?.permissions) && u.permissions.includes('vacations.view'))
@@ -272,14 +268,15 @@ const navItems = computed(() => [
     </svg>`,
     badge: unreadCount
   },
-  ...(canSeeAnnouncements.value ? [{
+  // everybody reads announcements; only announcements.manage can publish
+  {
     label: 'Comunicados',
     to: '/comunicados',
     active: route.path.startsWith('/comunicados'),
     icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" d="M7 8h10M7 12h7m-7 4h5M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H9l-6 0V5a2 2 0 012-2z"/>
     </svg>`
-  }] : []),
+  },
   ...(canSeeVacations.value ? [{
     label: 'Vacaciones',
     to: '/vacaciones',

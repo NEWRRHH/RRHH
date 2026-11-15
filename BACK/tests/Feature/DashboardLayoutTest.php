@@ -146,6 +146,38 @@ class DashboardLayoutTest extends TestCase
         $this->getJson('/api/birthdays?limit=3')->assertOk()->assertJsonCount(3);
     }
 
+    public function test_rrhh_sets_card_widths_for_everybody(): void
+    {
+        $slots = self::COMPANY_SLOTS;
+        $welcome = ['title' => 'Hola', 'subtitle' => '', 'show_date' => true];
+
+        Sanctum::actingAs($this->employee);
+        $this->putJson('/api/settings/dashboard', ['slots' => $slots, 'welcome' => $welcome, 'widths' => ['welcome' => 2]])
+            ->assertForbidden();
+
+        Sanctum::actingAs($this->hr);
+        $this->putJson('/api/settings/dashboard', ['slots' => $slots, 'welcome' => $welcome, 'widths' => ['welcome' => 4]])
+            ->assertStatus(422);
+        $this->putJson('/api/settings/dashboard', ['slots' => $slots, 'welcome' => $welcome, 'widths' => ['welcome' => 3, 'holidays' => 2]])
+            ->assertOk()
+            ->assertJsonPath('layout.widths.welcome', 3)
+            ->assertJsonPath('layout.widths.holidays', 2)
+            ->assertJsonPath('layout.widths.team', 1);
+
+        // saving limits keeps the widths; omitting widths keeps them too
+        $this->putJson('/api/settings/dashboard/limits', ['limits' => ['notifications' => 5, 'announcements' => 5, 'birthdays' => 5, 'holidays' => 5, 'team' => 5]])
+            ->assertOk()->assertJsonPath('layout.widths.welcome', 3);
+        $this->putJson('/api/settings/dashboard', ['slots' => $slots, 'welcome' => $welcome])
+            ->assertOk()->assertJsonPath('layout.widths.holidays', 2);
+
+        // a user with their own arrangement still gets the company widths
+        Sanctum::actingAs($this->employee);
+        $this->putJson('/api/dashboard/layout', ['slots' => array_reverse($slots)])->assertOk();
+        $this->getJson('/api/dashboard/layout')
+            ->assertJsonPath('source', 'user')
+            ->assertJsonPath('settings.widths.welcome', 3);
+    }
+
     public function test_card_limits_validation(): void
     {
         Sanctum::actingAs($this->hr);

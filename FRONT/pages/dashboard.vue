@@ -25,7 +25,7 @@
         </div>
       </header>
 
-      <main ref="boardRoot" class="relative z-10 flex-1 p-6 space-y-6 overflow-auto">
+      <main ref="boardRoot" class="relative z-10 flex-1 p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-auto">
         <div class="flex flex-wrap items-center gap-3">
           <div class="bg-white/5 border border-white/5 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm">
             <div class="text-2xl text-blue-300 font-semibold">{{ data.stats?.users_count ?? 0 }}</div>
@@ -36,6 +36,7 @@
             <div class="text-xs text-gray-300">Asistencias hoy</div>
           </div>
           <button
+            v-if="canEditLayout"
             class="ml-auto w-10 h-10 rounded-xl border inline-flex items-center justify-center transition"
             :class="isEditMode ? 'border-blue-500 bg-blue-600/20 text-blue-200' : 'border-gray-700 bg-gray-900 text-gray-200 hover:bg-gray-800'"
             :title="isEditMode ? 'Terminar de personalizar' : 'Personalizar mi dashboard'"
@@ -60,7 +61,7 @@
               <p class="text-sm font-medium text-white">Estás personalizando tu dashboard</p>
               <p class="text-xs text-gray-400 mt-0.5">
                 Arrastra las tarjetas para cambiarlas de lugar. Suéltalas aquí para ocultarlas o arrastra una oculta a cualquier posición.
-                En el celular, mantén pulsada la tarjeta para arrastrarla. Los cambios solo los ves tú.
+                Los cambios solo los ves tú.
               </p>
             </div>
             <div class="flex gap-2">
@@ -93,10 +94,17 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
-          <div v-for="(column, cIdx) in boardColumns" :key="`col-${cIdx}`" class="space-y-4">
+        <!-- Board: groups of 3 stacked columns, plus horizontal bands for rows with wide cards -->
+        <div class="space-y-4">
+          <div v-for="seg in boardSegments" :key="seg.key" class="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+          <div
+            v-for="cell in seg.cells"
+            :key="`${seg.key}-${cell.col}`"
+            class="space-y-4 min-w-0"
+            :class="[DASHBOARD_COL_START_XL[cell.col], DASHBOARD_COL_SPAN_XL[cell.span]]"
+          >
             <div
-              v-for="slotIndex in visibleSlots(column)"
+              v-for="slotIndex in visibleSlots(cell.positions)"
               :key="`slot-${slotIndex}`"
               class="rounded-2xl border transition"
               :data-dash-drop="isEditMode ? slotIndex : undefined"
@@ -183,6 +191,7 @@
               </div>
             </div>
           </div>
+          </div>
         </div>
       </main>
     </div>
@@ -192,7 +201,11 @@
 
 <script setup lang="ts">
 import { computed, ref, onBeforeMount, onMounted, watch, onBeforeUnmount } from 'vue'
-import { DASHBOARD_COLUMNS, DASHBOARD_WIDGETS, DASHBOARD_WIDGET_KEYS, moveDashboardWidget, normalizeDashboardSlots } from '~/utils/dashboardWidgets'
+import {
+  DASHBOARD_COL_SPAN_XL, DASHBOARD_COL_START_XL, DASHBOARD_WIDGETS, DASHBOARD_WIDGET_KEYS,
+  dashboardSegments, moveDashboardWidget, normalizeDashboardSlots, normalizeDashboardWidths,
+  type DashboardWidths,
+} from '~/utils/dashboardWidgets'
 import { useDashboardDrag } from '~/composables/useDashboardDrag'
 
 definePageMeta({ auth: true })
@@ -261,11 +274,26 @@ const vacationInfo = ref<{
 })
 
 const boardLayout = ref<Array<CardKey | null>>(['welcome', 'birthdays', 'team', 'vacation', 'notifications', 'worked_hours', 'holidays', 'announcements', 'documents'])
-const boardColumns = DASHBOARD_COLUMNS
 // 'user' = personal arrangement, 'company' = layout defined by RRHH
 const layoutSource = ref<'user' | 'company'>('company')
 const hiddenCards = computed(() => DASHBOARD_WIDGET_KEYS.filter((k) => !boardLayout.value.includes(k)))
 const isEditMode = ref(false)
+
+// Rearranging is only offered where the 3-column board is shown (xl, ≥1280px).
+// Phones/tablets show the cards in a single column in the desktop order
+// (positions 1-9) and can't edit it.
+const canEditLayout = ref(false)
+let boardMedia: MediaQueryList | null = null
+const syncCanEdit = () => {
+  canEditLayout.value = !!boardMedia?.matches
+  if (!canEditLayout.value) isEditMode.value = false
+}
+onMounted(() => {
+  boardMedia = window.matchMedia('(min-width: 1280px)')
+  syncCanEdit()
+  boardMedia.addEventListener?.('change', syncCanEdit)
+})
+onBeforeUnmount(() => boardMedia?.removeEventListener?.('change', syncCanEdit))
 const savingLayout = ref(false)
 const welcomeSettings = ref<{ title: string; subtitle: string; show_date: boolean }>({
   title: 'Bienvenido',
@@ -401,16 +429,32 @@ function toggleEditMode() {
 
 // Drag & drop (SortableJS: mouse + touch), only active in edit mode.
 const boardRoot = ref<HTMLElement | null>(null)
-const { dragging: dashDragging } = useDashboardDrag(boardRoot, (key, target) => {
+const { dragging: dashDragging, refresh: refreshDashDrag } = useDashboardDrag(boardRoot, (key, target) => {
   if (target === 'hidden' ? !boardLayout.value.includes(key) : boardLayout.value[target] === key) return
   boardLayout.value = moveDashboardWidget(boardLayout.value, key, target)
   void saveDashboardLayout()
 }, isEditMode)
 
-function visibleSlots(column: number[]) {
-  if (isEditMode.value) return column
-  return column.filter((slotIndex) => boardLayout.value[slotIndex] !== null)
+function visibleSlots(positions: number[]) {
+  if (isEditMode.value) return positions
+  return positions.filter((slotIndex) => boardLayout.value[slotIndex] !== null)
 }
+
+// Card widths come from the company (Configuración > Dashboard); a wide card
+// narrows by itself when the positions to its right are taken.
+const cardWidths = ref<DashboardWidths>({})
+const boardSegments = computed(() => {
+  const segments = dashboardSegments(boardLayout.value, cardWidths.value)
+  if (isEditMode.value) return segments
+  // outside edit mode drop empty cells/segments (no blank gaps on phones)
+  return segments
+    .map((seg) => ({ ...seg, cells: seg.cells.filter((c) => visibleSlots(c.positions).length) }))
+    .filter((seg) => seg.cells.length)
+})
+// moving a card can create/remove a band: re-attach drag & drop to the new lists
+watch(() => boardSegments.value.map((s) => s.key).join('|'), () => {
+  if (isEditMode.value) refreshDashDrag()
+})
 
 async function resetToCompanyLayout() {
   try {
@@ -432,6 +476,7 @@ function applyLayout(res: any) {
     subtitle: typeof ws?.subtitle === 'string' && ws.subtitle.trim() ? ws.subtitle.trim() : 'Aquí tienes un resumen de la actividad de la empresa.',
     show_date: ws?.show_date !== false,
   }
+  cardWidths.value = normalizeDashboardWidths(res?.settings?.widths)
   const limits = res?.settings?.limits || {}
   for (const key of Object.keys(cardLimits.value) as ListCardKey[]) {
     const n = Number(limits[key])

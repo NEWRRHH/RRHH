@@ -21,9 +21,9 @@
         </div>
       </header>
 
-      <main class="relative z-10 flex-1 p-6 overflow-auto">
+      <main class="relative z-10 flex-1 p-4 sm:p-6 overflow-auto">
         <div class="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-          <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between gap-3">
+          <div class="px-4 sm:px-5 py-4 border-b border-gray-800 flex items-center justify-between gap-3">
             <h2 class="text-white font-semibold">Listado de empleados</h2>
             <button
               v-if="canCreateEmployee"
@@ -33,7 +33,7 @@
               Crear usuario
             </button>
           </div>
-          <div class="px-5 py-3 border-b border-gray-800 flex flex-wrap gap-2">
+          <div class="px-4 sm:px-5 py-3 border-b border-gray-800 flex flex-wrap gap-2">
             <button
               v-for="team in teamTabs"
               :key="team"
@@ -53,11 +53,12 @@
             <table class="min-w-full text-sm">
               <thead class="bg-gray-800/60 text-gray-300">
                 <tr>
-                  <th class="text-left px-4 py-3">Empleado</th>
-                  <th class="text-left px-4 py-3">Email</th>
-                  <th class="text-left px-4 py-3">Equipo</th>
-                  <th class="text-left px-4 py-3">Jornadas</th>
-                  <th class="text-right px-4 py-3">Acciones</th>
+                  <!-- phones: name (+ email/team below it) and actions; more columns as space allows -->
+                  <th class="text-left px-3 sm:px-4 py-3">Empleado</th>
+                  <th class="hidden md:table-cell text-left px-4 py-3">Email</th>
+                  <th class="hidden sm:table-cell text-left px-4 py-3">Equipo</th>
+                  <th class="hidden lg:table-cell text-left px-4 py-3">Jornadas</th>
+                  <th class="text-right px-3 sm:px-4 py-3"><span class="sr-only sm:not-sr-only">Acciones</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -69,13 +70,13 @@
                       <div class="h-4 w-32 bg-gray-800 rounded animate-pulse"></div>
                     </div>
                   </td>
-                  <td class="px-4 py-3">
+                  <td class="hidden md:table-cell px-4 py-3">
                     <div class="h-4 w-44 bg-gray-800 rounded animate-pulse"></div>
                   </td>
-                  <td class="px-4 py-3">
+                  <td class="hidden sm:table-cell px-4 py-3">
                     <div class="h-4 w-20 bg-gray-800 rounded animate-pulse"></div>
                   </td>
-                  <td class="px-4 py-3">
+                  <td class="hidden lg:table-cell px-4 py-3">
                     <div class="flex gap-1.5">
                       <div class="h-5 w-24 bg-gray-800 rounded-full animate-pulse"></div>
                       <div class="h-5 w-20 bg-gray-800 rounded-full animate-pulse"></div>
@@ -87,21 +88,27 @@
                 </tr>
 
                 <tr v-for="employee in filteredEmployees" :key="employee.id" class="border-t border-gray-800 text-gray-200 hover:bg-gray-800/40">
-                  <td class="px-4 py-3">
-                    <button class="flex items-center gap-3 w-full text-left" :disabled="!canEditEmployee" @click="goToEdit(employee)">
-                      <div class="w-9 h-9 rounded-full overflow-hidden bg-blue-600 flex items-center justify-center font-semibold">
+                  <td class="px-3 sm:px-4 py-3 max-w-0 w-full sm:max-w-none sm:w-auto">
+                    <button class="flex items-center gap-3 w-full text-left min-w-0" :disabled="!canEditEmployee" @click="goToEdit(employee)">
+                      <div class="w-9 h-9 shrink-0 rounded-full overflow-hidden bg-blue-600 flex items-center justify-center font-semibold">
                         <img v-if="employee.photo || employee.profile_photo_path" :src="resolvePhotoUrl(employee.photo || employee.profile_photo_path)" class="w-full h-full object-cover" />
                         <span v-else>{{ (employee.name || '?').charAt(0).toUpperCase() }}</span>
                       </div>
-                      <span :class="canViewEmployeeDetails ? 'text-white' : 'text-gray-300'">{{ employee.name }}</span>
+                      <span class="min-w-0">
+                        <span class="block truncate" :class="canViewEmployeeDetails ? 'text-white' : 'text-gray-300'">{{ employee.name }}</span>
+                        <span class="md:hidden block text-xs text-gray-400 truncate">{{ employee.email }}</span>
+                        <span class="sm:hidden block text-[11px] text-gray-500 truncate">
+                          {{ employee.team_name || 'Sin equipo' }}<template v-if="employee.role_name"> · {{ employee.role_name }}</template>
+                        </span>
+                      </span>
                     </button>
                   </td>
-                  <td class="px-4 py-3 text-gray-300">{{ employee.email }}</td>
-                  <td class="px-4 py-3 text-gray-300">
+                  <td class="hidden md:table-cell px-4 py-3 text-gray-300">{{ employee.email }}</td>
+                  <td class="hidden sm:table-cell px-4 py-3 text-gray-300">
                     <div>{{ employee.team_name || 'Sin equipo' }}</div>
                     <span v-if="employee.role_name" class="mt-1 inline-block text-[11px] px-2 py-0.5 rounded-full border border-violet-500/40 bg-violet-500/10 text-violet-200">{{ employee.role_name }}</span>
                   </td>
-                  <td class="px-4 py-3">
+                  <td class="hidden lg:table-cell px-4 py-3">
                     <div v-if="employee.assigned_schedule_templates?.length" class="flex flex-wrap gap-1.5">
                       <span
                         v-for="tpl in employee.assigned_schedule_templates"
@@ -113,7 +120,7 @@
                     </div>
                     <span v-else class="text-xs text-gray-500">Sin jornadas asignadas</span>
                   </td>
-                  <td class="px-4 py-3 text-right">
+                  <td class="px-2 sm:px-4 py-3 text-right">
                     <div v-if="canViewEmployeeDetails || canDeleteEmployee" class="relative inline-block action-menu">
                       <button @click.stop="toggleMenu(employee.id, $event)" class="p-2 rounded hover:bg-gray-800">
                         <svg class="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -159,7 +166,7 @@
 
     <div v-if="createModalOpen" class="fixed inset-0 z-[80] flex items-center justify-center p-4">
       <button class="absolute inset-0 bg-black/70" @click="closeCreateModal"></button>
-      <div class="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-gray-700 bg-gray-900 p-5">
+      <div class="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-gray-700 bg-gray-900 p-4 sm:p-5">
         <div class="flex items-start justify-between gap-4 mb-4">
           <div>
             <h3 class="text-lg font-semibold text-white">Crear nuevo usuario</h3>
@@ -183,7 +190,7 @@
               <input v-model="createForm.email" type="email" required class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
             </div>
             <div>
-              <label class="block text-xs text-gray-400 mb-1">Telefono</label>
+              <label class="block text-xs text-gray-400 mb-1">Teléfono</label>
               <input v-model="createForm.phone" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
             </div>
             <div>
@@ -230,8 +237,8 @@
                 <option value="">Sin definir</option>
                 <option value="indefinido">Indefinido</option>
                 <option value="temporal">Temporal</option>
-                <option value="practicas">Practicas</option>
-                <option value="autonomo">Autonomo</option>
+                <option value="practicas">Prácticas</option>
+                <option value="autonomo">Autónomo</option>
               </select>
             </div>
             <div>
@@ -239,7 +246,7 @@
               <input v-model="createForm.contract_start_date" type="date" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
             </div>
             <div>
-              <label class="block text-xs text-gray-400 mb-1">Dias de vacaciones</label>
+              <label class="block text-xs text-gray-400 mb-1">Días de vacaciones</label>
               <input v-model.number="createForm.vacation_days_total" type="number" min="0" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
             </div>
             <div>
@@ -247,11 +254,11 @@
               <input type="file" accept="image/*" @change="onCreatePhotoChange" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
             </div>
             <div>
-              <label class="block text-xs text-gray-400 mb-1">Contrasena *</label>
+              <label class="block text-xs text-gray-400 mb-1">Contraseña *</label>
               <PasswordInput v-model="createForm.password" required class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
             </div>
             <div>
-              <label class="block text-xs text-gray-400 mb-1">Confirmar contrasena *</label>
+              <label class="block text-xs text-gray-400 mb-1">Confirmar contraseña *</label>
               <PasswordInput v-model="createForm.password_confirmation" required class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
             </div>
           </div>
@@ -275,7 +282,7 @@
                   <span>{{ schedule.label }}</span>
                 </label>
               </div>
-              <p v-else class="text-xs text-gray-500">No hay horarios cargados en Configuracion.</p>
+              <p v-else class="text-xs text-gray-500">No hay horarios cargados en Configuración.</p>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>

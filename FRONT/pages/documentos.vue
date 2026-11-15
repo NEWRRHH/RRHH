@@ -16,10 +16,10 @@
         </div>
       </header>
 
-      <main class="relative z-10 flex-1 min-h-0 p-6 overflow-auto">
+      <main class="relative z-10 flex-1 min-h-0 p-4 sm:p-6 overflow-auto">
         <div class="max-w-5xl mx-auto space-y-4">
-          <div class="inline-flex rounded-xl border border-gray-700 p-1 bg-gray-900">
-            <button v-for="tab in tabs" :key="tab.id" class="px-4 py-2 rounded-lg text-sm transition"
+          <div class="flex max-w-full w-max overflow-x-auto rounded-xl border border-gray-700 p-1 bg-gray-900">
+            <button v-for="tab in tabs" :key="tab.id" class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-2 rounded-lg text-sm transition"
               :class="activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
               @click="changeTab(tab.id)">
               {{ tab.label }}
@@ -39,23 +39,23 @@
               </div>
             </div>
             <div class="rounded-xl border border-gray-800 overflow-hidden">
-              <div class="grid grid-cols-[70px_1fr_110px_80px_100px] sm:grid-cols-[70px_1fr_130px_90px_110px] px-3 py-2 bg-gray-800/60 border-b border-gray-800">
+              <div class="hidden sm:grid grid-cols-[70px_1fr_130px_90px_110px] px-3 py-2 bg-gray-800/60 border-b border-gray-800">
                 <div v-for="i in 5" :key="'th-' + i" class="h-3 rounded bg-gray-700 animate-pulse"></div>
               </div>
-              <div v-for="i in 5" :key="'dr-' + i" class="grid grid-cols-[70px_1fr_110px_80px_100px] sm:grid-cols-[70px_1fr_130px_90px_110px] px-3 py-3 border-b border-gray-800 items-center gap-2">
-                <div class="w-12 h-12 rounded-lg bg-gray-800 animate-pulse"></div>
+              <div v-for="i in 5" :key="'dr-' + i" class="grid grid-cols-[48px_minmax(0,1fr)_auto] sm:grid-cols-[70px_1fr_130px_90px_110px] px-3 py-3 border-b border-gray-800 items-center gap-2">
+                <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-gray-800 animate-pulse"></div>
                 <div class="space-y-1.5">
                   <div class="h-3 w-3/4 rounded bg-gray-800 animate-pulse"></div>
                   <div class="h-2.5 w-1/2 rounded bg-gray-800 animate-pulse"></div>
                 </div>
-                <div class="h-3 w-20 rounded bg-gray-800 animate-pulse"></div>
-                <div class="h-3 w-16 rounded bg-gray-800 animate-pulse"></div>
-                <div class="h-8 w-20 rounded-lg bg-gray-800 animate-pulse"></div>
+                <div class="hidden sm:block h-3 w-20 rounded bg-gray-800 animate-pulse"></div>
+                <div class="hidden sm:block h-3 w-16 rounded bg-gray-800 animate-pulse"></div>
+                <div class="h-8 w-10 sm:w-20 rounded-lg bg-gray-800 animate-pulse"></div>
               </div>
             </div>
           </div>
 
-          <section v-else class="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-4">
+          <section v-else class="rounded-2xl border border-gray-800 bg-gray-900 p-4 sm:p-5 space-y-4">
             <h2 class="text-white font-semibold">{{ currentTabTitle }}</h2>
             <form
               v-if="canUploadInTab && canUploadDocs"
@@ -63,39 +63,39 @@
               @submit.prevent="uploadDocument"
             >
               <div>
-                <label class="block text-xs text-gray-400 mb-1">Descripcion</label>
-                <input v-model="description" class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white" placeholder="Ej: justificante medico de marzo" />
+                <label class="block text-xs text-gray-400 mb-1">Descripción</label>
+                <input v-model="description" class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white" placeholder="Ej: justificante médico de marzo" />
               </div>
-              <div class="flex gap-2">
+              <div class="flex gap-2 min-w-0">
                 <input ref="fileInput" type="file" class="hidden" @change="onFileSelected" />
-                <button type="button" class="px-3 py-2 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800" @click="selectFile">
+                <button type="button" class="min-w-0 flex-1 md:flex-none md:max-w-[240px] truncate px-3 py-2 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800" :title="selectedFile?.name" @click="selectFile">
                   {{ selectedFile ? selectedFile.name : 'Seleccionar archivo' }}
                 </button>
-                <button class="px-3 py-2 rounded-lg bg-blue-600 text-white disabled:opacity-50" :disabled="uploading || !selectedFile">
+                <button class="shrink-0 px-3 py-2 rounded-lg bg-blue-600 text-white disabled:opacity-50" :disabled="uploading || !selectedFile">
                   {{ uploading ? 'Subiendo...' : 'Subir' }}
                 </button>
               </div>
             </form>
             <div v-else class="rounded-xl border border-amber-600/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
-              {{ !canUploadDocs ? 'No tienes permisos para subir documentos.' : 'En la pestaña Nominas no se permite subir archivos. Las nominas se cargan externamente.' }}
+              {{ !canUploadDocs ? 'No tienes permisos para subir documentos.' : 'En la pestaña Nóminas no se permite subir archivos. Las nóminas se cargan externamente.' }}
             </div>
 
-            <div class="rounded-xl border border-gray-800 overflow-hidden overflow-x-auto min-w-0">
-              <div class="min-w-[540px] sm:min-w-0">
-              <div class="grid grid-cols-[70px_1fr_110px_80px_100px] sm:grid-cols-[70px_1fr_130px_90px_110px] px-3 py-2 text-xs text-gray-400 bg-gray-800/60 border-b border-gray-800">
-                <div>Preview</div>
+            <!-- table on sm+; on phones each row is icon · name (date · size) · download -->
+            <div class="rounded-xl border border-gray-800 overflow-hidden min-w-0">
+              <div class="hidden sm:grid grid-cols-[70px_1fr_130px_90px_110px] px-3 py-2 text-xs text-gray-400 bg-gray-800/60 border-b border-gray-800">
+                <div>Vista</div>
                 <div>Documento</div>
                 <div>Fecha</div>
-                <div>Tamano</div>
-                <div>Accion</div>
+                <div>Tamaño</div>
+                <div>Acción</div>
               </div>
               <div
                 v-for="d in documents"
                 :key="d.id"
-                class="grid grid-cols-[70px_1fr_110px_80px_100px] sm:grid-cols-[70px_1fr_130px_90px_110px] px-3 py-2 text-sm text-gray-200 border-b border-gray-800 items-center gap-2"
+                class="grid grid-cols-[48px_minmax(0,1fr)_auto] sm:grid-cols-[70px_1fr_130px_90px_110px] px-3 py-2 text-sm text-gray-200 border-b border-gray-800 items-center gap-2"
               >
                 <div
-                  class="w-12 h-12 rounded-lg border border-gray-700 bg-gray-800/80 flex items-center justify-center"
+                  class="w-10 h-10 sm:w-12 sm:h-12 rounded-lg border border-gray-700 bg-gray-800/80 flex items-center justify-center"
                   :class="previewBoxClass(d)"
                   :title="fileTypeLabel(d)"
                 >
@@ -112,24 +112,28 @@
                     <path stroke-linecap="round" stroke-linejoin="round" d="M7 3h7l5 5v13a1 1 0 01-1 1H7a2 2 0 01-2-2V5a2 2 0 012-2z" />
                   </svg>
                 </div>
-                <div class="truncate">
+                <div class="min-w-0">
                   <div class="truncate">{{ d.original_name || d.filename }}</div>
                   <div class="text-xs text-gray-500 truncate">{{ d.description || '-' }}</div>
+                  <div class="sm:hidden text-[11px] text-gray-500 truncate">{{ formatDate(d.created_at) }} · {{ formatSize(d.size) }}</div>
                 </div>
-                <div class="text-xs text-gray-400">{{ formatDate(d.created_at) }}</div>
-                <div class="text-xs text-gray-400">{{ formatSize(d.size) }}</div>
+                <div class="hidden sm:block text-xs text-gray-400">{{ formatDate(d.created_at) }}</div>
+                <div class="hidden sm:block text-xs text-gray-400">{{ formatSize(d.size) }}</div>
                 <div>
                   <button
-                    class="px-2.5 py-1.5 rounded-lg border border-gray-700 text-xs text-gray-200 hover:bg-gray-800 disabled:opacity-50"
+                    class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-700 text-xs text-gray-200 hover:bg-gray-800 disabled:opacity-50"
                     :disabled="downloadingId === d.id"
+                    :aria-label="`Descargar ${d.original_name || d.filename}`"
                     @click="downloadDocument(d)"
                   >
-                    {{ downloadingId === d.id ? 'Bajando...' : 'Descargar' }}
+                    <svg class="w-4 h-4 sm:hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+                    </svg>
+                    <span class="hidden sm:inline">{{ downloadingId === d.id ? 'Bajando...' : 'Descargar' }}</span>
                   </button>
                 </div>
               </div>
-              <div v-if="!documents.length" class="px-3 py-8 text-center text-gray-500 text-sm">No hay documentos en esta categoria.</div>
-              </div>
+              <div v-if="!documents.length" class="px-3 py-8 text-center text-gray-500 text-sm">No hay documentos en esta categoría.</div>
             </div>
           </section>
         </div>
