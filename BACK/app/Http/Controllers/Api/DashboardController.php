@@ -14,6 +14,7 @@ use App\Models\Event;
 use App\Models\EventType;
 use App\Models\Post;
 use App\Models\Team;
+use App\Services\CelebrationService;
 use App\Services\DashboardLayoutService;
 use App\Services\ScheduleService;
 use App\Support\Audit;
@@ -158,7 +159,69 @@ class DashboardController extends Controller
             'widgets' => $layouts->catalog(),
             'default_slots' => $layouts->defaultSlots(),
             'default_welcome' => DashboardLayoutService::DEFAULT_WELCOME,
+            'limit_widgets' => $layouts->limitCatalog(),
+            'default_limit' => DashboardLayoutService::DEFAULT_LIMIT,
+            'max_limit' => DashboardLayoutService::MAX_LIMIT,
+            'default_celebrations' => DashboardLayoutService::DEFAULT_CELEBRATIONS,
+            'celebration_effects' => DashboardLayoutService::CELEBRATION_EFFECTS,
         ]);
+    }
+
+    /**
+     * Birthday / anniversary celebration texts (RRHH, "dashboard.manage").
+     */
+    public function saveCompanyCelebrations(Request $request, DashboardLayoutService $layouts)
+    {
+        if ($request->user()->cannot('dashboard.manage')) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $title = 'nullable|string|max:' . DashboardLayoutService::CELEBRATION_TITLE_MAX;
+        $message = 'nullable|string|max:' . DashboardLayoutService::CELEBRATION_MESSAGE_MAX;
+        $data = $request->validate([
+            'celebrations' => 'required|array',
+            'celebrations.birthday' => 'required|array',
+            'celebrations.birthday.title' => $title,
+            'celebrations.birthday.message' => $message,
+            'celebrations.anniversary' => 'required|array',
+            'celebrations.anniversary.title' => $title,
+            'celebrations.anniversary.message' => $message,
+            'celebrations.*.effects' => 'present|array',
+            'celebrations.*.effects.*' => 'string|in:' . implode(',', DashboardLayoutService::CELEBRATION_EFFECTS),
+        ], [
+            'celebrations.*.effects.*.in' => 'Animación desconocida.',
+            'celebrations.*.title.max' => 'El título admite hasta ' . DashboardLayoutService::CELEBRATION_TITLE_MAX . ' caracteres.',
+            'celebrations.*.message.max' => 'El mensaje admite hasta ' . DashboardLayoutService::CELEBRATION_MESSAGE_MAX . ' caracteres.',
+        ]);
+
+        $layout = $layouts->saveCompanyCelebrations($request->user(), $data['celebrations']);
+        Audit::log('dashboard.company_celebrations_updated', null, ['celebrations' => $layout['celebrations']]);
+
+        return response()->json(['status' => 'ok', 'layout' => $layout]);
+    }
+
+    /**
+     * How many items each list card shows (RRHH, "dashboard.manage").
+     */
+    public function saveCompanyLimits(Request $request, DashboardLayoutService $layouts)
+    {
+        if ($request->user()->cannot('dashboard.manage')) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $rules = ['limits' => 'required|array'];
+        foreach (array_keys(DashboardLayoutService::LIST_WIDGETS) as $key) {
+            $rules["limits.$key"] = 'required|integer|min:1|max:' . DashboardLayoutService::MAX_LIMIT;
+        }
+        $data = $request->validate($rules, [
+            'limits.*.min' => 'El límite mínimo es 1.',
+            'limits.*.max' => 'El límite máximo es ' . DashboardLayoutService::MAX_LIMIT . '.',
+        ]);
+
+        $layout = $layouts->saveCompanyLimits($request->user(), $data['limits']);
+        Audit::log('dashboard.company_limits_updated', null, ['limits' => $layout['limits']]);
+
+        return response()->json(['status' => 'ok', 'layout' => $layout]);
     }
 
     public function saveCompanyLayout(Request $request, DashboardLayoutService $layouts)
@@ -174,10 +237,14 @@ class DashboardController extends Controller
             'welcome.title' => 'nullable|string|max:80',
             'welcome.subtitle' => 'nullable|string|max:180',
             'welcome.show_date' => 'nullable|boolean',
+            'widths' => 'nullable|array',
+            'widths.*' => 'integer|min:1|max:' . DashboardLayoutService::MAX_WIDTH,
+        ], [
+            'widths.*.max' => 'Una tarjeta puede ocupar como máximo ' . DashboardLayoutService::MAX_WIDTH . ' columnas.',
         ]);
 
-        $layout = $layouts->saveCompanyLayout($request->user(), $data['slots'], $data['welcome']);
-        Audit::log('dashboard.company_layout_updated', null, ['slots' => $layout['slots']]);
+        $layout = $layouts->saveCompanyLayout($request->user(), $data['slots'], $data['welcome'], $data['widths'] ?? null);
+        Audit::log('dashboard.company_layout_updated', null, ['slots' => $layout['slots'], 'widths' => $layout['widths']]);
 
         return response()->json(['status' => 'ok', 'layout' => $layout]);
     }
@@ -224,7 +291,12 @@ class DashboardController extends Controller
                             'conversation_id' => $conv->id,
                             'sender_id' => $conv->sender_id,
                             'sender_name' => $conv->sender_name,
-                            'content' => $msg['content'] ?? '',
+                            // attachment-only chat messages show the file instead of an empty line
+                            'content' => ($msg['content'] ?? '') !== ''
+                                ? $msg['content']
+                                : (isset($msg['attachment'])
+                                    ? (($msg['attachment']['kind'] ?? '') === 'image' ? '📷 Imagen' : '📎 ' . ($msg['attachment']['name'] ?? 'Archivo'))
+                                    : ''),
                             'created_at' => $msg['created_at'] ?? null,
                             'read' => false,
                         ];
@@ -368,42 +440,16 @@ class DashboardController extends Controller
     }
 
     /**
-     * Return upcoming birthdays (authenticated)
+     * The next ?limit= birthdays/anniversaries grouped one row per person, soonest
+     * first (authenticated). Each row: person + birthday / anniversary
+     * ({date, years, is_today} or null) + date / is_today of the soonest.
      */
-    public function birthdays(Request $request)
+    public function birthdays(Request $request, CelebrationService $celebrations)
     {
-        $today = Carbon::today();
+        // ?limit= comes from the company's card limit (Configuración > Límites).
+        $limit = max(1, min(DashboardLayoutService::MAX_LIMIT, (int) $request->query('limit', DashboardLayoutService::DEFAULT_LIMIT)));
 
-        $users = User::whereNotNull('birth_date')
-            ->get()
-            ->map(function ($u) use ($today) {
-                try {
-                    $dob = Carbon::parse($u->birth_date);
-                } catch (\Exception $e) {
-                    return null;
-                }
-
-                $next = $dob->copy()->year($today->year);
-                if ($next->lt($today)) {
-                    $next->addYear();
-                }
-
-                return [
-                    'id' => $u->id,
-                    'first_name' => $u->first_name ?? $u->name ?? null,
-                    'last_name' => $u->last_name ?? null,
-                    'full_name' => trim(($u->first_name ?? $u->name ?? '') . ' ' . ($u->last_name ?? '')),
-                    'photo' => $u->photo ?? $u->profile_photo_path ?? null,
-                    'birth_date' => $dob->toDateString(),
-                    'next_birthday' => $next->toDateString(),
-                    'age' => $next->year - $dob->year,
-                ];
-            })
-            ->filter()
-            ->sortBy('next_birthday')
-            ->values();
-
-        return response()->json($users->take(10));
+        return response()->json($celebrations->upcoming(null, $limit));
     }
 
     /**

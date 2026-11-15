@@ -21,9 +21,9 @@
         </div>
       </header>
 
-      <main class="relative z-10 flex-1 p-6 overflow-auto">
+      <main class="relative z-10 flex-1 p-4 sm:p-6 overflow-auto">
         <div class="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-          <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between gap-3">
+          <div class="px-4 sm:px-5 py-4 border-b border-gray-800 flex items-center justify-between gap-3">
             <h2 class="text-white font-semibold">Listado de empleados</h2>
             <button
               v-if="canCreateEmployee"
@@ -33,7 +33,7 @@
               Crear usuario
             </button>
           </div>
-          <div class="px-5 py-3 border-b border-gray-800 flex flex-wrap gap-2">
+          <div class="px-4 sm:px-5 py-3 border-b border-gray-800 flex flex-wrap gap-2">
             <button
               v-for="team in teamTabs"
               :key="team"
@@ -53,11 +53,12 @@
             <table class="min-w-full text-sm">
               <thead class="bg-gray-800/60 text-gray-300">
                 <tr>
-                  <th class="text-left px-4 py-3">Empleado</th>
-                  <th class="text-left px-4 py-3">Email</th>
-                  <th class="text-left px-4 py-3">Equipo</th>
-                  <th class="text-left px-4 py-3">Jornadas</th>
-                  <th class="text-right px-4 py-3">Acciones</th>
+                  <!-- phones: name (+ email/team below it) and actions; more columns as space allows -->
+                  <th class="text-left px-3 sm:px-4 py-3">Empleado</th>
+                  <th class="hidden md:table-cell text-left px-4 py-3">Email</th>
+                  <th class="hidden sm:table-cell text-left px-4 py-3">Equipo</th>
+                  <th class="hidden lg:table-cell text-left px-4 py-3">Jornadas</th>
+                  <th class="text-right px-3 sm:px-4 py-3"><span class="sr-only sm:not-sr-only">Acciones</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -69,13 +70,13 @@
                       <div class="h-4 w-32 bg-gray-800 rounded animate-pulse"></div>
                     </div>
                   </td>
-                  <td class="px-4 py-3">
+                  <td class="hidden md:table-cell px-4 py-3">
                     <div class="h-4 w-44 bg-gray-800 rounded animate-pulse"></div>
                   </td>
-                  <td class="px-4 py-3">
+                  <td class="hidden sm:table-cell px-4 py-3">
                     <div class="h-4 w-20 bg-gray-800 rounded animate-pulse"></div>
                   </td>
-                  <td class="px-4 py-3">
+                  <td class="hidden lg:table-cell px-4 py-3">
                     <div class="flex gap-1.5">
                       <div class="h-5 w-24 bg-gray-800 rounded-full animate-pulse"></div>
                       <div class="h-5 w-20 bg-gray-800 rounded-full animate-pulse"></div>
@@ -87,21 +88,27 @@
                 </tr>
 
                 <tr v-for="employee in filteredEmployees" :key="employee.id" class="border-t border-gray-800 text-gray-200 hover:bg-gray-800/40">
-                  <td class="px-4 py-3">
-                    <button class="flex items-center gap-3 w-full text-left" :disabled="!canEditEmployee" @click="goToEdit(employee)">
-                      <div class="w-9 h-9 rounded-full overflow-hidden bg-blue-600 flex items-center justify-center font-semibold">
+                  <td class="px-3 sm:px-4 py-3 max-w-0 w-full sm:max-w-none sm:w-auto">
+                    <button class="flex items-center gap-3 w-full text-left min-w-0" :disabled="!canEditEmployee" @click="goToEdit(employee)">
+                      <div class="w-9 h-9 shrink-0 rounded-full overflow-hidden bg-blue-600 flex items-center justify-center font-semibold">
                         <img v-if="employee.photo || employee.profile_photo_path" :src="resolvePhotoUrl(employee.photo || employee.profile_photo_path)" class="w-full h-full object-cover" />
                         <span v-else>{{ (employee.name || '?').charAt(0).toUpperCase() }}</span>
                       </div>
-                      <span :class="canViewEmployeeDetails ? 'text-white' : 'text-gray-300'">{{ employee.name }}</span>
+                      <span class="min-w-0">
+                        <span class="block truncate" :class="canViewEmployeeDetails ? 'text-white' : 'text-gray-300'">{{ employee.name }}</span>
+                        <span class="md:hidden block text-xs text-gray-400 truncate">{{ employee.email }}</span>
+                        <span class="sm:hidden block text-[11px] text-gray-500 truncate">
+                          {{ employee.team_name || 'Sin equipo' }}<template v-if="employee.role_name"> · {{ employee.role_name }}</template>
+                        </span>
+                      </span>
                     </button>
                   </td>
-                  <td class="px-4 py-3 text-gray-300">{{ employee.email }}</td>
-                  <td class="px-4 py-3 text-gray-300">
+                  <td class="hidden md:table-cell px-4 py-3 text-gray-300">{{ employee.email }}</td>
+                  <td class="hidden sm:table-cell px-4 py-3 text-gray-300">
                     <div>{{ employee.team_name || 'Sin equipo' }}</div>
                     <span v-if="employee.role_name" class="mt-1 inline-block text-[11px] px-2 py-0.5 rounded-full border border-violet-500/40 bg-violet-500/10 text-violet-200">{{ employee.role_name }}</span>
                   </td>
-                  <td class="px-4 py-3">
+                  <td class="hidden lg:table-cell px-4 py-3">
                     <div v-if="employee.assigned_schedule_templates?.length" class="flex flex-wrap gap-1.5">
                       <span
                         v-for="tpl in employee.assigned_schedule_templates"
@@ -113,23 +120,38 @@
                     </div>
                     <span v-else class="text-xs text-gray-500">Sin jornadas asignadas</span>
                   </td>
-                  <td class="px-4 py-3 text-right">
-                    <div v-if="canViewEmployeeDetails || canDeleteEmployee" class="relative inline-block action-menu">
-                      <button @click.stop="toggleMenu(employee.id)" class="p-2 rounded hover:bg-gray-800">
+                  <td class="px-2 sm:px-4 py-3 text-right">
+                    <div v-if="canViewEmployeeDetails || canDeleteEmployee || canViewAs" class="relative inline-block action-menu">
+                      <button @click.stop="toggleMenu(employee.id, $event)" class="p-2 rounded hover:bg-gray-800">
                         <svg class="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" d="M12 6h.01M12 12h.01M12 18h.01"/>
                         </svg>
                       </button>
 
+                      <!-- Teleported + fixed so the table's overflow containers don't clip it -->
+                      <Teleport to="body">
                       <div
                         v-if="openMenuId === employee.id"
-                        class="absolute right-0 mt-1 w-40 bg-white text-gray-800 rounded-lg shadow-xl overflow-hidden divide-y divide-gray-200 z-[70]"
+                        class="action-menu fixed w-40 bg-white text-gray-800 rounded-lg shadow-xl overflow-hidden divide-y divide-gray-200 z-[70]"
+                        :style="menuStyle"
                       >
                         <button v-if="canEditEmployee" @click="goToEdit(employee)" class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2">
                           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M11 5h2m-1-1v2m-7 8l9-9 3 3-9 9H5v-3z"/>
                           </svg>
                           Ver detalle
+                        </button>
+                        <!-- read-only look at the app as this person (audited) -->
+                        <button
+                          v-if="canViewAs && employee.id !== (user as any)?.id"
+                          @click="startViewAs(employee)"
+                          class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                        >
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                          </svg>
+                          Ver como
                         </button>
                         <button v-if="canDeleteEmployee" @click="removeEmployee(employee)" class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600">
                           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -138,6 +160,7 @@
                           Eliminar
                         </button>
                       </div>
+                      </Teleport>
                     </div>
                   </td>
                 </tr>
@@ -155,7 +178,7 @@
 
     <div v-if="createModalOpen" class="fixed inset-0 z-[80] flex items-center justify-center p-4">
       <button class="absolute inset-0 bg-black/70" @click="closeCreateModal"></button>
-      <div class="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-gray-700 bg-gray-900 p-5">
+      <div class="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-gray-700 bg-gray-900 p-4 sm:p-5">
         <div class="flex items-start justify-between gap-4 mb-4">
           <div>
             <h3 class="text-lg font-semibold text-white">Crear nuevo usuario</h3>
@@ -179,7 +202,7 @@
               <input v-model="createForm.email" type="email" required class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
             </div>
             <div>
-              <label class="block text-xs text-gray-400 mb-1">Telefono</label>
+              <label class="block text-xs text-gray-400 mb-1">Teléfono</label>
               <input v-model="createForm.phone" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
             </div>
             <div>
@@ -226,8 +249,8 @@
                 <option value="">Sin definir</option>
                 <option value="indefinido">Indefinido</option>
                 <option value="temporal">Temporal</option>
-                <option value="practicas">Practicas</option>
-                <option value="autonomo">Autonomo</option>
+                <option value="practicas">Prácticas</option>
+                <option value="autonomo">Autónomo</option>
               </select>
             </div>
             <div>
@@ -235,7 +258,7 @@
               <input v-model="createForm.contract_start_date" type="date" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
             </div>
             <div>
-              <label class="block text-xs text-gray-400 mb-1">Dias de vacaciones</label>
+              <label class="block text-xs text-gray-400 mb-1">Días de vacaciones</label>
               <input v-model.number="createForm.vacation_days_total" type="number" min="0" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
             </div>
             <div>
@@ -243,12 +266,12 @@
               <input type="file" accept="image/*" @change="onCreatePhotoChange" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
             </div>
             <div>
-              <label class="block text-xs text-gray-400 mb-1">Contrasena *</label>
-              <input v-model="createForm.password" type="password" required class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
+              <label class="block text-xs text-gray-400 mb-1">Contraseña *</label>
+              <PasswordInput v-model="createForm.password" required class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
             </div>
             <div>
-              <label class="block text-xs text-gray-400 mb-1">Confirmar contrasena *</label>
-              <input v-model="createForm.password_confirmation" type="password" required class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
+              <label class="block text-xs text-gray-400 mb-1">Confirmar contraseña *</label>
+              <PasswordInput v-model="createForm.password_confirmation" required class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
             </div>
           </div>
 
@@ -271,7 +294,7 @@
                   <span>{{ schedule.label }}</span>
                 </label>
               </div>
-              <p v-else class="text-xs text-gray-500">No hay horarios cargados en Configuracion.</p>
+              <p v-else class="text-xs text-gray-500">No hay horarios cargados en Configuración.</p>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
@@ -306,7 +329,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onBeforeMount, onMounted } from 'vue'
+import { ref, computed, watch, onBeforeMount, onMounted, onBeforeUnmount } from 'vue'
 
 definePageMeta({ auth: true })
 import { useRouter } from 'vue-router'
@@ -413,7 +436,7 @@ function resolvePhotoUrl(path?: string | null) {
   if (!path) return ''
   const raw = String(path)
   if (/^https?:\/\//i.test(raw)) return raw
-  const base = String(apiBase || 'http://localhost:8000').replace(/\/+$/, '')
+  const base = String(apiBase).replace(/\/+$/, '')
   return raw.startsWith('/') ? `${base}${raw}` : `${base}/${raw}`
 }
 
@@ -421,8 +444,46 @@ function openSidebar() {
   if (sidebar.value) sidebar.value.open = true
 }
 
-function toggleMenu(id: number) {
-  openMenuId.value = openMenuId.value === id ? null : id
+const menuStyle = ref<Record<string, string>>({})
+const MENU_HEIGHT_ESTIMATE = 96
+
+function toggleMenu(id: number, event: MouseEvent) {
+  if (openMenuId.value === id) {
+    openMenuId.value = null
+    return
+  }
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  const right = `${Math.max(8, window.innerWidth - rect.right)}px`
+  // open upwards when there's not enough room below the button
+  menuStyle.value = window.innerHeight - rect.bottom < MENU_HEIGHT_ESTIMATE
+    ? { bottom: `${window.innerHeight - rect.top + 4}px`, right }
+    : { top: `${rect.bottom + 4}px`, right }
+  openMenuId.value = id
+}
+
+function closeMenu() {
+  openMenuId.value = null
+}
+
+// "Ver como": read-only, audited session as this employee (RRHH / admin)
+const canViewAs = computed(() => Boolean((user.value as any)?.can_view_as))
+
+async function startViewAs(employee: any) {
+  openMenuId.value = null
+  const ok = await $swal.confirm(
+    'Ver como',
+    `Vas a ver la aplicación como ${employee.name}, en modo solo lectura y sin acceso a su chat. El acceso queda registrado en la auditoría y dura 30 minutos.`,
+    'Ver como',
+    'Cancelar',
+  )
+  if (!ok) return
+  try {
+    await $fetch('/api/auth/view-as', { method: 'POST', body: { user_id: employee.id } })
+    await fetchUser()
+    await navigateTo('/dashboard')
+  } catch (e: any) {
+    $swal.toast('error', e?.data?.message || 'No se pudo iniciar el modo Ver como')
+  }
 }
 
 function goToEdit(employee: any) {
@@ -626,13 +687,24 @@ const onLogout = async () => {
   router.push('/login')
 }
 
+function onDocumentClick(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  if (!target.closest('.action-menu')) {
+    closeMenu()
+  }
+}
+
 onMounted(() => {
-  document.addEventListener('click', (e: MouseEvent) => {
-    const target = e.target as HTMLElement
-    if (!target.closest('.action-menu')) {
-      openMenuId.value = null
-    }
-  })
+  document.addEventListener('click', onDocumentClick)
+  // the menu is position:fixed, so close it instead of letting it drift
+  window.addEventListener('scroll', closeMenu, true)
+  window.addEventListener('resize', closeMenu)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocumentClick)
+  window.removeEventListener('scroll', closeMenu, true)
+  window.removeEventListener('resize', closeMenu)
 })
 
 onBeforeMount(async () => {

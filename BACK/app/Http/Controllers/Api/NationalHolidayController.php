@@ -1,35 +1,47 @@
 <?php
 
-namespace App\Http\Controllers\Admin;
+namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\NationalHoliday;
 use App\Support\Audit;
 use App\Support\HolidayCsvParser;
+use App\Support\Tenancy\TenantRule;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
 
 /**
- * Platform catalog of national holidays per country (super admin).
- * Companies copy them from their "Festivos" screen.
+ * National holidays catalog of the company, per country (Configuración >
+ * Festivos > Feriados nacionales, "holidays.manage": RRHH / admin).
+ * "Importar nacionales" copies them into the company holidays of a year.
+ * Tenant scoped: each company keeps its own list.
  */
 class NationalHolidayController extends Controller
 {
+    private function denied(Request $request)
+    {
+        return $request->user()->cannot('holidays.manage')
+            ? response()->json(['message' => 'Forbidden'], 403)
+            : null;
+    }
+
     public function index(Request $request)
     {
+        if ($denied = $this->denied($request)) {
+            return $denied;
+        }
         $data = $request->validate([
             'country_code' => 'nullable|string|size:2',
             'year' => 'nullable|integer|min:2000|max:2100',
         ]);
-        $country = strtoupper($data['country_code'] ?? 'ES');
+        $country = strtoupper($data['country_code'] ?? ($request->user()->company?->country_code ?: 'ES'));
         $year = (int) ($data['year'] ?? Carbon::today()->year);
 
         $holidays = NationalHoliday::where('country_code', $country)
             ->where(fn ($q) => $q->whereYear('date', $year)->orWhere('recurring', true))
             ->orderByRaw('MONTH(date), DAY(date)')
-            ->get();
+            ->get(['id', 'country_code', 'date', 'name', 'type', 'recurring']);
 
         return response()->json([
             'country_code' => $country,
@@ -39,31 +51,59 @@ class NationalHolidayController extends Controller
         ]);
     }
 
-    public function store(Request $request)
+    private function rules(string $country, ?int $ignoreId = null): array
     {
-        $data = $request->validate([
+        $unique = TenantRule::unique('national_holidays', 'date')->where('country_code', $country);
+        if ($ignoreId) {
+            $unique->ignore($ignoreId);
+        }
+
+        return [
             'country_code' => 'required|string|size:2',
-            'date' => ['required', 'date_format:Y-m-d'],
+            'date' => ['required', 'date_format:Y-m-d', $unique],
             'name' => 'required|string|max:150',
             'type' => 'nullable|in:national,regional',
             'recurring' => 'nullable|boolean',
-        ]);
-        $data['country_code'] = strtoupper($data['country_code']);
-        $request->validate([
-            'date' => [Rule::unique('national_holidays', 'date')->where('country_code', $data['country_code'])],
-        ]);
+        ];
+    }
+
+    public function store(Request $request)
+    {
+        if ($denied = $this->denied($request)) {
+            return $denied;
+        }
+        $country = strtoupper((string) $request->input('country_code'));
+        $data = $request->validate($this->rules($country), ['date.unique' => 'Ya hay un feriado cargado en esa fecha.']);
+        $data['country_code'] = $country;
 
         $holiday = NationalHoliday::create(array_filter($data, fn ($v) => $v !== null));
-        Audit::log('national_holiday.created', $holiday, $holiday->only(['country_code', 'name']), companyId: null);
+        Audit::log('national_holiday.created', $holiday, $holiday->only(['country_code', 'name']));
 
         return response()->json(['status' => 'ok', 'holiday' => $holiday], 201);
     }
 
-    public function destroy(int $id)
+    public function update(Request $request, int $id)
     {
+        if ($denied = $this->denied($request)) {
+            return $denied;
+        }
+        $holiday = NationalHoliday::findOrFail($id);
+        $country = strtoupper((string) $request->input('country_code', $holiday->country_code));
+        $data = $request->validate($this->rules($country, $holiday->id), ['date.unique' => 'Ya hay un feriado cargado en esa fecha.']);
+        $data['country_code'] = $country;
+        $holiday->update(array_filter($data, fn ($v) => $v !== null));
+
+        return response()->json(['status' => 'ok', 'holiday' => $holiday]);
+    }
+
+    public function destroy(Request $request, int $id)
+    {
+        if ($denied = $this->denied($request)) {
+            return $denied;
+        }
         $holiday = NationalHoliday::findOrFail($id);
         $holiday->delete();
-        Audit::log('national_holiday.deleted', $holiday, $holiday->only(['country_code', 'name']), companyId: null);
+        Audit::log('national_holiday.deleted', $holiday, $holiday->only(['country_code', 'name']));
 
         return response()->json(['status' => 'ok']);
     }
@@ -73,6 +113,9 @@ class NationalHolidayController extends Controller
      */
     public function import(Request $request)
     {
+        if ($denied = $this->denied($request)) {
+            return $denied;
+        }
         $data = $request->validate([
             'country_code' => 'required|string|size:2',
             'file' => 'required|file|max:1024|mimes:csv,txt',
@@ -111,7 +154,7 @@ class NationalHolidayController extends Controller
 
             return compact('created', 'updated');
         });
-        Audit::log('national_holiday.imported', null, $result + ['country' => $country], companyId: null);
+        Audit::log('national_holiday.imported', null, $result + ['country' => $country]);
 
         return response()->json(['status' => 'ok'] + $result + ['summary' => $summary]);
     }

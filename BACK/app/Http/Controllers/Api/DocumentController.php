@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Services\PayrollSync;
+use App\Support\FileStorage;
 use App\Http\Controllers\Controller;
 use App\Models\Document;
 use App\Services\PlanLimits;
@@ -26,6 +28,10 @@ class DocumentController extends Controller
         }
 
         $category = (string) $request->query('category', '');
+        // payslips dropped in companies/{id}/nominas/{employee}/ show up here
+        if ($category === '' || $category === 'payroll') {
+            app(PayrollSync::class)->syncUser($user);
+        }
         $query = Document::table()
             ->where('user_id', $user->id)
             ->whereNull('deleted_at')
@@ -70,8 +76,8 @@ class DocumentController extends Controller
         if ($user->company && ($limitError = $limits->canStore($user->company, (int) $file->getSize()))) {
             return response()->json(['message' => $limitError], 422);
         }
-        $safeName = Str::random(24) . '.' . $file->getClientOriginalExtension();
-        $storedPath = $file->storeAs("documents/{$user->company_id}/{$user->id}", $safeName, 'local');
+        // companies/{company}/documents/{user}/<random> on FILES_DISK
+        $storedPath = FileStorage::storePrivate($file, $user->company_id, FileStorage::DOCUMENTS, (string) $user->id);
 
         $id = Document::table()->insertGetId([
             'description' => $data['description'] ?? '',
@@ -109,11 +115,11 @@ class DocumentController extends Controller
             return response()->json(['message' => 'Documento no encontrado'], 404);
         }
 
-        if (!Storage::disk('local')->exists($doc->filename)) {
+        if (!FileStorage::disk()->exists($doc->filename)) {
             return response()->json(['message' => 'Archivo no disponible'], 404);
         }
 
         $downloadName = $doc->original_name ?: basename((string) $doc->filename);
-        return Storage::disk('local')->download($doc->filename, $downloadName);
+        return FileStorage::disk()->download($doc->filename, $downloadName);
     }
 }

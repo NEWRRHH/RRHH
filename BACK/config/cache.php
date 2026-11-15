@@ -19,6 +19,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Rate Limiter Cache Store
+    |--------------------------------------------------------------------------
+    |
+    | Throttle counters are hit on every API request. On the database store
+    | concurrent requests from the same user race on the same `cache` row
+    | (insert ignore) and MySQL aborts one of them with a deadlock (1213),
+    | which surfaced as a 500. The file store avoids that contention.
+    |
+    */
+
+    'limiter' => env('CACHE_LIMITER', 'file'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Cache Stores
     |--------------------------------------------------------------------------
     |

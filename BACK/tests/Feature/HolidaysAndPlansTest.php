@@ -97,16 +97,62 @@ class HolidaysAndPlansTest extends TestCase
 
     public function test_import_from_national_catalog(): void
     {
-        NationalHoliday::create(['country_code' => 'ES', 'date' => '2020-12-25', 'name' => 'Navidad', 'recurring' => true]);
-        NationalHoliday::create(['country_code' => 'ES', 'date' => '2030-04-18', 'name' => 'Viernes Santo']);
-        NationalHoliday::create(['country_code' => 'AR', 'date' => '2030-05-25', 'name' => 'Revolución de Mayo']);
-
+        // the company manages its own national catalog
         Sanctum::actingAs($this->admin);
+        $this->postJson('/api/holidays/national', ['country_code' => 'es', 'date' => '2020-12-25', 'name' => 'Navidad', 'recurring' => true])->assertCreated();
+        $this->postJson('/api/holidays/national', ['country_code' => 'ES', 'date' => '2030-04-18', 'name' => 'Viernes Santo'])->assertCreated();
+        $this->postJson('/api/holidays/national', ['country_code' => 'AR', 'date' => '2030-05-25', 'name' => 'Revolución de Mayo'])->assertCreated();
+        $this->postJson('/api/holidays/national', ['country_code' => 'ES', 'date' => '2030-04-18', 'name' => 'Repetido'])->assertStatus(422);
+
         $this->postJson('/api/holidays/import-national', ['country_code' => 'es', 'year' => 2030])->assertOk()->assertJson(['created' => 2]);
         $this->postJson('/api/holidays/import-national', ['country_code' => 'ES', 'year' => 2030])->assertOk()->assertJson(['created' => 0]);
 
         $dates = Holiday::withoutGlobalScopes()->orderBy('date')->pluck('date')->map(fn ($d) => Carbon::parse($d)->toDateString())->all();
         $this->assertSame(['2030-04-18', '2030-12-25'], $dates);
+    }
+
+    public function test_national_catalog_is_per_company_and_rrhh_only(): void
+    {
+        Sanctum::actingAs($this->admin);
+        $id = $this->postJson('/api/holidays/national', ['country_code' => 'ES', 'date' => '2030-01-01', 'name' => 'Año Nuevo'])->assertCreated()->json('holiday.id');
+        $this->putJson("/api/holidays/national/{$id}", ['country_code' => 'ES', 'date' => '2030-01-01', 'name' => 'Año nuevo'])->assertOk();
+        $this->getJson('/api/holidays/national?country_code=ES&year=2030')->assertOk()->assertJsonPath('holidays.0.name', 'Año nuevo');
+
+        // another company doesn't see it
+        ['admin' => $otherAdmin] = app(CompanyProvisioner::class)
+            ->provision('Otra', ['name' => 'Bea', 'email' => 'bea@otra.test', 'password' => 'Secreta123!']);
+        Tenant::clear();
+        Sanctum::actingAs($otherAdmin);
+        $this->getJson('/api/holidays/national?country_code=ES&year=2030')->assertOk()->assertJsonCount(0, 'holidays');
+        $this->deleteJson("/api/holidays/national/{$id}")->assertNotFound();
+
+        // employees can't manage it
+        $employee = Tenant::run($this->company->id, fn () => User::factory()->create([
+            'company_id' => $this->company->id,
+            'role_id' => \App\Models\Role::where('name', 'Empleado')->value('id'),
+        ]));
+        Tenant::clear();
+        Sanctum::actingAs($employee);
+        $this->getJson('/api/holidays/national')->assertForbidden();
+    }
+
+    public function test_working_holiday_is_a_normal_working_day_but_labelled(): void
+    {
+        Carbon::setTestNow('2030-05-01 09:30:00'); // Wednesday
+        Sanctum::actingAs($this->admin);
+        $id = $this->postJson('/api/holidays', ['date' => '2030-05-01', 'name' => 'Día del Trabajador'])->assertCreated()->json('holiday.id');
+
+        // day off: no clock-in
+        $this->postJson('/api/attendance/start')->assertStatus(422)->assertJsonPath('reason', 'holiday');
+
+        // the company works it: clock-in allowed, report keeps the label
+        $this->putJson("/api/holidays/{$id}", ['date' => '2030-05-01', 'name' => 'Día del Trabajador', 'is_working_day' => true])->assertOk();
+        $this->getJson('/api/holidays?year=2030')->assertJsonPath('holidays.0.is_working_day', true);
+        $this->postJson('/api/attendance/start')->assertOk();
+
+        $row = collect($this->getJson('/api/attendance/month?month=2030-05')->assertOk()->json('rows'))->firstWhere('date', '2030-05-01');
+        $this->assertSame('Día del Trabajador', $row['holiday']);
+        $this->assertTrue($row['holiday_working']);
     }
 
     public function test_holidays_do_not_consume_vacation_days(): void
@@ -180,12 +226,8 @@ class HolidaysAndPlansTest extends TestCase
         $this->deleteJson("/api/admin/plans/{$planId}")->assertStatus(422); // in use
         $this->getJson("/api/admin/companies/{$this->company->id}")->assertJsonPath('plan_usage.plan.code', 'enterprise');
 
-        $this->postJson('/api/admin/national-holidays', ['country_code' => 'es', 'date' => '2030-10-12', 'name' => 'Fiesta Nacional'])->assertCreated();
-        $this->post('/api/admin/national-holidays/import', [
-            'country_code' => 'ES', 'mode' => 'commit',
-            'file' => $this->csv("fecha;nombre;tipo\n01/11/2030;Todos los Santos;nacional\n10/12/2030;Mal tipo;empresa\n"),
-        ], ['Accept' => 'application/json'])->assertOk()->assertJson(['created' => 1]);
-        $this->getJson('/api/admin/national-holidays?country_code=ES&year=2030')->assertOk()->assertJsonCount(2, 'holidays');
+        // national holidays are no longer managed here (festivos: Configuración of each company)
+        $this->assertGreaterThanOrEqual(400, $this->getJson('/api/admin/national-holidays?country_code=ES&year=2030')->status());
 
         $this->getJson('/api/admin/permissions')->assertOk()->assertJsonFragment(['code' => 'holidays.manage']);
 

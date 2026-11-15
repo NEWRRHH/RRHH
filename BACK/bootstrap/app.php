@@ -29,7 +29,8 @@ return Application::configure(basePath: dirname(__DIR__))
             // Register broadcasting auth route with Sanctum so Bearer tokens
             // are accepted. Must be done here (not via the 'channels' shortcut)
             // because the shortcut uses the 'auth' guard instead of 'auth:sanctum'.
-            Broadcast::routes(['middleware' => ['auth:sanctum', \App\Http\Middleware\Cors::class]]);
+            // ReadOnlyViewAs: no realtime channels (private chat) in "Ver como"
+            Broadcast::routes(['middleware' => ['auth:sanctum', \App\Http\Middleware\Cors::class, \App\Http\Middleware\ReadOnlyViewAs::class]]);
             require base_path('routes/channels.php');
         },
     )

@@ -22,7 +22,8 @@
       </header>
 
       <main class="relative z-10 flex-1 min-h-0 p-3 sm:p-4 lg:p-6 overflow-auto">
-        <div class="h-full flex flex-col gap-4">
+        <!-- fixed-height panels with inner scroll only on desktop; phones scroll the page -->
+        <div class="xl:h-full flex flex-col gap-4">
           <div class="max-w-full">
             <div class="flex flex-wrap rounded-xl border border-gray-700 p-1 bg-gray-900 gap-1">
               <button
@@ -59,8 +60,11 @@
             {{ requestNotice.text }}
           </div>
 
-          <div v-if="activeTab === 'monthly'" class="h-full grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-4">
-            <aside class="bg-gray-900 border border-gray-800 rounded-3xl p-4 flex flex-col min-h-0 shadow-sm">
+          <div v-if="activeTab === 'monthly'" class="xl:h-full xl:min-h-0 grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-4">
+            <aside
+              class="bg-gray-900 border border-gray-800 rounded-3xl p-4 flex-col min-h-0 shadow-sm"
+              :class="canViewAll ? 'flex' : 'hidden xl:flex'"
+            >
               <h2 class="text-sm font-semibold text-white mb-3">
                 {{ canViewAll ? 'Usuarios' : 'Mis fichajes' }}
               </h2>
@@ -76,7 +80,19 @@
                 </select>
               </div>
 
-              <div class="flex-1 overflow-y-auto space-y-2 pr-1">
+              <!-- phones/tablets: a dropdown instead of the long list of people -->
+              <div v-if="canViewAll" class="xl:hidden">
+                <label class="block text-xs text-gray-400 mb-1">Usuario</label>
+                <select
+                  :value="selectedUserId ?? ''"
+                  class="w-full bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded-xl px-2.5 py-2 focus:outline-none"
+                  @change="selectUser(Number(($event.target as HTMLSelectElement).value))"
+                >
+                  <option v-for="u in users" :key="u.id" :value="u.id">{{ u.full_name }}{{ u.team_name ? ` · ${u.team_name}` : '' }}</option>
+                </select>
+              </div>
+
+              <div class="hidden xl:block flex-1 overflow-y-auto space-y-2 pr-1">
                 <button
                   v-for="u in users"
                   :key="u.id"
@@ -102,7 +118,7 @@
               </div>
             </aside>
 
-            <section class="bg-gray-900 border border-gray-800 rounded-3xl p-5 flex flex-col min-h-0 overflow-hidden shadow-sm">
+            <section class="min-w-0 bg-gray-900 border border-gray-800 rounded-3xl p-3 sm:p-5 flex flex-col xl:min-h-0 xl:overflow-hidden shadow-sm">
               <div class="flex flex-col gap-3 mb-5 lg:flex-row lg:items-center lg:justify-between">
                 <div class="flex flex-wrap items-center gap-2">
                   <button
@@ -130,14 +146,6 @@
                     Mensual
                   </div>
                 </div>
-
-                <button
-                  class="h-10 sm:h-11 w-full sm:w-auto px-5 rounded-xl text-white text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                  :disabled="requestingAttendance"
-                  @click="openRequestModal"
-                >
-                  {{ requestingAttendance ? 'Enviando...' : 'Solicitar fichaje' }}
-                </button>
               </div>
 
               <div class="text-xs text-gray-400 mb-3">
@@ -178,27 +186,35 @@
                 </label>
               </div>
 
-              <div class="flex-1 min-h-0 overflow-y-auto overflow-x-auto rounded-2xl border border-gray-800">
-                <div class="min-w-[760px] sm:min-w-[840px] lg:min-w-[980px]">
-                  <div class="grid grid-cols-[120px_90px_minmax(0,1fr)] sm:grid-cols-[150px_110px_minmax(0,1fr)] px-3 py-2 text-gray-400 text-xs sm:text-sm border-b border-gray-800 bg-gray-800/50 sticky top-0 z-10">
+              <!-- fits the screen: narrower date/hours columns and fewer hour labels on phones -->
+              <div class="xl:flex-1 xl:min-h-0 overflow-y-auto rounded-2xl border border-gray-800">
+                <div class="lg:min-w-[760px]">
+                  <div class="grid grid-cols-[68px_48px_minmax(0,1fr)] sm:grid-cols-[150px_110px_minmax(0,1fr)] gap-x-2 px-2 sm:px-3 py-2 text-gray-400 text-xs sm:text-sm border-b border-gray-800 bg-gray-800/50 sticky top-0 z-10">
                     <div>Fecha</div>
                     <div>Horas</div>
-                    <div class="relative">
-                      <div class="flex justify-between">
-                        <span v-for="h in hourMarks" :key="h">{{ h }}:00</span>
-                      </div>
+                    <div class="relative h-4 sm:h-5">
+                      <span
+                        v-for="(h, idx) in hourMarks"
+                        :key="h"
+                        class="absolute top-0 text-[10px] sm:text-xs tabular-nums whitespace-nowrap"
+                        :class="[
+                          idx === 0 ? '' : idx === hourMarks.length - 1 ? '-translate-x-full' : '-translate-x-1/2',
+                          h % 3 === 0 ? '' : 'hidden md:inline'
+                        ]"
+                        :style="{ left: `${hourTicks[idx]}%` }"
+                      >{{ h }}:00</span>
                     </div>
                   </div>
 
                   <div
                     v-for="row in monthRows"
                     :key="row.date"
-                    class="grid grid-cols-[120px_90px_minmax(0,1fr)] sm:grid-cols-[150px_110px_minmax(0,1fr)] px-3 py-3 border-b border-gray-800 items-center"
+                    class="grid grid-cols-[68px_48px_minmax(0,1fr)] sm:grid-cols-[150px_110px_minmax(0,1fr)] gap-x-2 px-2 sm:px-3 py-3 border-b border-gray-800 items-center"
                   >
-                    <div class="text-gray-200 text-xs sm:text-sm">
+                    <div class="min-w-0 text-gray-200 text-xs sm:text-sm">
                       <div class="font-medium">{{ shortDate(row.date) }}</div>
                       <div class="text-xs text-gray-500 uppercase">{{ row.weekday }}</div>
-                      <div v-if="row.holiday" class="mt-0.5 text-[10px] text-blue-300 truncate" :title="row.holiday">Festivo: {{ row.holiday }}</div>
+                      <div v-if="row.holiday" class="mt-0.5 text-[10px] truncate" :class="row.holiday_working ? 'text-amber-300' : 'text-blue-300'" :title="row.holiday">{{ row.holiday_working ? 'Festivo laborable' : 'Festivo' }}: {{ row.holiday }}</div>
                     </div>
                     <div class="text-gray-200 text-xs sm:text-sm font-medium">{{ workedLabel(row) }}</div>
                     <div class="relative h-5 rounded-full bg-gray-800 overflow-hidden">
@@ -227,8 +243,11 @@
             </section>
           </div>
 
-          <div v-else-if="activeTab === 'absences'" class="h-full grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-4">
-            <aside class="bg-gray-900 border border-gray-800 rounded-3xl p-4 flex flex-col min-h-0 shadow-sm">
+          <div v-else-if="activeTab === 'absences'" class="xl:h-full xl:min-h-0 grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-4">
+            <aside
+              class="bg-gray-900 border border-gray-800 rounded-3xl p-4 flex-col min-h-0 shadow-sm"
+              :class="canViewAll ? 'flex' : 'hidden xl:flex'"
+            >
               <h2 class="text-sm font-semibold text-white mb-3">
                 {{ canViewAll ? 'Usuarios' : 'Mis ausencias' }}
               </h2>
@@ -244,7 +263,19 @@
                 </select>
               </div>
 
-              <div class="flex-1 overflow-y-auto space-y-2 pr-1">
+              <!-- phones/tablets: a dropdown instead of the long list of people -->
+              <div v-if="canViewAll" class="xl:hidden">
+                <label class="block text-xs text-gray-400 mb-1">Usuario</label>
+                <select
+                  :value="selectedUserId ?? ''"
+                  class="w-full bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded-xl px-2.5 py-2 focus:outline-none"
+                  @change="selectUser(Number(($event.target as HTMLSelectElement).value))"
+                >
+                  <option v-for="u in users" :key="u.id" :value="u.id">{{ u.full_name }}{{ u.team_name ? ` · ${u.team_name}` : '' }}</option>
+                </select>
+              </div>
+
+              <div class="hidden xl:block flex-1 overflow-y-auto space-y-2 pr-1">
                 <button
                   v-for="u in users"
                   :key="u.id"
@@ -270,7 +301,7 @@
               </div>
             </aside>
 
-            <section class="bg-gray-900 border border-gray-800 rounded-3xl p-5 flex flex-col min-h-0 overflow-hidden shadow-sm">
+            <section class="min-w-0 bg-gray-900 border border-gray-800 rounded-3xl p-3 sm:p-5 flex flex-col xl:min-h-0 xl:overflow-hidden shadow-sm">
               <div class="flex flex-col gap-3 mb-5 lg:flex-row lg:items-center lg:justify-between">
                 <div class="flex flex-wrap items-center gap-2">
                   <button
@@ -307,29 +338,65 @@
                 <span class="text-gray-200 font-medium">{{ selectedUserName }}</span>
               </div>
               <p class="text-xs text-gray-500 mb-3">
-                Se listan solo dias laborables sin fichaje, excluyendo vacaciones y dias con comprobante cargado.
+                Se listan solo días laborables sin fichaje, excluyendo vacaciones y días con comprobante cargado.
               </p>
 
-              <div class="flex-1 min-h-0 overflow-y-auto rounded-2xl border border-gray-800">
-                <div class="grid grid-cols-[160px_120px_minmax(0,1fr)] px-4 py-3 text-gray-400 text-xs sm:text-sm border-b border-gray-800 bg-gray-800/50 sticky top-0 z-10">
+              <!-- own absences: pick the days and ask RRHH to regularise them in one request -->
+              <div v-if="isOwnSelectedUser && requestableAbsences.length" class="mb-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  class="h-10 px-4 rounded-xl text-white text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  :disabled="requestingAttendance || !selectedAbsenceDates.length"
+                  @click="requestSelectedAbsences"
+                >
+                  {{ requestingAttendance ? 'Enviando...' : `Solicitar fichaje (${selectedAbsenceDates.length} ${selectedAbsenceDates.length === 1 ? 'día' : 'días'})` }}
+                </button>
+                <button
+                  type="button"
+                  class="h-10 px-3 rounded-xl border border-gray-700 text-gray-300 text-sm hover:bg-gray-800"
+                  @click="toggleAllAbsences"
+                >
+                  {{ allAbsencesSelected ? 'Quitar todos' : 'Seleccionar todos' }}
+                </button>
+                <span class="text-[11px] text-gray-500">Se usará el horario de tu jornada; RRHH aprueba cada día.</span>
+              </div>
+
+              <div class="xl:flex-1 xl:min-h-0 overflow-y-auto rounded-2xl border border-gray-800">
+                <div class="grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)_auto] sm:grid-cols-[auto_160px_120px_minmax(0,1fr)] gap-x-3 px-3 sm:px-4 py-3 text-gray-400 text-xs sm:text-sm border-b border-gray-800 bg-gray-800/50 sticky top-0 z-10">
+                  <div class="w-4"></div>
                   <div>Fecha</div>
-                  <div>Dia</div>
+                  <div>Día</div>
                   <div>Estado</div>
                 </div>
 
-                <div
+                <label
                   v-for="row in absencesRows"
                   :key="`absence-${row.date}`"
-                  class="grid grid-cols-[160px_120px_minmax(0,1fr)] px-4 py-3 border-b border-gray-800 items-center"
+                  class="!mb-0 !font-normal grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)_auto] sm:grid-cols-[auto_160px_120px_minmax(0,1fr)] gap-x-3 px-3 sm:px-4 py-3 border-b border-gray-800 items-center"
+                  :class="canSelectAbsence(row) ? 'cursor-pointer hover:bg-gray-800/40' : ''"
                 >
+                  <div class="w-4">
+                    <input
+                      v-if="canSelectAbsence(row)"
+                      v-model="selectedAbsenceDates"
+                      type="checkbox"
+                      :value="row.date"
+                      class="accent-blue-500 w-4 h-4"
+                      :aria-label="`Seleccionar ${shortDate(row.date)}`"
+                    />
+                  </div>
                   <div class="text-gray-200 text-sm font-medium">{{ shortDate(row.date) }}</div>
                   <div class="text-gray-400 text-sm">{{ row.weekday }}</div>
                   <div>
-                    <span class="px-2.5 py-1 rounded-full text-xs border border-red-500/40 bg-red-500/15 text-red-200 uppercase tracking-wide">
+                    <span
+                      v-if="row.attendance_request_pending"
+                      class="whitespace-nowrap px-2 sm:px-2.5 py-1 rounded-full text-[10px] sm:text-xs border border-amber-500/40 bg-amber-500/15 text-amber-200 uppercase tracking-wide"
+                    >Solicitado</span>
+                    <span v-else class="whitespace-nowrap px-2 sm:px-2.5 py-1 rounded-full text-[10px] sm:text-xs border border-red-500/40 bg-red-500/15 text-red-200 uppercase tracking-wide">
                       Sin fichaje
                     </span>
                   </div>
-                </div>
+                </label>
 
                 <div v-if="!absencesRows.length" class="px-4 py-12 text-center text-gray-500 text-sm">
                   No hay ausencias para los filtros seleccionados.
@@ -338,21 +405,21 @@
             </section>
           </div>
 
-          <div v-else class="h-full grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-4">
-            <section class="bg-gray-900 border border-gray-800 rounded-3xl p-5 flex flex-col min-h-0 shadow-sm">
-              <div class="flex items-center justify-between mb-4">
+          <div v-else class="xl:h-full xl:min-h-0 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-4">
+            <section class="min-w-0 bg-gray-900 border border-gray-800 rounded-3xl p-3 sm:p-5 flex flex-col xl:min-h-0 shadow-sm">
+              <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <div>
                   <h2 class="text-white font-semibold text-lg">Trabajando ahora</h2>
                   <p class="text-xs text-gray-400 mt-1">Personas con jornada activa hoy</p>
                 </div>
-                <div class="flex items-center gap-2">
-                  <div class="px-3 py-1 rounded-full border border-emerald-500/40 bg-emerald-500/15 text-emerald-100 text-xs font-medium">
+                <div class="flex flex-wrap items-center gap-2">
+                  <div class="whitespace-nowrap px-3 py-1 rounded-full border border-emerald-500/40 bg-emerald-500/15 text-emerald-100 text-xs font-medium">
                     {{ whoIsInWorkingCount }} trabajando
                   </div>
                   <select
                     v-if="canViewAllWhoIsIn"
                     v-model="whoIsInTeamFilter"
-                    class="h-9 rounded-xl bg-gray-800 border border-gray-700 text-gray-200 text-sm px-2.5"
+                    class="h-9 min-w-0 max-w-[180px] rounded-xl bg-gray-800 border border-gray-700 text-gray-200 text-sm px-2.5"
                   >
                     <option value="">Todos los equipos</option>
                     <option v-for="t in whoIsInTeams" :key="t.id" :value="String(t.id)">{{ t.name }}</option>
@@ -382,7 +449,7 @@
               </div>
             </section>
 
-            <aside class="bg-gray-900 border border-gray-800 rounded-3xl p-5 flex flex-col min-h-0 shadow-sm">
+            <aside class="min-w-0 bg-gray-900 border border-gray-800 rounded-3xl p-3 sm:p-5 flex flex-col xl:min-h-0 shadow-sm">
               <div class="flex items-center justify-between mb-4">
                 <h3 class="text-sm font-semibold text-white">Detalle de fichajes</h3>
                 <button class="text-xs text-gray-300 border border-gray-700 rounded-lg px-2.5 py-1.5 hover:bg-gray-800" @click="loadWhoIsInData">
@@ -415,62 +482,6 @@
           </div>
         </div>
       </main>
-      <div v-if="requestModal.open" class="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center" @click.self="closeRequestModal">
-        <div class="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-4 space-y-4">
-          <h2 class="text-white font-semibold">Solicitar fichaje</h2>
-          <p class="text-xs text-gray-400">Selecciona la fecha y, si queres, la hora de entrada y de salida.</p>
-          <p v-if="!isOwnSelectedUser" class="text-xs text-amber-300">
-            Debes seleccionar tu usuario para solicitar fichajes.
-          </p>
-          <div>
-            <label class="block text-xs text-gray-400 mb-1">Fecha</label>
-            <input
-              v-model="requestModal.date"
-              type="date"
-              class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white"
-              :max="todayIso"
-            />
-          </div>
-          <div class="grid grid-cols-2 gap-2">
-            <div>
-              <label class="block text-xs text-gray-400 mb-1">Hora de entrada</label>
-              <input
-                v-model="requestModal.entry_time"
-                type="time"
-                :disabled="requestMissingKind === 'exit'"
-                class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-            </div>
-            <div>
-              <label class="block text-xs text-gray-400 mb-1">Hora de salida</label>
-              <input
-                v-model="requestModal.exit_time"
-                type="time"
-                :disabled="requestMissingKind === 'entry'"
-                class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-            </div>
-          </div>
-          <p class="text-xs text-gray-500">
-            {{ requestMissingKindHint || 'Deja las horas en blanco para usar el horario habitual.' }}
-          </p>
-          <p v-if="requestModal.error" class="text-xs text-red-300 border border-red-500/30 bg-red-500/10 rounded-lg px-3 py-2">
-            {{ requestModal.error }}
-          </p>
-          <div class="flex justify-end gap-2">
-            <button class="px-3 py-2 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800" @click="closeRequestModal">
-              Cancelar
-            </button>
-            <button
-              class="px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50"
-              :disabled="requestingAttendance || !requestModal.date || !isOwnSelectedUser"
-              @click="confirmRequestModal"
-            >
-              Confirmar
-            </button>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -508,7 +519,7 @@ const summary = ref<{ worked_hhmm: string; target_hhmm: string; worked_minutes: 
 })
 const selectedUserId = ref<number | null>(null)
 const teamFilter = ref('')
-const selectedMonth = ref(new Date().toISOString().slice(0, 7))
+const selectedMonth = ref(localIsoDate().slice(0, 7))
 const includeNonWorkingDays = ref(false)
 
 const canViewAllWhoIsIn = ref(false)
@@ -542,38 +553,15 @@ const monthLabel = computed(() => {
   return d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
 })
 const currentUserId = computed(() => Number((user.value as any)?.id || 0))
-const todayIso = computed(() => new Date().toISOString().slice(0, 10))
+const todayIso = computed(() => localIsoDate())
 const isOwnSelectedUser = computed(() => Number(selectedUserId.value || 0) === currentUserId.value)
-const requestModal = ref<{ open: boolean; date: string; entry_time: string; exit_time: string; error: string }>({
-  open: false,
-  date: '',
-  entry_time: '',
-  exit_time: '',
-  error: '',
-})
-
-const requestMissingKind = computed(() => {
-  const date = requestModal.value.date
-  if (!date || !requestModal.value.open) return null
-  const row = monthRows.value.find((r: any) => String(r?.date || '') === date)
-  return row ? missingAttendanceKind(row) : null
-})
-
-const requestMissingKindHint = computed(() => {
-  const kind = requestMissingKind.value
-  if (kind === 'entry_exit') return 'Falta fichar la entrada y la salida.'
-  if (kind === 'entry') return 'Falta fichar la entrada.'
-  if (kind === 'exit') return 'Falta fichar la salida.'
-  return ''
-})
-
 function openSidebar() {
   if (sidebar.value) sidebar.value.open = true
 }
 
 function shortDate(dateIso: string) {
-  const d = new Date(dateIso)
-  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const d = parseDate(dateIso)
+  return d ? d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : dateIso
 }
 
 function toMinutes(v?: string | null) {
@@ -689,84 +677,41 @@ function workedColorClass(seconds?: number) {
   return 'text-amber-300'
 }
 
-function missingAttendanceKind(row: any): 'entry_exit' | 'entry' | 'exit' | null {
-  const hasStart = !!row?.start_time
-  const hasEnd = !!row?.end_time
-  if (!hasStart && !hasEnd) return 'entry_exit'
-  if (!hasStart && hasEnd) return 'entry'
-  if (hasStart && !hasEnd) return 'exit'
-  return null
+// ── Ausencias: ask RRHH to regularise several days in one request ──
+const selectedAbsenceDates = ref<string[]>([])
+const canSelectAbsence = (row: any) => isOwnSelectedUser.value && !row?.attendance_request_pending
+const requestableAbsences = computed(() => absencesRows.value.filter(canSelectAbsence))
+const allAbsencesSelected = computed(() =>
+  requestableAbsences.value.length > 0 && selectedAbsenceDates.value.length === requestableAbsences.value.length,
+)
+
+function toggleAllAbsences() {
+  selectedAbsenceDates.value = allAbsencesSelected.value ? [] : requestableAbsences.value.map((r: any) => r.date)
 }
 
-function canRequestAttendanceForRow(row: any): boolean {
-  if (!row || !row.date) return false
-  if (Number(selectedUserId.value || 0) !== currentUserId.value) return false
-  if (row.attendance_request_pending) return false
-  if (String(row.date) > todayIso.value) return false
-  return missingAttendanceKind(row) !== null
-}
-
-function openRequestModal() {
-  requestModal.value = {
-    open: true,
-    date: todayIso.value,
-    entry_time: '',
-    exit_time: '',
-    error: '',
-  }
-}
-
-function closeRequestModal() {
-  requestModal.value = { open: false, date: '', entry_time: '', exit_time: '', error: '' }
-}
-
-async function requestAttendanceByDate(date: string, entryTime = '', exitTime = '') {
-  if (!authenticated.value || !date || requestingAttendance.value) return
+async function requestSelectedAbsences() {
+  if (!selectedAbsenceDates.value.length || requestingAttendance.value) return
   requestingAttendance.value = true
   requestNotice.value = { type: 'success', text: '' }
   try {
-    const res: any = await $fetch(`/api/attendance/requests`, {
+    const res: any = await $fetch('/api/attendance/requests/days', {
       method: 'POST',
-      body: { date, entry_time: entryTime || null, exit_time: exitTime || null },
+      body: { dates: [...selectedAbsenceDates.value].sort() },
     })
-    const kind = String(res?.request_kind || '')
-    const kindLabel = kind === 'entry_exit' ? 'entrada y salida' : kind === 'entry' ? 'entrada' : kind === 'exit' ? 'salida' : 'fichaje'
-    const timesLabel = [entryTime ? `entrada ${entryTime}` : '', exitTime ? `salida ${exitTime}` : ''].filter(Boolean).join(', ')
-    requestNotice.value = { type: 'success', text: `Solicitud enviada a RRHH para ${date} (${kindLabel}${timesLabel ? ` - ${timesLabel}` : ''}).` }
+    const n = (res?.days || []).length
+    const skipped = (res?.skipped || []).length
+    requestNotice.value = {
+      type: 'success',
+      text: `Solicitud de fichaje enviada a RRHH por ${n} ${n === 1 ? 'día' : 'días'}.${skipped ? ` ${skipped} ${skipped === 1 ? 'día no necesitaba' : 'días no necesitaban'} solicitud.` : ''}`,
+    }
+    selectedAbsenceDates.value = []
     await loadMonthData()
-    closeRequestModal()
   } catch (e: any) {
-    const message = e?.data?.message || 'No se pudo enviar la solicitud de fichaje.'
-    requestNotice.value = { type: 'error', text: message }
-    requestModal.value.error = message
+    const errors = e?.data?.errors
+    requestNotice.value = { type: 'error', text: errors ? String(Object.values(errors).flat()[0]) : (e?.data?.message || 'No se pudo enviar la solicitud de fichaje.') }
   } finally {
     requestingAttendance.value = false
   }
-}
-
-async function confirmRequestModal() {
-  const { date, entry_time, exit_time } = requestModal.value
-  requestModal.value.error = ''
-  if (!date) {
-    requestModal.value.error = 'Debes seleccionar una fecha.'
-    return
-  }
-  if (date > todayIso.value) {
-    requestModal.value.error = 'No puedes solicitar fichajes para fechas futuras.'
-    return
-  }
-  if (entry_time && exit_time && exit_time <= entry_time) {
-    requestModal.value.error = 'La hora de salida debe ser posterior a la hora de entrada.'
-    return
-  }
-  const row = monthRows.value.find((r: any) => String(r?.date || '') === date)
-  if (row && !canRequestAttendanceForRow(row)) {
-    requestModal.value.error = 'Ese dia no tiene fichaje faltante o ya posee solicitud pendiente.'
-    return
-  }
-  const validEntry = requestMissingKind.value === 'exit' ? '' : entry_time
-  const validExit = requestMissingKind.value === 'entry' ? '' : exit_time
-  await requestAttendanceByDate(date, validEntry, validExit)
 }
 
 async function loadMonthData() {
@@ -785,6 +730,7 @@ async function loadMonthData() {
   teams.value = res?.teams || []
   monthRows.value = res?.rows || []
   absencesRows.value = res?.absences?.rows || []
+  selectedAbsenceDates.value = []
   absencesCount.value = Number(res?.absences?.count || absencesRows.value.length || 0)
   summary.value = res?.summary || summary.value
   includeNonWorkingDays.value = !!res?.include_non_working

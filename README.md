@@ -2,6 +2,8 @@
 
 Monorepo con backend **Laravel 12** y frontend **Nuxt 3**, orquestados con **Docker Compose**.
 
+> 📘 **Guía completa para levantar el proyecto (desarrollo y producción), qué poner en cada `.env`, dominio con Cloudflare e instalación de dependencias: [DEPLOY.md](DEPLOY.md).**
+
 ---
 
 ## Estructura del repositorio
@@ -127,8 +129,14 @@ docker compose logs -f app
 docker compose restart front
 docker compose restart app
 
-# Ejecutar comandos Artisan
+# Ejecutar comandos Artisan (siempre dentro del contenedor "app")
 docker compose exec app php artisan <comando>
+
+# Registrar las nóminas dejadas en companies/{id}/nominas/{empleado}/
+docker compose exec app php artisan nominas:sync
+
+# Reordenar archivos por empresa / moverlos a S3 (probar antes con --dry-run)
+docker compose exec app php artisan files:move --dry-run
 
 # Abrir terminal en el contenedor de Laravel
 docker compose exec app bash
@@ -139,6 +147,30 @@ docker compose down
 # Detener y borrar volúmenes (borra la base de datos)
 docker compose down -v
 ```
+
+---
+
+## Archivos subidos
+
+- Se guardan **por empresa** en `companies/{id}/documents|nominas|chat|avatars/...`.
+- El almacenamiento se elige en el `.env`: `FILES_DISK` para documentos, nóminas y chat, y `PUBLIC_FILES_DISK` para las fotos. `local`/`public` es este servidor; `s3` sirve para S3, R2, MinIO o Spaces.
+- **Nóminas:** se dejan en `companies/{id}/nominas/{empleado}/`, con la carpeta nombrada por nombre, DNI, email, usuario o id, y aparecen solas en Documentos → Nóminas.
+- Límite de 10 MB por archivo.
+
+Detalle, migración a S3 y copias de seguridad: [DEPLOY.md → Archivos subidos](DEPLOY.md#11-archivos-subidos-dónde-se-guardan-nóminas-y-cómo-migrarlos).
+
+---
+
+## Ver como (solo lectura)
+
+Desde **Empleados → ⋮ → Ver como**, quien tenga el permiso "Ver como empleado" (RRHH y Admin por defecto) abre la app como otra persona durante 30 minutos:
+
+- **Solo lectura:** el servidor rechaza cualquier cambio.
+- **Sin chat privado:** no se ven conversaciones, adjuntos ni mensajes en tiempo real.
+- **Auditado:** cada sesión queda registrada con quién, a quién y cuándo.
+- RRHH no puede ver como un administrador.
+
+> Informa a los empleados de este acceso en la política de privacidad o el reglamento interno, y que lo revise un asesor legal.
 
 ---
 

@@ -14,31 +14,33 @@
 
       <div v-if="loading" class="space-y-3 animate-pulse">
         <div class="h-14 rounded-xl bg-gray-800"></div>
-        <div class="h-px bg-gray-800"></div>
         <div class="h-16 rounded-xl bg-gray-800"></div>
       </div>
 
+      <!-- boxes without data (no upcoming vacation, 0 requested days) are hidden so the card shrinks -->
       <div v-else class="flex flex-col gap-3 relative">
-        <div class="rounded-xl bg-teal-500/5 border border-teal-500/10 px-4 py-3">
-          <div class="text-xs text-gray-400 mt-1">Proximas vacaciones en</div>
-          <div class="text-3xl font-extrabold text-teal-300 leading-none tabular-nums">
-            {{ daysUntilVacation ?? '--' }} dias
-          </div>
-        </div>
-
-        <div class="h-px bg-gray-800"></div>
-
-        <div class="rounded-xl bg-teal-500/5 border border-teal-500/10 px-4 py-3">
-          <div class="text-xs text-gray-400">Dias de vacaciones</div>
+        <div v-if="hasUpcoming" class="rounded-xl bg-teal-500/5 border border-teal-500/10 px-4 py-3">
+          <div class="text-xs text-gray-400">Próximas vacaciones en</div>
           <div class="text-3xl font-extrabold text-teal-300 leading-none tabular-nums mt-1">
-            {{ vacationDaysTotal ?? '--' }} dias
+            {{ daysUntilVacation === 0 ? 'Hoy' : daysText(daysUntilVacation!) }}
           </div>
         </div>
 
-        <div class="rounded-xl bg-teal-500/5 border border-teal-500/10 px-4 py-3">
-          <div class="text-xs text-gray-400">Pendientes a solicitar</div>
-          <div class="text-3xl font-extrabold text-emerald-300 leading-none tabular-nums mt-1">
-            {{ pendingToRequest ?? '--' }} dias
+        <!-- requested + remaining: smaller, side by side (like the hours card) -->
+        <div class="grid gap-3" :class="requested ? 'grid-cols-2' : 'grid-cols-1'">
+          <div v-if="requested" class="rounded-xl bg-teal-500/5 border border-teal-500/10 px-4 py-3">
+            <div class="text-xs text-gray-400">Días solicitados</div>
+            <div class="text-xl font-bold text-teal-300 tabular-nums mt-0.5">
+              {{ daysText(requested) }}
+            </div>
+          </div>
+
+          <!-- always shown: it's what the person can still request -->
+          <div class="rounded-xl bg-teal-500/5 border border-teal-500/10 px-4 py-3">
+            <div class="text-xs text-gray-400">Días restantes</div>
+            <div class="text-xl font-bold text-emerald-300 tabular-nums mt-0.5">
+              {{ remaining != null ? daysText(remaining) : '--' }}
+            </div>
           </div>
         </div>
       </div>
@@ -47,11 +49,19 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
+import { computed } from 'vue'
+
+const props = defineProps<{
   daysUntilVacation?: number | null
   vacationDaysTotal?: number | null
   pendingToRequest?: number | null
   remainingVacationDays?: number | null
   loading?: boolean
 }>()
+
+const hasUpcoming = computed(() => props.daysUntilVacation != null && props.daysUntilVacation >= 0)
+const remaining = computed(() => props.remainingVacationDays ?? props.pendingToRequest ?? null)
+// vacationDaysTotal = days requested this year (/api/vacations/me vacation_days_requested_year)
+const requested = computed(() => (props.vacationDaysTotal && props.vacationDaysTotal > 0 ? props.vacationDaysTotal : 0))
+const daysText = (n: number) => `${n} ${n === 1 ? 'día' : 'días'}`
 </script>

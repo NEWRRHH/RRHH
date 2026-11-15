@@ -14,18 +14,26 @@
       <div v-if="loading" class="space-y-2">
         <div v-for="i in 3" :key="i" class="h-14 rounded-lg bg-gray-800 animate-pulse"></div>
       </div>
-      <div v-else class="space-y-2 max-h-40 overflow-y-auto pr-1 announcements-scroll">
+      <div v-else v-visible-rows="visibleRows" class="space-y-2 pr-1 announcements-scroll">
         <button
           v-for="a in items"
           :key="a.id"
           type="button"
-          class="w-full text-left rounded-lg px-3 py-2 transition cursor-pointer focus:outline-none focus:ring-1 focus:ring-fuchsia-500/50"
-          :class="a.is_read ? 'bg-gray-800/70 hover:bg-gray-700/80' : 'bg-fuchsia-500/10 ring-1 ring-fuchsia-500/40 hover:bg-fuchsia-500/15'"
+          class="w-full text-left rounded-lg px-3 py-2 transition cursor-pointer focus:outline-none focus:ring-1 focus:ring-fuchsia-500/50 border-l-4"
+          :class="[
+            announcementPriority(a.priority).accent,
+            a.is_read ? 'bg-gray-800/70 hover:bg-gray-700/80' : 'bg-fuchsia-500/10 ring-1 ring-fuchsia-500/40 hover:bg-fuchsia-500/15',
+          ]"
           @click="openAnnouncement(a)"
         >
           <div class="flex items-center gap-2">
             <span v-if="!a.is_read" class="w-2 h-2 rounded-full bg-fuchsia-400 shrink-0"></span>
-            <div class="text-sm truncate" :class="a.is_read ? 'text-gray-300' : 'text-white font-medium'">{{ a.title }}</div>
+            <div class="min-w-0 flex-1 text-sm truncate" :class="a.is_read ? 'text-gray-300' : 'text-white font-medium'">{{ a.title }}</div>
+            <span
+              v-if="a.priority && a.priority !== 'normal'"
+              class="shrink-0 text-[10px] uppercase tracking-wide rounded-full px-1.5 py-0.5 border"
+              :class="announcementPriority(a.priority).badge"
+            >{{ announcementPriority(a.priority).label }}</span>
           </div>
           <div class="text-[11px] text-gray-400 truncate" :class="a.is_read ? '' : 'pl-4'">{{ a.author }}</div>
         </button>
@@ -41,6 +49,9 @@
         </div>
         <div class="flex items-center gap-2 flex-wrap">
           <p class="text-xs text-gray-400">{{ selected.author }} · {{ formatDate(selected.created_at) }}</p>
+          <span class="text-[11px] rounded-full px-2 py-0.5 border" :class="announcementPriority(selected.priority).badge">
+            {{ announcementPriority(selected.priority).label }}
+          </span>
           <span
             class="text-[11px] rounded-full px-2 py-0.5 border"
             :class="selected.scope === 'team' ? 'border-amber-500/50 bg-amber-500/15 text-amber-100' : 'border-blue-500/50 bg-blue-500/15 text-blue-100'"
@@ -63,6 +74,8 @@ declare const $fetch: any
 defineProps({
   items: { type: Array as PropType<Array<Record<string, any>>>, default: () => [] },
   loading: { type: Boolean as PropType<boolean>, default: false },
+  // announcements visible before the list scrolls (company setting)
+  visibleRows: { type: Number as PropType<number>, default: 5 },
 })
 
 const { authenticated, apiBase } = useAuth()
@@ -82,11 +95,8 @@ function openAnnouncement(a: Record<string, any>) {
 
 function formatDate(dt?: string) {
   if (!dt) return '-'
-  try {
-    return new Date(dt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-  } catch {
-    return dt
-  }
+  const d = parseDate(dt)
+  return d ? d.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : dt
 }
 
 function onKeydown(e: KeyboardEvent) {

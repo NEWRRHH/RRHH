@@ -15,7 +15,11 @@ export const useAuth = () => {
   const config = useRuntimeConfig()
 
   // Browser-facing base URL, only used for static assets (/storage/avatars...).
-  const apiBase: string = String(config.public.apiBase || 'http://localhost:8000')
+  // Behind the gateway / Cloudflare tunnel (default port) /storage is served
+  // on the same origin, so a relative base ('') is used instead.
+  const apiBase: string = useRequestURL().port
+    ? String(config.public.apiBase || 'http://localhost:8000')
+    : ''
 
   const authenticated = useState<boolean>('auth_authenticated', () => false)
   const user = useState<any | null>('auth_user', () => null)
@@ -26,6 +30,11 @@ export const useAuth = () => {
   const lastReceivedMessage = useState<any>('last_received_message', () => null)
   // Read-receipt events for sent messages (used to render WhatsApp-like checks).
   const lastReadReceipt = useState<any>('last_read_receipt', () => null)
+  // Clock-in status, pushed over WebSocket (AttendanceStatusChanged) from any
+  // tab/device of this user. Read by the clock-in pill and the status dots.
+  const attendanceStatus = useState<'idle' | 'working' | 'paused' | null>('attendance_status', () => null)
+  // Bumped on every pushed change so the pill reloads its times.
+  const lastAttendanceChange = useState<number>('last_attendance_change', () => 0)
 
   const { connect: connectRealtime, disconnect: disconnectRealtime, connected: realtimeConnected, instance: realtimeInstance, subscribedChannels } = useRealtime();
 
@@ -35,6 +44,7 @@ export const useAuth = () => {
     unreadNotifications.value = 0
     lastReceivedMessage.value = null
     lastReadReceipt.value = null
+    attendanceStatus.value = null
     disconnectRealtime()
   }
 
@@ -72,6 +82,12 @@ export const useAuth = () => {
                 })
                 .listen('.MessageRead', (e: any) => {
                   lastReadReceipt.value = e
+                })
+                .listen('.AttendanceStatusChanged', (e: any) => {
+                  if (e?.status === 'working' || e?.status === 'paused' || e?.status === 'idle') {
+                    attendanceStatus.value = e.status
+                  }
+                  lastAttendanceChange.value = Date.now()
                 })
             }
           }
@@ -137,5 +153,5 @@ export const useAuth = () => {
   }
 
   // expose realtime helpers so pages/components can reuse the same echo instance
-  return { apiBase, authenticated, user, login, register, logout, fetchUser, unreadNotifications, fetchUnread, realtimeInstance, connectRealtime, disconnectRealtime, realtimeConnected, subscribedChannels, lastReceivedMessage, lastReadReceipt }
+  return { apiBase, authenticated, user, login, register, logout, fetchUser, unreadNotifications, fetchUnread, realtimeInstance, connectRealtime, disconnectRealtime, realtimeConnected, subscribedChannels, lastReceivedMessage, lastReadReceipt, attendanceStatus, lastAttendanceChange }
 }

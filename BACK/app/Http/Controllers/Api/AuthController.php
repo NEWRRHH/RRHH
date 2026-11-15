@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Support\FileStorage;
 use App\Http\Controllers\Controller;
 use App\Models\Attendance;
 use App\Models\User;
 use App\Services\AttendanceService;
+use App\Services\CelebrationService;
 use App\Services\CompanyProvisioner;
 use App\Services\PlanLimits;
 use App\Support\Audit;
@@ -150,7 +152,12 @@ class AuthController extends Controller
         $payload['is_super_admin'] = $user->isSuperAdmin();
         // Super admin browsing this company through "entrar como empresa".
         $payload['impersonated_by'] = $this->impersonator($request);
+        // "Ver como" session (read-only): who is looking and until when
+        $payload['viewed_by'] = $this->viewAsViewer($request);
+        $payload['can_view_as'] = $user->hasPermission('employees.view_as');
         $payload['is_admin'] = $user->isAdmin();
+        // birthday / work anniversary today -> the frontend plays a celebration
+        $payload['celebrations_today'] = app(CelebrationService::class)->todayFor($user);
         // legacy flag name kept for the frontend: "can see everybody's attendance"
         $payload['is_hr_team'] = $user->hasPermission('attendance.view_all');
         $payload['can_view_employee_details'] = $user->hasPermission('employees.view_details');
@@ -168,7 +175,8 @@ class AuthController extends Controller
         $payload['can_access_settings'] = $user->isAdmin()
             || $user->hasPermission('schedules.manage')
             || $user->hasPermission('teams.manage')
-            || $user->hasPermission('dashboard.manage');
+            || $user->hasPermission('dashboard.manage')
+            || $user->hasPermission('holidays.manage');
         $payload['can_view_vacations'] = $user->hasPermission('vacations.view');
         $payload['can_create_vacations'] = $user->hasPermission('vacations.create');
         $payload['can_edit_vacations'] = $user->hasPermission('vacations.edit');
@@ -201,6 +209,25 @@ class AuthController extends Controller
         $token->delete();
 
         return response()->json(['status' => 'ok', 'company_id' => $request->user()->company_id]);
+    }
+
+    /**
+     * @return array{id: int, name: string, expires_at: ?string}|null
+     */
+    private function viewAsViewer(Request $request): ?array
+    {
+        $token = $request->user()?->currentAccessToken();
+        $name = $token instanceof PersonalAccessToken ? (string) $token->name : '';
+        if (! str_starts_with($name, EmployeeController::VIEW_AS_TOKEN_PREFIX)) {
+            return null;
+        }
+        $viewer = User::find((int) substr($name, strlen(EmployeeController::VIEW_AS_TOKEN_PREFIX)));
+
+        return $viewer ? [
+            'id' => $viewer->id,
+            'name' => trim(($viewer->first_name ?? $viewer->name ?? '') . ' ' . ($viewer->last_name ?? '')),
+            'expires_at' => $token->expires_at?->toIso8601String(),
+        ] : null;
     }
 
     /**
@@ -239,8 +266,7 @@ class AuthController extends Controller
         $user->dni = $data['dni'] ?? $user->dni;
         $user->social_security_number = $data['social_security_number'] ?? $user->social_security_number;
         if ($request->hasFile('photo')) {
-            $path = $request->file('photo')->store('avatars/' . ($user->company_id ?? 'platform'), 'public');
-            $user->photo = '/storage/' . $path;
+            $user->photo = FileStorage::storeAvatar($request->file('photo'), $user->company_id);
         }
         $user->save();
         return response()->json($user);

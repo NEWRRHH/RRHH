@@ -25,7 +25,7 @@ class DashboardLayoutService
     /** Widget catalog in built-in default order. */
     public const WIDGETS = [
         'welcome' => 'Bienvenida',
-        'birthdays' => 'Cumpleaños',
+        'birthdays' => 'Cumpleaños y aniversarios',
         'team' => 'Tu equipo',
         'vacation' => 'Vacaciones',
         'notifications' => 'Notificaciones',
@@ -35,11 +35,55 @@ class DashboardLayoutService
         'documents' => 'Documentos',
     ];
 
+    /**
+     * Cards that render a list, with what their number means:
+     * 'max'     = how many items the card shows (birthdays);
+     * 'visible' = how many items are visible before the list scrolls.
+     */
+    public const LIST_WIDGETS = [
+        'notifications' => 'visible',
+        'announcements' => 'visible',
+        'birthdays' => 'max',
+        'holidays' => 'visible',
+        'team' => 'visible',
+    ];
+
+    /** How many of the 3 desktop columns a card may span (set by RRHH). */
+    public const MAX_WIDTH = 3;
+
+    public const DEFAULT_LIMIT = 5;
+
+    public const MAX_LIMIT = 50;
+
     public const DEFAULT_WELCOME = [
         'title' => 'Bienvenido',
         'subtitle' => 'Aquí tienes un resumen de la actividad de la empresa.',
         'show_date' => true,
     ];
+
+    /**
+     * Celebration overlay texts (RRHH, Configuración > Festejos).
+     * Placeholders: {nombre} = first name, {años} = "3 años" / "1 año".
+     */
+    public const DEFAULT_CELEBRATIONS = [
+        'birthday' => [
+            'title' => '¡Feliz cumpleaños, {nombre}!',
+            'message' => 'Todo el equipo te desea un día increíble.',
+            'effects' => ['confetti', 'balloons'],
+        ],
+        'anniversary' => [
+            'title' => '¡Feliz aniversario, {nombre}!',
+            'message' => 'Hoy cumples {años} con nosotros. ¡Gracias por ser parte del equipo!',
+            'effects' => ['confetti', 'stars'],
+        ],
+    ];
+
+    /** Animations the overlay can play (any combination, or none). */
+    public const CELEBRATION_EFFECTS = ['confetti', 'balloons', 'stars', 'fireworks', 'emojis'];
+
+    public const CELEBRATION_TITLE_MAX = 80;
+
+    public const CELEBRATION_MESSAGE_MAX = 300;
 
     /** @return array<int, array{key: string, name: string}> */
     public function catalog(): array
@@ -65,6 +109,9 @@ class DashboardLayoutService
         return [
             'slots' => $row ? $this->sanitize($row->slots ?? []) : $this->defaultSlots(),
             'welcome' => $this->welcome($row?->settings['welcome'] ?? null),
+            'limits' => $this->limits($row?->settings['limits'] ?? null),
+            'celebrations' => $this->celebrations($row?->settings['celebrations'] ?? null),
+            'widths' => $this->widths($row?->settings['widths'] ?? null),
             'configured' => (bool) $row,
             'updated_at' => $row?->updated_at?->toIso8601String(),
         ];
@@ -82,7 +129,8 @@ class DashboardLayoutService
             'slots' => $own ?? $company['slots'],
             'source' => $own !== null ? 'user' : 'company',
             'company_slots' => $company['slots'],
-            'settings' => ['welcome' => $company['welcome']],
+            // widths are the company's even when the user rearranged their cards
+            'settings' => ['welcome' => $company['welcome'], 'limits' => $company['limits'], 'widths' => $company['widths']],
             'widgets' => $this->catalog(),
         ];
     }
@@ -117,17 +165,99 @@ class DashboardLayoutService
         DashboardWidget::table()->where('user_id', $user->id)->delete();
     }
 
-    public function saveCompanyLayout(User $editor, array $slots, array $welcome): array
+    public function saveCompanyLayout(User $editor, array $slots, array $welcome, ?array $widths = null): array
     {
-        $slots = $this->validateSlots($slots);
+        $settings = ['welcome' => $this->welcome($welcome)];
+        if ($widths !== null) {
+            $settings['widths'] = $this->widths($widths);
+        }
+
+        return $this->store($editor, $this->validateSlots($slots), $settings);
+    }
+
+    /**
+     * Save how many items each list card shows (keeps slots and welcome).
+     */
+    public function saveCompanyLimits(User $editor, array $limits): array
+    {
+        return $this->store($editor, null, ['limits' => $this->limits($limits)]);
+    }
+
+    /**
+     * Save the birthday / anniversary celebration texts.
+     */
+    public function saveCompanyCelebrations(User $editor, array $celebrations): array
+    {
+        return $this->store($editor, null, ['celebrations' => $this->celebrations($celebrations)]);
+    }
+
+    /**
+     * Each settings tab saves its own part; the rest is kept as it is.
+     */
+    private function store(User $editor, ?array $slots, array $settings): array
+    {
+        $current = $this->companyLayout();
 
         CompanyDashboardLayout::query()->updateOrCreate([], [
-            'slots' => $slots,
-            'settings' => ['welcome' => $this->welcome($welcome)],
+            'slots' => $slots ?? $current['slots'],
+            'settings' => array_merge([
+                'welcome' => $current['welcome'],
+                'limits' => $current['limits'],
+                'celebrations' => $current['celebrations'],
+                'widths' => $current['widths'],
+            ], $settings),
             'updated_by' => $editor->id,
         ]);
 
         return $this->companyLayout();
+    }
+
+    /**
+     * Celebration texts with the placeholders filled in for this person.
+     *
+     * @return array{title: string, message: string, effects: array<int, string>}
+     */
+    public function celebrationText(string $type, string $firstName, int $years): array
+    {
+        $texts = $this->companyLayout()['celebrations'][$type] ?? self::DEFAULT_CELEBRATIONS['birthday'];
+        $yearsText = $years . ' ' . ($years === 1 ? 'año' : 'años');
+        $fill = function (string $text) use ($firstName, $yearsText) {
+            if ($firstName === '') {
+                // no name: "¡Feliz cumpleaños, {nombre}!" -> "¡Feliz cumpleaños!"
+                $text = preg_replace('/,?\s*\{nombre\}/u', '', $text);
+            }
+            $text = str_replace(['{nombre}', '{años}'], [$firstName, $yearsText], $text);
+
+            return trim(preg_replace('/\s{2,}/u', ' ', $text));
+        };
+
+        return ['title' => $fill($texts['title']), 'message' => $fill($texts['message']), 'effects' => $texts['effects']];
+    }
+
+    /** @return array<int, array{key: string, name: string, mode: string}> */
+    public function limitCatalog(): array
+    {
+        return array_map(
+            fn ($key, $mode) => ['key' => $key, 'name' => self::WIDGETS[$key], 'mode' => $mode],
+            array_keys(self::LIST_WIDGETS),
+            self::LIST_WIDGETS,
+        );
+    }
+
+    /**
+     * Item limit per list card, clamped to 1..MAX_LIMIT (default DEFAULT_LIMIT).
+     *
+     * @return array<string, int>
+     */
+    public function limits(?array $input): array
+    {
+        $out = [];
+        foreach (array_keys(self::LIST_WIDGETS) as $key) {
+            $value = is_numeric($input[$key] ?? null) ? (int) $input[$key] : self::DEFAULT_LIMIT;
+            $out[$key] = max(1, min(self::MAX_LIMIT, $value));
+        }
+
+        return $out;
     }
 
     /** @return array<int, ?string>|null */
@@ -190,6 +320,48 @@ class DashboardLayoutService
             if (is_string($key) && isset(self::WIDGETS[$key]) && ! in_array($key, $out, true)) {
                 $out[$i] = $key;
             }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Columns each card spans on desktop, 1..MAX_WIDTH (default 1). The
+     * frontend narrows a card when the positions to its right are taken.
+     *
+     * @return array<string, int>
+     */
+    public function widths(?array $input): array
+    {
+        $out = [];
+        foreach (array_keys(self::WIDGETS) as $key) {
+            $value = is_numeric($input[$key] ?? null) ? (int) $input[$key] : 1;
+            $out[$key] = max(1, min(self::MAX_WIDTH, $value));
+        }
+
+        return $out;
+    }
+
+    /**
+     * Celebration texts; an empty field falls back to the default text.
+     *
+     * @return array<string, array{title: string, message: string}>
+     */
+    private function celebrations(?array $input): array
+    {
+        $out = [];
+        foreach (self::DEFAULT_CELEBRATIONS as $type => $defaults) {
+            $title = trim((string) ($input[$type]['title'] ?? ''));
+            $message = trim((string) ($input[$type]['message'] ?? ''));
+            // missing (never configured) -> defaults; an empty list is a valid choice
+            $effects = is_array($input[$type]['effects'] ?? null)
+                ? array_values(array_intersect(self::CELEBRATION_EFFECTS, $input[$type]['effects']))
+                : $defaults['effects'];
+            $out[$type] = [
+                'title' => mb_substr($title !== '' ? $title : $defaults['title'], 0, self::CELEBRATION_TITLE_MAX),
+                'message' => mb_substr($message !== '' ? $message : $defaults['message'], 0, self::CELEBRATION_MESSAGE_MAX),
+                'effects' => $effects,
+            ];
         }
 
         return $out;

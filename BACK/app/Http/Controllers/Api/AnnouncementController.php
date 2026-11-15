@@ -11,6 +11,9 @@ use Illuminate\Http\Request;
 
 class AnnouncementController extends Controller
 {
+    /** Announcement priorities, least to most urgent. */
+    public const PRIORITIES = ['normal', 'importante', 'urgente'];
+
     private function canAccessAnnouncements(?object $user): bool
     {
         if (!$user) return false;
@@ -52,6 +55,7 @@ class AnnouncementController extends Controller
                 'posts.body',
                 'posts.created_at',
                 'posts.audience_scope',
+                'posts.priority',
                 'posts.team_id',
                 'teams.name as team_name',
                 'users.first_name',
@@ -68,6 +72,7 @@ class AnnouncementController extends Controller
                     'created_at' => $p->created_at,
                     'author' => $author !== '' ? $author : 'Sistema',
                     'scope' => $p->audience_scope ?? 'all',
+                    'priority' => $p->priority ?: 'normal',
                     'team_id' => $p->team_id,
                     'team_name' => $p->team_name,
                     'is_read' => !is_null($p->read_at),
@@ -102,6 +107,7 @@ class AnnouncementController extends Controller
             'title' => 'required|string|max:255',
             'body' => 'required|string|max:5000',
             'scope' => 'required|string|in:all,team',
+            'priority' => 'nullable|string|in:' . implode(',', self::PRIORITIES),
             'team_id' => ['nullable', 'integer', TenantRule::exists('teams', 'id', true)],
         ]);
 
@@ -116,6 +122,7 @@ class AnnouncementController extends Controller
             'body' => trim((string) $data['body']),
             'user_id' => $user->id,
             'audience_scope' => $scope,
+            'priority' => $data['priority'] ?? 'normal',
             'team_id' => $teamId ?: null,
             'status' => 'published',
             'created_at' => now(),

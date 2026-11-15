@@ -24,11 +24,11 @@ class CompanyProvisioner
 {
     /** Event types every company starts with (code = used by the app logic). */
     public const DEFAULT_EVENT_TYPES = [
-        ['name' => 'General', 'code' => null],
+        ['name' => 'General', 'code' => EventType::GENERAL],
         ['name' => 'Vacaciones', 'code' => EventType::VACATION],
-        ['name' => 'Permiso', 'code' => null],
+        ['name' => 'Permiso', 'code' => EventType::PERMISSION],
         ['name' => 'Fichaje', 'code' => EventType::ATTENDANCE_REQUEST],
-        ['name' => 'Reunión', 'code' => null],
+        ['name' => 'Reunión', 'code' => EventType::MEETING],
     ];
 
     /**

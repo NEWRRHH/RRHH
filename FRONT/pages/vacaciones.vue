@@ -18,29 +18,57 @@
         </div>
       </header>
 
-      <main class="relative z-10 flex-1 min-h-0 p-6 overflow-auto space-y-4">
-        <div class="flex flex-wrap items-center gap-3">
-          <div class="inline-flex rounded-xl border border-gray-700 p-1 bg-gray-900">
-            <button
-              class="px-3 py-1.5 rounded-lg text-sm transition"
-              :class="viewMode === 'year' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
-              @click="viewMode = 'year'"
-            >
-              Anual
-            </button>
-            <button
-              class="px-3 py-1.5 rounded-lg text-sm transition"
-              :class="viewMode === 'month' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
-              @click="viewMode = 'month'"
-            >
-              Mensual
-            </button>
+      <main class="relative z-10 flex-1 min-h-0 p-4 sm:p-6 overflow-auto space-y-4">
+        <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+          <!-- view toggle + year stay together on one line, also on phones -->
+          <div class="flex items-center gap-2 sm:gap-3">
+            <div class="inline-flex rounded-xl border border-gray-700 p-1 bg-gray-900">
+              <button
+                class="px-3 py-1.5 rounded-lg text-sm transition"
+                :class="viewMode === 'year' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
+                @click="viewMode = 'year'"
+              >
+                Anual
+              </button>
+              <button
+                class="px-3 py-1.5 rounded-lg text-sm transition"
+                :class="viewMode === 'month' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
+                @click="viewMode = 'month'"
+              >
+                Mensual
+              </button>
+            </div>
+
+            <div class="inline-flex items-center gap-0.5 sm:gap-2 rounded-xl border border-gray-700 px-1 sm:px-2 py-1 bg-gray-900">
+              <button class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg text-gray-300 hover:bg-gray-800" aria-label="Año anterior" @click="changeYear(-1)">&#60;</button>
+              <span class="text-white font-semibold w-12 sm:w-16 text-center tabular-nums">{{ selectedYear }}</span>
+              <button class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg text-gray-300 hover:bg-gray-800" aria-label="Año siguiente" @click="changeYear(1)">&#62;</button>
+            </div>
           </div>
 
-          <div class="inline-flex items-center gap-2 rounded-xl border border-gray-700 px-2 py-1 bg-gray-900">
-            <button class="w-8 h-8 rounded-lg text-gray-300 hover:bg-gray-800" @click="changeYear(-1)">&#60;</button>
-            <span class="text-white font-semibold w-16 text-center">{{ selectedYear }}</span>
-            <button class="w-8 h-8 rounded-lg text-gray-300 hover:bg-gray-800" @click="changeYear(1)">&#62;</button>
+          <div
+            v-if="canHidePastMonths"
+            class="px-3 py-1.5 rounded-xl bg-gray-900 border border-gray-700 inline-flex items-center gap-2 text-sm text-gray-300 select-none"
+          >
+            <span>Ver meses pasados</span>
+            <button
+              type="button"
+              role="switch"
+              :aria-checked="showPastMonths"
+              @click="showPastMonths = !showPastMonths"
+              :class="[
+                'relative inline-flex h-5 w-10 items-center rounded-full transition',
+                showPastMonths ? 'bg-blue-600' : 'bg-gray-600'
+              ]"
+              aria-label="Ver meses pasados"
+            >
+              <span
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white transition',
+                  showPastMonths ? 'translate-x-5' : 'translate-x-1'
+                ]"
+              />
+            </button>
           </div>
 
           <div v-if="viewMode === 'month'" class="inline-flex items-center gap-2 rounded-xl border border-gray-700 px-2 py-1 bg-gray-900">
@@ -59,7 +87,11 @@
           class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-sm text-blue-100"
         >
           <span>
-            Inicio: <strong>{{ tapStartIso }}</strong> — toca el dia fin para cerrar el rango (o el mismo dia para un solo dia).
+            Inicio: <strong>{{ tapStartIso }}</strong> — mueve el ratón y haz clic (o toca) en el día fin para cerrar el rango (o en el mismo día para un solo día).
+            <span class="block text-xs mt-0.5" :class="excessDates.size ? 'text-red-300' : 'text-blue-200'">
+              Días de vacaciones seleccionados: {{ selectionVacationDays }} · Disponibles: {{ vacationAvailableDays }}
+              <template v-if="excessDates.size"> · Excedes en {{ excessDates.size }}</template>
+            </span>
           </span>
           <button class="text-xs border border-blue-400/40 rounded-lg px-2 py-1.5 hover:bg-blue-500/20" @click="cancelTapSelection">
             Cancelar
@@ -67,7 +99,7 @@
         </div>
 
         <div v-if="loading" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          <div v-for="i in 12" :key="'skel-' + i" class="rounded-2xl border border-gray-800 bg-gray-900 p-3 space-y-2">
+          <div v-for="i in visibleYearMonths.length" :key="'skel-' + i" class="rounded-2xl border border-gray-800 bg-gray-900 p-3 space-y-2">
             <div class="h-4 w-24 rounded bg-gray-800 animate-pulse"></div>
             <div class="grid grid-cols-7 gap-1">
               <div v-for="j in 7" :key="'skhd-' + j" class="h-3 rounded bg-gray-800 animate-pulse"></div>
@@ -80,7 +112,7 @@
 
         <div v-else-if="viewMode === 'year'" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           <div
-            v-for="month in yearMonths"
+            v-for="month in visibleYearMonths"
             :key="month.key"
             class="rounded-2xl border border-gray-800 bg-gray-900 p-3"
           >
@@ -96,10 +128,19 @@
                 :class="dayCellClass(cell.iso, cell.currentMonth)"
                 :disabled="isPastIso(cell.iso) || !isWorkingIso(cell.iso)"
                 @pointerdown="onDayPointerDown(cell.iso, $event)"
-                @pointerenter="onDayPointerEnter(cell.iso)"
+                @pointerenter="onDayPointerEnter(cell.iso, $event)"
                 @pointerup="onDayPointerUp"
               >
                 {{ cell.day }}
+                <!-- type icon in the event colour + colour bar -->
+                <svg
+                  v-if="eventsByDate[cell.iso]?.length"
+                  class="absolute top-0.5 right-0.5 w-2.5 h-2.5 pointer-events-none"
+                  :style="{ color: eventsByDate[cell.iso][0].display_color || '#3B82F6' }"
+                  fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" aria-hidden="true"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" :d="eventTypeVisual(eventsByDate[cell.iso][0].event_type_code, eventsByDate[cell.iso][0].event_type_name).icon" />
+                </svg>
                 <span
                   v-if="eventsByDate[cell.iso]?.length"
                   class="absolute left-1 right-1 bottom-1 h-1 rounded-full"
@@ -122,7 +163,7 @@
               :class="dayCellClass(cell.iso, cell.currentMonth)"
               :disabled="isPastIso(cell.iso) || !isWorkingIso(cell.iso)"
               @pointerdown="onDayPointerDown(cell.iso, $event)"
-              @pointerenter="onDayPointerEnter(cell.iso)"
+              @pointerenter="onDayPointerEnter(cell.iso, $event)"
               @pointerup="onDayPointerUp"
             >
               <div class="text-sm">{{ cell.day }}</div>
@@ -130,10 +171,14 @@
                 <div
                   v-for="ev in (eventsByDate[cell.iso] || []).slice(0, 2)"
                   :key="`${cell.iso}-${ev.id}`"
-                  class="truncate text-[10px] px-1.5 py-0.5 rounded"
+                  class="flex items-center gap-1 min-w-0 text-[10px] px-1.5 py-0.5 rounded"
                   :style="{ backgroundColor: `${ev.display_color || '#1D4ED8'}33`, color: ev.display_color || '#93C5FD' }"
+                  :title="`${ev.title} · ${statusShort(ev.approval_status)}`"
                 >
-                  {{ ev.title }} · {{ statusShort(ev.approval_status) }}
+                  <svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" :d="eventTypeVisual(ev.event_type_code, ev.event_type_name).icon" />
+                  </svg>
+                  <span class="truncate">{{ ev.title }} · {{ statusShort(ev.approval_status) }}</span>
                 </div>
                 <div v-if="(eventsByDate[cell.iso] || []).length > 2" class="text-[10px] text-gray-400">
                   +{{ (eventsByDate[cell.iso] || []).length - 2 }} mas
@@ -165,7 +210,14 @@
               class="rounded-xl border border-gray-800 bg-gray-950 px-3 py-2"
             >
               <div class="flex items-center justify-between gap-2">
-                <p class="text-sm text-gray-200 truncate">{{ req.title }}</p>
+                <p class="min-w-0 flex items-center gap-2 text-sm text-gray-200">
+                  <span class="w-6 h-6 shrink-0 rounded-md flex items-center justify-center" :class="eventTypeVisual(req.event_type_code, req.event_type_name).tone">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" :d="eventTypeVisual(req.event_type_code, req.event_type_name).icon" />
+                    </svg>
+                  </span>
+                  <span class="truncate">{{ req.title }}</span>
+                </p>
                 <span class="text-[11px] px-2 py-1 rounded-full border uppercase tracking-wide" :class="statusBadgeClass(req.approval_status)">
                   {{ statusLabel(req.approval_status) }}
                 </span>
@@ -201,20 +253,43 @@
         </div>
 
         <div class="grid gap-3">
+          <!-- the type is also the title of the request -->
           <div>
-            <label class="block text-xs text-gray-400 mb-1">Tipo de evento</label>
-            <select v-model.number="form.event_type_id" class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white">
-              <option :value="0" disabled>Seleccionar tipo</option>
-              <option v-for="t in eventTypes" :key="t.id" :value="t.id">{{ t.name }}</option>
-            </select>
+            <span class="block text-xs text-gray-400 mb-1.5">Tipo de evento</span>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2" role="radiogroup" aria-label="Tipo de evento">
+              <button
+                v-for="t in eventTypes"
+                :key="t.id"
+                type="button"
+                role="radio"
+                :aria-checked="form.event_type_id === t.id"
+                class="flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-sm transition"
+                :class="form.event_type_id === t.id ? 'border-blue-500 bg-blue-600/15 text-white' : 'border-gray-700 bg-gray-800 text-gray-300 hover:border-gray-500'"
+                @click="form.event_type_id = t.id"
+              >
+                <span class="w-7 h-7 shrink-0 rounded-md flex items-center justify-center" :class="eventTypeVisual(t.code, t.name).tone">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" :d="eventTypeVisual(t.code, t.name).icon" />
+                  </svg>
+                </span>
+                <span class="truncate">{{ t.name }}</span>
+                <span class="ml-auto w-2.5 h-2.5 shrink-0 rounded-full" :style="{ backgroundColor: eventTypeVisual(t.code, t.name).color }" aria-hidden="true"></span>
+              </button>
+            </div>
           </div>
           <div>
-            <label class="block text-xs text-gray-400 mb-1">Titulo</label>
-            <input v-model="form.title" class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white" maxlength="100" />
-          </div>
-          <div>
-            <label class="block text-xs text-gray-400 mb-1">Descripcion</label>
-            <textarea v-model="form.description" class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white min-h-20" />
+            <label for="event-description" class="block text-xs text-gray-400 mb-1">
+              Descripción
+              <span v-if="descriptionRequired" class="text-red-300">*</span>
+              <span v-else class="text-gray-500">(opcional)</span>
+            </label>
+            <textarea
+              id="event-description"
+              v-model="form.description"
+              maxlength="1000"
+              :placeholder="descriptionRequired ? 'Cuéntale a RRHH el motivo' : ''"
+              class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white min-h-20"
+            />
           </div>
           <div>
             <label v-if="canChooseHours" class="inline-flex items-center gap-2 text-sm text-gray-200">
@@ -249,10 +324,6 @@
                 class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white"
               />
             </div>
-          </div>
-          <div>
-            <label class="block text-xs text-gray-400 mb-1">Color</label>
-            <input v-model="form.color" type="color" class="w-16 h-10 rounded border border-gray-700 bg-gray-800" />
           </div>
         </div>
 
@@ -302,6 +373,8 @@ type CalendarEvent = {
   all_day: boolean
   color: string | null
   display_color: string | null
+  event_type_code?: string | null
+  event_type_name?: string | null
   approval_status: 'pending' | 'approved' | 'rejected'
   approval_comment: string | null
   reviewed_at: string | null
@@ -322,7 +395,10 @@ const selectedYear = ref(new Date().getFullYear())
 const selectedMonth = ref(new Date().getMonth())
 const viewMode = ref<'year' | 'month'>('year')
 
-const eventTypes = ref<Array<{ id: number; name: string }>>([])
+const eventTypes = ref<Array<{ id: number; name: string; code?: string | null }>>([])
+const selectedEventType = computed(() => eventTypes.value.find((t) => t.id === form.value.event_type_id))
+// General and Permiso need a description; the title is always the type name
+const descriptionRequired = computed(() => DESCRIPTION_REQUIRED_CODES.includes(String(selectedEventType.value?.code || '')))
 const events = ref<CalendarEvent[]>([])
 const scheduleDays = ref<string[]>(['L', 'M', 'X', 'J', 'V'])
 const scheduleStartTime = ref<string | null>(null)
@@ -330,9 +406,11 @@ const scheduleEndTime = ref<string | null>(null)
 
 const showModal = ref(false)
 const editingEventId = ref<number | null>(null)
+const holidays = ref<Record<string, string>>({})
+const vacationTypeId = ref<number | null>(null)
+const vacationLimit = ref(0)
 const dragStartIso = ref('')
 const dragEndIso = ref('')
-const isDragging = ref(false)
 const tapStartIso = ref('')
 const pendingTapIso = ref('')
 const touchDownPt = ref<{ x: number; y: number } | null>(null)
@@ -417,6 +495,41 @@ const yearMonths = computed(() =>
   })),
 )
 
+// Annual view of the current year starts at the current month so users
+// (especially on mobile) don't have to scroll past already-gone months.
+// Past/future years always show all 12 months.
+const SHOW_PAST_MONTHS_KEY = 'vacaciones:showPastMonths'
+const showPastMonths = ref(false)
+
+// Remember the switch across reloads (read on mount: localStorage is client-only).
+onMounted(() => {
+  try {
+    showPastMonths.value = localStorage.getItem(SHOW_PAST_MONTHS_KEY) === '1'
+  } catch {
+    // storage blocked (private mode, etc.): keep the default
+  }
+})
+
+watch(showPastMonths, (value) => {
+  try {
+    localStorage.setItem(SHOW_PAST_MONTHS_KEY, value ? '1' : '0')
+  } catch {
+    // storage blocked: the switch still works for this visit
+  }
+})
+
+const canHidePastMonths = computed(() => {
+  const now = new Date()
+  return viewMode.value === 'year'
+    && selectedYear.value === now.getFullYear()
+    && now.getMonth() > 0
+})
+const visibleYearMonths = computed(() => {
+  if (!canHidePastMonths.value || showPastMonths.value) return yearMonths.value
+  const currentMonth = new Date().getMonth()
+  return yearMonths.value.slice(currentMonth)
+})
+
 const eventsByDate = computed<Record<string, CalendarEvent[]>>(() => {
   const map: Record<string, CalendarEvent[]> = {}
   for (const ev of events.value) {
@@ -492,7 +605,8 @@ const selectedWorkingDays = computed(() => {
 
 const canSave = computed(() => {
   if (!selectedRange.value.start || !selectedRange.value.end) return false
-  if (!(form.value.event_type_id > 0 && form.value.title.trim().length > 0)) return false
+  if (!(form.value.event_type_id > 0)) return false
+  if (descriptionRequired.value && !String(form.value.description || '').trim()) return false
   if (!canChooseHours.value) return true
   if (!form.value.all_day) {
     if (!form.value.start_time || !form.value.end_time) return false
@@ -539,6 +653,59 @@ function statusBadgeClass(status: string): string {
   return 'border-gray-500/40 text-gray-200 bg-gray-500/20'
 }
 
+// --- Vacation allowance (mirrors TimeOffController::create/update) --------
+// A day consumes allowance when it is a schedule day and not a company holiday.
+function isVacationCountableIso(iso: string): boolean {
+  return isWorkingIso(iso) && !holidays.value[iso]
+}
+
+function eachIso(startIso: string, endIso: string, fn: (iso: string) => void) {
+  let cursor = toDateFromIso(startIso)
+  const end = toDateFromIso(endIso)
+  while (cursor <= end) {
+    fn(toIsoDate(cursor))
+    cursor = new Date(cursor)
+    cursor.setDate(cursor.getDate() + 1)
+  }
+}
+
+// Event being extended/edited by the current selection: the API excludes its
+// own days from the "already used" count, so we do the same.
+const selectionSourceEventId = computed<number | null>(() => {
+  if (editingEventId.value !== null) return editingEventId.value
+  const startIso = tapStartIso.value || dragStartIso.value
+  return startIso ? (firstEventForDay(startIso)?.id ?? null) : null
+})
+
+// Vacation days already requested (pending/approved) in the selection's year.
+const usedVacationDates = computed(() => {
+  const set = new Set<string>()
+  const year = (selectedRange.value.start || todayIso).slice(0, 4)
+  for (const ev of events.value) {
+    if (ev.event_type_id !== vacationTypeId.value) continue
+    if (ev.approval_status === 'rejected') continue
+    if (ev.id === selectionSourceEventId.value) continue
+    eachIso(ev.start_date, ev.end_date, (iso) => {
+      if (iso.startsWith(year) && isVacationCountableIso(iso)) set.add(iso)
+    })
+  }
+  return set
+})
+
+const vacationAvailableDays = computed(() => Math.max(0, vacationLimit.value - usedVacationDates.value.size))
+
+// New vacation days in the selection, and those beyond the allowance (in date order).
+const selectionNewVacationDates = computed(() => {
+  const list: string[] = []
+  if (!selectedRange.value.start || !selectedRange.value.end) return list
+  eachIso(selectedRange.value.start, selectedRange.value.end, (iso) => {
+    if (isVacationCountableIso(iso) && !usedVacationDates.value.has(iso)) list.push(iso)
+  })
+  return list
+})
+const selectionVacationDays = computed(() => selectionNewVacationDates.value.length)
+const excessDates = computed(() => new Set(selectionNewVacationDates.value.slice(vacationAvailableDays.value)))
+
 function isInSelectedRange(iso: string): boolean {
   if (!selectedRange.value.start || !selectedRange.value.end) return false
   if (!isWorkingIso(iso)) return false
@@ -551,6 +718,7 @@ function dayCellClass(iso: string, currentMonth: boolean): string {
   }
   const inRange = isInSelectedRange(iso)
   const base = currentMonth ? 'bg-gray-900 text-gray-100 hover:bg-gray-800' : 'bg-gray-950 text-gray-600 hover:bg-gray-900'
+  if (inRange && excessDates.value.has(iso)) return 'bg-red-600/40 text-white border border-red-500'
   if (inRange) return 'bg-blue-600/35 text-white border border-blue-500'
   if (!isWorkingIso(iso)) return `${base} border border-gray-800/60`
   return `${base} border border-gray-800`
@@ -622,31 +790,23 @@ function onDayPointerDown(iso: string, e: PointerEvent) {
   if (isPastIso(iso)) return
   if (!isWorkingIso(iso)) return
   if (e.pointerType === 'touch') {
+    // decided on pointerup, so a scroll gesture is not taken as a tap
     pendingTapIso.value = iso
     touchDownPt.value = { x: e.clientX, y: e.clientY }
     return
   }
-  isDragging.value = true
-  dragStartIso.value = iso
-  dragEndIso.value = iso
+  // Mouse: click the first day, move the mouse (range previews), click the last day.
+  handleDayTap(iso)
 }
 
-function onDayPointerEnter(iso: string) {
-  if (!isDragging.value) return
+function onDayPointerEnter(iso: string, e: PointerEvent) {
+  if (!tapStartIso.value || e.pointerType === 'touch') return
   if (isPastIso(iso)) return
   if (!isWorkingIso(iso)) return
   dragEndIso.value = iso
 }
 
 function onDayPointerUp(e?: PointerEvent) {
-  if (isDragging.value) {
-    isDragging.value = false
-    if (dragStartIso.value && dragEndIso.value) {
-      finishSelection(dragStartIso.value, dragEndIso.value)
-    }
-    return
-  }
-
   const iso = pendingTapIso.value
   const startPt = touchDownPt.value
   pendingTapIso.value = ''
@@ -672,9 +832,18 @@ function handleDayTap(iso: string) {
 }
 
 function finishSelection(startIso: string, endIso: string) {
-  tapStartIso.value = ''
   const range = sortRange(startIso, endIso)
   const sourceDayEvent = firstEventForDay(startIso)
+
+  // Over the allowance: keep the range on screen with the excess in red and
+  // do not open the confirmation modal. (Computed before clearing tapStartIso,
+  // which identifies the event being extended.)
+  const excess = excessDates.value.size
+  tapStartIso.value = ''
+  if (excess > 0) {
+    $swal.toast('error', `Superas tus días de vacaciones en ${excess} ${excess === 1 ? 'día' : 'días'} (disponibles: ${vacationAvailableDays.value})`)
+    return
+  }
 
   if (startIso === endIso) {
     if (sourceDayEvent) {
@@ -704,10 +873,6 @@ function cancelTapSelection() {
 }
 
 function onGlobalPointerUp(e: PointerEvent) {
-  if (isDragging.value) {
-    onDayPointerUp()
-    return
-  }
   if (pendingTapIso.value) onDayPointerUp(e)
 }
 
@@ -740,6 +905,9 @@ async function loadCalendar() {
     scheduleDays.value = Array.isArray(res?.schedule_days) && res.schedule_days.length ? res.schedule_days : ['L', 'M', 'X', 'J', 'V']
     scheduleStartTime.value = res?.schedule?.start_time || null
     scheduleEndTime.value = res?.schedule?.end_time || null
+    holidays.value = res?.holidays || {}
+    vacationTypeId.value = res?.vacation?.event_type_id ?? null
+    vacationLimit.value = Number(res?.vacation?.limit || 0)
     eventTypes.value = res?.event_types || []
     events.value = res?.events || []
     if (!form.value.event_type_id && eventTypes.value.length) {
@@ -767,7 +935,7 @@ async function saveEvent() {
     await $fetch(url, {
       method,
       body: {
-        title: form.value.title.trim(),
+        title: selectedEventType.value?.name || '',
         description: form.value.description?.trim() || null,
         event_type_id: form.value.event_type_id,
         start_date: selectedRange.value.start,
@@ -775,7 +943,7 @@ async function saveEvent() {
         all_day: form.value.all_day,
         start_time: form.value.all_day ? null : form.value.start_time,
         end_time: form.value.all_day ? null : form.value.end_time,
-        color: form.value.color,
+        // colour: fixed by the event type (server side)
       },
     })
     closeModal()
@@ -807,7 +975,12 @@ onMounted(async () => {
   await loadCalendar()
   window.addEventListener('pointerup', onGlobalPointerUp)
   window.addEventListener('pointercancel', onGlobalPointercancel)
+  window.addEventListener('keydown', onSelectionKeydown)
 })
+
+function onSelectionKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && tapStartIso.value) cancelTapSelection()
+}
 
 watch(
   () => form.value.event_type_id,
@@ -829,5 +1002,6 @@ watch(canChooseHours, (singleDay) => {
 onBeforeUnmount(() => {
   window.removeEventListener('pointerup', onGlobalPointerUp)
   window.removeEventListener('pointercancel', onGlobalPointercancel)
+  window.removeEventListener('keydown', onSelectionKeydown)
 })
 </script>

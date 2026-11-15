@@ -33,6 +33,33 @@ button { font: inherit; }
   border-radius: 6px;
 }
 
+/*
+ * Full-height screens: 100vh on phones includes the area behind the browser
+ * toolbar, so the bottom of the page (e.g. save bars) ended up hidden.
+ * 100dvh is the visible height; browsers without dvh keep Tailwind's 100vh.
+ * Same height as before on desktop.
+ */
+@supports (height: 100dvh) {
+  .h-screen { height: 100dvh; }
+  .min-h-screen { min-height: 100dvh; }
+}
+
+/*
+ * Safari on iPhone/iPad only (-webkit-touch-callout exists only there).
+ * Android and desktop are not affected.
+ */
+@supports (-webkit-touch-callout: none) {
+  /* iOS zooms the page into any field under 16px and doesn't zoom back. */
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  /* Dark app: no white strip when the page bounces past its top/bottom. */
+  html, body { background: #030712; }
+}
+
 /* Dashboard card drag & drop (SortableJS, see composables/useDashboardDrag.ts) */
 .dash-drag-ghost { opacity: 0.35; }
 .dash-drag-dragging,

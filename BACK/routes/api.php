@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\DocumentController;
 use App\Http\Controllers\Api\AnnouncementController;
 use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\HolidayController;
+use App\Http\Controllers\Api\NationalHolidayController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\ScheduleController;
@@ -37,7 +38,8 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
 
     // protected routes: auth first (so the api limiter can key by user id),
     // then bind the request to the user's company (multi-tenant filter)
-    Route::middleware(['auth:sanctum', \App\Http\Middleware\EnsureTenant::class, 'throttle:api'])->group(function () {
+    // ReadOnlyViewAs: "Ver como" sessions can only read (and never the private chat)
+    Route::middleware(['auth:sanctum', \App\Http\Middleware\EnsureTenant::class, \App\Http\Middleware\ReadOnlyViewAs::class, 'throttle:api'])->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::post('/impersonation/stop', [AuthController::class, 'stopImpersonation']);
         Route::get('/user', [AuthController::class, 'user']);
@@ -46,6 +48,9 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::put('/user/schedule', [ScheduleController::class, 'updateSchedule']);
     Route::get('/employees', [EmployeeController::class, 'employees']);
     Route::get('/employees/{id}', [EmployeeController::class, 'getEmployee']);
+    // "Ver como" (read-only, audited): start as RRHH/admin, stop from the view-as session
+    Route::post('/employees/{id}/view-as', [EmployeeController::class, 'viewAs'])->whereNumber('id');
+    Route::post('/view-as/stop', [EmployeeController::class, 'stopViewAs']);
     Route::get('/employees/{id}/attendance-month', [EmployeeController::class, 'employeeAttendanceMonth']);
     Route::get('/employees/{id}/documents', [EmployeeController::class, 'employeeDocuments']);
     Route::get('/employees/{employeeId}/documents/{docId}/download', [EmployeeController::class, 'employeeDocumentDownload']);
@@ -81,6 +86,8 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::get('/attendance/month', [AttendanceController::class, 'attendanceMonth']);
     Route::get('/attendance/who-is-in', [AttendanceController::class, 'attendanceWhoIsIn']);
     Route::post('/attendance/requests', [AttendanceController::class, 'requestAttendanceAdjustment']);
+    // several absence days in one request (Reportes > Ausencias)
+    Route::post('/attendance/requests/days', [AttendanceController::class, 'requestAttendanceDays']);
 
     Route::get('/dashboard', [DashboardController::class, 'index']);
     Route::get('/dashboard/layout', [DashboardController::class, 'dashboardLayout']);
@@ -89,6 +96,8 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     // company default dashboard (RRHH)
     Route::get('/settings/dashboard', [DashboardController::class, 'companyLayout']);
     Route::put('/settings/dashboard', [DashboardController::class, 'saveCompanyLayout']);
+    Route::put('/settings/dashboard/limits', [DashboardController::class, 'saveCompanyLimits']);
+    Route::put('/settings/dashboard/celebrations', [DashboardController::class, 'saveCompanyCelebrations']);
     // upcoming birthdays for dashboard UI
     Route::get('/birthdays', [DashboardController::class, 'birthdays']);
     // workers currently "en_trabajo"
@@ -101,6 +110,12 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::post('/holidays', [HolidayController::class, 'store']);
     Route::post('/holidays/import', [HolidayController::class, 'import']);
     Route::post('/holidays/import-national', [HolidayController::class, 'importNational']);
+    // the company's national holidays catalog (Configuración > Festivos > Feriados nacionales)
+    Route::get('/holidays/national', [NationalHolidayController::class, 'index']);
+    Route::post('/holidays/national', [NationalHolidayController::class, 'store']);
+    Route::post('/holidays/national/import', [NationalHolidayController::class, 'import']);
+    Route::put('/holidays/national/{id}', [NationalHolidayController::class, 'update'])->whereNumber('id');
+    Route::delete('/holidays/national/{id}', [NationalHolidayController::class, 'destroy'])->whereNumber('id');
     Route::put('/holidays/{id}', [HolidayController::class, 'update']);
     Route::delete('/holidays/{id}', [HolidayController::class, 'destroy']);
     Route::get('/announcements', [AnnouncementController::class, 'index']);
@@ -119,6 +134,7 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::get('/notifications/conversation/{userId}', [NotificationController::class, 'conversation']);
     Route::post('/notifications/send', [NotificationController::class, 'send']);
     Route::get('/notifications/users', [NotificationController::class, 'users']);
+    Route::get('/notifications/attachments/{id}', [NotificationController::class, 'attachment'])->whereNumber('id');
 
     // time-off / vacations calendar
     Route::get('/timeoff/calendar', [TimeOffController::class, 'calendar']);
@@ -165,11 +181,6 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
             Route::post('/plans', [AdminPlans::class, 'store']);
             Route::put('/plans/{id}', [AdminPlans::class, 'update']);
             Route::delete('/plans/{id}', [AdminPlans::class, 'destroy']);
-
-            Route::get('/national-holidays', [AdminNationalHolidays::class, 'index']);
-            Route::post('/national-holidays', [AdminNationalHolidays::class, 'store']);
-            Route::post('/national-holidays/import', [AdminNationalHolidays::class, 'import']);
-            Route::delete('/national-holidays/{id}', [AdminNationalHolidays::class, 'destroy']);
 
             Route::get('/permissions', [AdminPermissionCatalog::class, 'index']);
         });

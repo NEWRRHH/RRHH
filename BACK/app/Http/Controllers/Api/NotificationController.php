@@ -2,15 +2,25 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Support\FileStorage;
 use App\Http\Controllers\Controller;
 use App\Support\Tenancy\TenantRule;
 use Illuminate\Http\Request;
 use App\Models\User;
 use App\Models\Notification;
+use App\Models\ChatAttachment;
+use App\Services\PlanLimits;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class NotificationController extends Controller
 {
+    /** Chat attachments: 10 MB, images / PDF / Word / Excel / text. */
+    public const ATTACHMENT_MAX_KB = 10240;
+
+    public const ATTACHMENT_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv'];
+
     /**
      * List all conversation partners for the authenticated user, along with
      * a snippet and unread count.
@@ -47,7 +57,14 @@ class NotificationController extends Controller
                     'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
                     'photo' => $u->photo ?? $u->profile_photo_path ?? null,
                 ],
-                'last_message' => $lastMessage ? $lastMessage['content'] : null,
+                // attachment-only messages show the file in the preview
+                'last_message' => $lastMessage
+                    ? (($lastMessage['content'] ?? '') !== ''
+                        ? $lastMessage['content']
+                        : (isset($lastMessage['attachment'])
+                            ? (($lastMessage['attachment']['kind'] ?? '') === 'image' ? '📷 Imagen' : '📎 ' . ($lastMessage['attachment']['name'] ?? 'Archivo'))
+                            : ''))
+                    : null,
                 'last_at' => $lastMessage ? $lastMessage['created_at'] : null,
                 'unread_count' => $unread,
             ];
@@ -105,7 +122,33 @@ class NotificationController extends Controller
     /**
      * Send a new message from the authenticated user to another.
      */
-    public function send(Request $request)
+    /**
+     * Download / show a chat attachment (only the two participants).
+     * ?inline=1 serves images inline so the chat can preview them.
+     */
+    public function attachment(Request $request, int $id)
+    {
+        $user = $request->user();
+        $attachment = ChatAttachment::find($id);
+        if (! $attachment || ! $attachment->isParticipant($user)) {
+            return response()->json(['message' => 'Archivo no encontrado'], 404);
+        }
+        if (! FileStorage::disk()->exists($attachment->path)) {
+            return response()->json(['message' => 'Archivo no disponible'], 404);
+        }
+
+        if ($request->boolean('inline') && $attachment->isImage()) {
+            return FileStorage::disk()->response($attachment->path, $attachment->original_name, [
+                'Content-Type' => $attachment->mime_type,
+                'Cache-Control' => 'private, max-age=3600',
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
+        }
+
+        return FileStorage::disk()->download($attachment->path, $attachment->original_name);
+    }
+
+    public function send(Request $request, PlanLimits $limits)
     {
         $user = $request->user();
         if (! $user) {
@@ -115,9 +158,22 @@ class NotificationController extends Controller
         // reach the client as 422, not be swallowed into a 500.
         $data = $request->validate([
             'receiver_id' => ['required', 'integer', TenantRule::exists('users', 'id', true)],
-            'content' => 'required|string|max:500',
+            // text, a file, or both
+            'content' => 'nullable|string|max:500|required_without:file',
+            'file' => 'nullable|file|max:' . self::ATTACHMENT_MAX_KB . '|mimes:' . implode(',', self::ATTACHMENT_EXTENSIONS),
+        ], [
+            'content.required_without' => 'Escribe un mensaje o adjunta un archivo.',
+            'file.max' => 'El archivo no puede superar los 10 MB.',
+            'file.mimes' => 'Tipo de archivo no permitido. Se aceptan imágenes, PDF, Word, Excel y texto.',
         ]);
+        $data['content'] = trim((string) ($data['content'] ?? ''));
 
+        $file = $request->file('file');
+        if ($file && $user->company && ($limitError = $limits->canStore($user->company, (int) $file->getSize()))) {
+            return response()->json(['message' => $limitError], 422);
+        }
+
+        $attachment = null;
         try {
             $recipient = $data['receiver_id'];
             $userId = $user->id;
@@ -146,6 +202,21 @@ class NotificationController extends Controller
                 'created_at' => now(),
             ];
 
+            if ($file) {
+                // companies/{company}/chat/{sender}/<random> on FILES_DISK
+                $stored = FileStorage::storePrivate($file, $user->company_id, FileStorage::CHAT, (string) $userId);
+                $attachment = ChatAttachment::create([
+                    'notification_id' => $conversation?->id,
+                    'uploader_id' => $userId,
+                    'recipient_id' => (int) $recipient,
+                    'path' => $stored,
+                    'original_name' => mb_substr($file->getClientOriginalName(), 0, 255),
+                    'mime_type' => $file->getMimeType(),
+                    'size' => (int) $file->getSize(),
+                ]);
+                $message['attachment'] = $attachment->toMessagePayload();
+            }
+
             if ($conversation) {
                 $conv = $conversation->conversation ?: [];
                 $conv[] = $message;
@@ -160,6 +231,9 @@ class NotificationController extends Controller
                     'conversation' => [$message],
                 ]);
             }
+            if ($attachment && ! $attachment->notification_id) {
+                $attachment->update(['notification_id' => $conversation->id]);
+            }
 
             // Broadcast to the recipient of THIS message.
             // Do not use $conversation->receiver_id because that value is
@@ -168,6 +242,11 @@ class NotificationController extends Controller
 
             return response()->json($conversation, 201);
         } catch (\Exception $e) {
+            // don't keep a file that no message points to
+            if ($attachment) {
+                FileStorage::disk()->delete($attachment->path);
+                $attachment->delete();
+            }
             // log error for debugging
             \Log::error('Notification send failed', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return response()->json(['message' => 'Error interno al enviar mensaje'], 500);

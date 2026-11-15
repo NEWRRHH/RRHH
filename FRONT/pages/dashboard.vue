@@ -25,7 +25,7 @@
         </div>
       </header>
 
-      <main ref="boardRoot" class="relative z-10 flex-1 p-6 space-y-6 overflow-auto">
+      <main ref="boardRoot" class="relative z-10 flex-1 p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-auto">
         <div class="flex flex-wrap items-center gap-3">
           <div class="bg-white/5 border border-white/5 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm">
             <div class="text-2xl text-blue-300 font-semibold">{{ data.stats?.users_count ?? 0 }}</div>
@@ -36,6 +36,7 @@
             <div class="text-xs text-gray-300">Asistencias hoy</div>
           </div>
           <button
+            v-if="canEditLayout"
             class="ml-auto w-10 h-10 rounded-xl border inline-flex items-center justify-center transition"
             :class="isEditMode ? 'border-blue-500 bg-blue-600/20 text-blue-200' : 'border-gray-700 bg-gray-900 text-gray-200 hover:bg-gray-800'"
             :title="isEditMode ? 'Terminar de personalizar' : 'Personalizar mi dashboard'"
@@ -60,7 +61,7 @@
               <p class="text-sm font-medium text-white">Estás personalizando tu dashboard</p>
               <p class="text-xs text-gray-400 mt-0.5">
                 Arrastra las tarjetas para cambiarlas de lugar. Suéltalas aquí para ocultarlas o arrastra una oculta a cualquier posición.
-                En el celular, mantén pulsada la tarjeta para arrastrarla. Los cambios solo los ves tú.
+                Los cambios solo los ves tú.
               </p>
             </div>
             <div class="flex gap-2">
@@ -93,10 +94,17 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
-          <div v-for="(column, cIdx) in boardColumns" :key="`col-${cIdx}`" class="space-y-4">
+        <!-- Board: groups of 3 stacked columns, plus horizontal bands for rows with wide cards -->
+        <div class="space-y-4">
+          <div v-for="seg in boardSegments" :key="seg.key" class="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+          <div
+            v-for="cell in seg.cells"
+            :key="`${seg.key}-${cell.col}`"
+            class="space-y-4 min-w-0"
+            :class="[DASHBOARD_COL_START_XL[cell.col], DASHBOARD_COL_SPAN_XL[cell.span]]"
+          >
             <div
-              v-for="slotIndex in visibleSlots(column)"
+              v-for="slotIndex in visibleSlots(cell.positions)"
               :key="`slot-${slotIndex}`"
               class="rounded-2xl border transition"
               :data-dash-drop="isEditMode ? slotIndex : undefined"
@@ -132,19 +140,57 @@
                     </div>
                   </div>
                 </template>
-                <component
-                  v-else
-                  :is="cardComponent(boardLayout[slotIndex])"
-                  v-bind="cardProps(boardLayout[slotIndex])"
-                  v-on="cardListeners(boardLayout[slotIndex])"
-                  class="w-full max-w-none"
-                />
+                <!-- Empty card collapsed to a slim bar (click to expand) -->
+                <button
+                  v-else-if="isCardCollapsed(boardLayout[slotIndex])"
+                  type="button"
+                  class="w-full flex items-center gap-3 rounded-2xl border border-gray-800 bg-gray-900 px-4 py-3 text-left hover:bg-gray-800/70 transition"
+                  :aria-expanded="false"
+                  :title="`Mostrar ${DASHBOARD_WIDGETS[boardLayout[slotIndex]!].name}`"
+                  @click="toggleEmptyCard(boardLayout[slotIndex]!)"
+                >
+                  <span class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" :class="DASHBOARD_WIDGETS[boardLayout[slotIndex]!].tone">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" :d="DASHBOARD_WIDGETS[boardLayout[slotIndex]!].icon" />
+                    </svg>
+                  </span>
+                  <span class="min-w-0 flex-1">
+                    <span class="block text-xs text-gray-300 uppercase tracking-wide">{{ DASHBOARD_WIDGETS[boardLayout[slotIndex]!].name }}</span>
+                    <span class="block text-xs text-gray-500 truncate">{{ EMPTY_CARD_TEXT[boardLayout[slotIndex]!] }}</span>
+                  </span>
+                  <svg class="w-4 h-4 text-gray-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                <div v-else class="relative">
+                  <component
+                    :is="cardComponent(boardLayout[slotIndex])"
+                    v-bind="cardProps(boardLayout[slotIndex])"
+                    v-on="cardListeners(boardLayout[slotIndex])"
+                    class="w-full max-w-none"
+                  />
+                  <!-- Empty card the user expanded: let them collapse it again -->
+                  <button
+                    v-if="!isEditMode && isCardEmpty(boardLayout[slotIndex])"
+                    type="button"
+                    class="absolute top-3 right-3 z-10 w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-800 transition"
+                    title="Contraer"
+                    aria-label="Contraer tarjeta"
+                    :aria-expanded="true"
+                    @click="toggleEmptyCard(boardLayout[slotIndex]!)"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7" />
+                    </svg>
+                  </button>
+                </div>
               </div>
 
               <div v-else-if="isEditMode" class="pointer-events-none h-full min-h-40 flex items-center justify-center text-xs text-gray-500">
                 Posición libre — suelta una tarjeta aquí
               </div>
             </div>
+          </div>
           </div>
         </div>
       </main>
@@ -154,8 +200,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onBeforeMount, watch, onBeforeUnmount } from 'vue'
-import { DASHBOARD_COLUMNS, DASHBOARD_WIDGETS, DASHBOARD_WIDGET_KEYS, moveDashboardWidget, normalizeDashboardSlots } from '~/utils/dashboardWidgets'
+import { computed, ref, onBeforeMount, onMounted, watch, onBeforeUnmount } from 'vue'
+import {
+  DASHBOARD_COL_SPAN_XL, DASHBOARD_COL_START_XL, DASHBOARD_WIDGETS, DASHBOARD_WIDGET_KEYS,
+  dashboardSegments, moveDashboardWidget, normalizeDashboardSlots, normalizeDashboardWidths,
+  type DashboardWidths,
+} from '~/utils/dashboardWidgets'
 import { useDashboardDrag } from '~/composables/useDashboardDrag'
 
 definePageMeta({ auth: true })
@@ -177,7 +227,7 @@ import AttendanceButton from '../components/AttendanceButton.vue'
 import UserMenu from '../components/UserMenu.vue'
 
 
-const { authenticated, user, fetchUser, logout, apiBase, fetchUnread, unreadNotifications, lastReceivedMessage } = useAuth()
+const { authenticated, user, fetchUser, logout, apiBase, fetchUnread, unreadNotifications, lastReceivedMessage, realtimeInstance } = useAuth()
 
 type CardKey = 'welcome' | 'birthdays' | 'team' | 'vacation' | 'notifications' | 'worked_hours' | 'holidays' | 'announcements' | 'documents'
 
@@ -224,11 +274,26 @@ const vacationInfo = ref<{
 })
 
 const boardLayout = ref<Array<CardKey | null>>(['welcome', 'birthdays', 'team', 'vacation', 'notifications', 'worked_hours', 'holidays', 'announcements', 'documents'])
-const boardColumns = DASHBOARD_COLUMNS
 // 'user' = personal arrangement, 'company' = layout defined by RRHH
 const layoutSource = ref<'user' | 'company'>('company')
 const hiddenCards = computed(() => DASHBOARD_WIDGET_KEYS.filter((k) => !boardLayout.value.includes(k)))
 const isEditMode = ref(false)
+
+// Rearranging is only offered where the 3-column board is shown (xl, ≥1280px).
+// Phones/tablets show the cards in a single column in the desktop order
+// (positions 1-9) and can't edit it.
+const canEditLayout = ref(false)
+let boardMedia: MediaQueryList | null = null
+const syncCanEdit = () => {
+  canEditLayout.value = !!boardMedia?.matches
+  if (!canEditLayout.value) isEditMode.value = false
+}
+onMounted(() => {
+  boardMedia = window.matchMedia('(min-width: 1280px)')
+  syncCanEdit()
+  boardMedia.addEventListener?.('change', syncCanEdit)
+})
+onBeforeUnmount(() => boardMedia?.removeEventListener?.('change', syncCanEdit))
 const savingLayout = ref(false)
 const welcomeSettings = ref<{ title: string; subtitle: string; show_date: boolean }>({
   title: 'Bienvenido',
@@ -236,6 +301,75 @@ const welcomeSettings = ref<{ title: string; subtitle: string; show_date: boolea
   show_date: true,
 })
 const { $swal } = useNuxtApp()
+
+// Company setting (Configuración > Límites de tarjetas):
+// - birthdays: how many birthdays the card shows;
+// - the other lists: how many items are visible before the list scrolls
+//   (the whole list is still there, scrolling).
+type ListCardKey = 'notifications' | 'announcements' | 'birthdays' | 'holidays' | 'team'
+const DEFAULT_CARD_LIMIT = 5
+const MAX_LIST_ITEMS = 50
+const cardLimits = ref<Record<ListCardKey, number>>({
+  notifications: DEFAULT_CARD_LIMIT,
+  announcements: DEFAULT_CARD_LIMIT,
+  birthdays: DEFAULT_CARD_LIMIT,
+  holidays: DEFAULT_CARD_LIMIT,
+  team: DEFAULT_CARD_LIMIT,
+})
+const limitList = <T,>(list: T[] | null | undefined, key: ListCardKey): T[] => (list || []).slice(0, cardLimits.value[key])
+
+// ── Empty cards collapse to a slim bar ──
+// Only cards that render a list/summary can be "empty"; vacation, worked hours
+// and welcome always have something to show. A card counts as empty only once
+// its data has loaded, so nothing collapses and re-opens while loading.
+const documentsLoaded = ref(false)
+const EMPTY_CARD_TEXT: Partial<Record<CardKey, string>> = {
+  notifications: 'No hay notificaciones',
+  announcements: 'Sin comunicados',
+  birthdays: 'Sin próximos cumpleaños ni aniversarios',
+  holidays: 'Sin próximos festivos',
+  team: 'Sin compañeros de equipo',
+  documents: 'Sin documentos',
+}
+
+function isCardEmpty(key: CardKey | null): boolean {
+  if (key === 'notifications') return !loading.value && !(data.value.notifications || []).length
+  if (key === 'announcements') return !announcementsLoading.value && !announcements.value.length
+  if (key === 'birthdays') return !birthdaysLoading.value && !birthdays.value.length
+  if (key === 'holidays') return !holidaysLoading.value && !holidays.value.length
+  if (key === 'team') return !teamLoading.value && !teamMembers.value.length
+  if (key === 'documents') return documentsLoaded.value && !documentsSummary.value.total
+  return false
+}
+
+// Empty cards the viewer chose to keep open (remembered in this browser).
+const EXPANDED_EMPTY_KEY = 'dashboard:expandedEmptyCards'
+const expandedEmptyCards = ref<CardKey[]>([])
+
+function isCardCollapsed(key: CardKey | null): boolean {
+  return !!key && !isEditMode.value && isCardEmpty(key) && !expandedEmptyCards.value.includes(key)
+}
+
+function toggleEmptyCard(key: CardKey) {
+  expandedEmptyCards.value = expandedEmptyCards.value.includes(key)
+    ? expandedEmptyCards.value.filter((k) => k !== key)
+    : [...expandedEmptyCards.value, key]
+  try {
+    localStorage.setItem(EXPANDED_EMPTY_KEY, JSON.stringify(expandedEmptyCards.value))
+  } catch {
+    // storage blocked: the toggle still works for this visit
+  }
+}
+
+onMounted(() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(EXPANDED_EMPTY_KEY) || '[]')
+    if (Array.isArray(saved)) expandedEmptyCards.value = saved.filter((k) => k in EMPTY_CARD_TEXT)
+  } catch {
+    // no saved state: every empty card starts collapsed
+  }
+})
+// ── End empty cards ──
 
 const cardComponent = (key: CardKey | null) => {
   if (key === 'birthdays') return BirthdayCard
@@ -249,8 +383,8 @@ const cardComponent = (key: CardKey | null) => {
 }
 
 const cardProps = (key: CardKey | null) => {
-  if (key === 'birthdays') return { birthdays: birthdays.value, loading: birthdaysLoading.value }
-  if (key === 'team') return { members: teamMembers.value, teamName: teamName.value, loading: teamLoading.value }
+  if (key === 'birthdays') return { birthdays: limitList(birthdays.value, 'birthdays'), loading: birthdaysLoading.value }
+  if (key === 'team') return { members: teamMembers.value, teamName: teamName.value, loading: teamLoading.value, visibleRows: cardLimits.value.team }
   if (key === 'vacation') {
     return {
       daysUntilVacation: vacationInfo.value.daysUntilVacation,
@@ -267,11 +401,12 @@ const cardProps = (key: CardKey | null) => {
       monthTargetHHMM: data.value?.worked_hours?.target_month_hhmm || null,
     }
   }
-  if (key === 'holidays') return { holidays: holidays.value, loading: holidaysLoading.value }
-  if (key === 'announcements') return { items: announcements.value, loading: announcementsLoading.value }
+  if (key === 'holidays') return { holidays: holidays.value, loading: holidaysLoading.value, visibleRows: cardLimits.value.holidays }
+  if (key === 'announcements') return { items: announcements.value, loading: announcementsLoading.value, visibleRows: cardLimits.value.announcements }
   if (key === 'documents') return { summary: documentsSummary.value }
   return {
     notifications: data.value.notifications || [],
+    visibleRows: cardLimits.value.notifications,
     unreadCount: unreadNotifications.value || 0,
   }
 }
@@ -294,16 +429,32 @@ function toggleEditMode() {
 
 // Drag & drop (SortableJS: mouse + touch), only active in edit mode.
 const boardRoot = ref<HTMLElement | null>(null)
-const { dragging: dashDragging } = useDashboardDrag(boardRoot, (key, target) => {
+const { dragging: dashDragging, refresh: refreshDashDrag } = useDashboardDrag(boardRoot, (key, target) => {
   if (target === 'hidden' ? !boardLayout.value.includes(key) : boardLayout.value[target] === key) return
   boardLayout.value = moveDashboardWidget(boardLayout.value, key, target)
   void saveDashboardLayout()
 }, isEditMode)
 
-function visibleSlots(column: number[]) {
-  if (isEditMode.value) return column
-  return column.filter((slotIndex) => boardLayout.value[slotIndex] !== null)
+function visibleSlots(positions: number[]) {
+  if (isEditMode.value) return positions
+  return positions.filter((slotIndex) => boardLayout.value[slotIndex] !== null)
 }
+
+// Card widths come from the company (Configuración > Dashboard); a wide card
+// narrows by itself when the positions to its right are taken.
+const cardWidths = ref<DashboardWidths>({})
+const boardSegments = computed(() => {
+  const segments = dashboardSegments(boardLayout.value, cardWidths.value)
+  if (isEditMode.value) return segments
+  // outside edit mode drop empty cells/segments (no blank gaps on phones)
+  return segments
+    .map((seg) => ({ ...seg, cells: seg.cells.filter((c) => visibleSlots(c.positions).length) }))
+    .filter((seg) => seg.cells.length)
+})
+// moving a card can create/remove a band: re-attach drag & drop to the new lists
+watch(() => boardSegments.value.map((s) => s.key).join('|'), () => {
+  if (isEditMode.value) refreshDashDrag()
+})
 
 async function resetToCompanyLayout() {
   try {
@@ -324,6 +475,12 @@ function applyLayout(res: any) {
     title: typeof ws?.title === 'string' && ws.title.trim() ? ws.title.trim() : 'Bienvenido',
     subtitle: typeof ws?.subtitle === 'string' && ws.subtitle.trim() ? ws.subtitle.trim() : 'Aquí tienes un resumen de la actividad de la empresa.',
     show_date: ws?.show_date !== false,
+  }
+  cardWidths.value = normalizeDashboardWidths(res?.settings?.widths)
+  const limits = res?.settings?.limits || {}
+  for (const key of Object.keys(cardLimits.value) as ListCardKey[]) {
+    const n = Number(limits[key])
+    if (Number.isFinite(n) && n > 0) cardLimits.value[key] = n
   }
 }
 
@@ -355,8 +512,44 @@ async function saveDashboardLayout() {
   }
 }
 
+// ── Live "Asistencias hoy": anyone in the company clocks in/out ──
+let companyAttendanceChannel: any = null
+let statsRefreshTimer: ReturnType<typeof setTimeout> | null = null
+
+async function refreshStats() {
+  try {
+    const fresh: any = await $fetch('/api/dashboard')
+    data.value.stats = fresh?.stats || data.value.stats
+  } catch (e) {
+    console.error('dashboard stats refresh failed', e)
+  }
+}
+
+function subscribeCompanyAttendance() {
+  const echo: any = realtimeInstance?.()
+  const companyId = Number((user.value as any)?.company_id || 0)
+  if (!echo || !companyId || companyAttendanceChannel) return
+  companyAttendanceChannel = echo.private(`company.${companyId}.attendance`)
+  companyAttendanceChannel.listen('.CompanyAttendanceChanged', () => {
+    // several people clocking in at 9:00 -> one request
+    if (statsRefreshTimer) clearTimeout(statsRefreshTimer)
+    statsRefreshTimer = setTimeout(() => { void refreshStats() }, 400)
+  })
+}
+
+onBeforeUnmount(() => {
+  if (statsRefreshTimer) clearTimeout(statsRefreshTimer)
+  try {
+    companyAttendanceChannel?.stopListening?.('.CompanyAttendanceChanged')
+  } catch {
+    // ignore
+  }
+  companyAttendanceChannel = null
+})
+
 onBeforeMount(async () => {
   await fetchUser()
+  subscribeCompanyAttendance()
 
   await loadDashboardLayout()
 
@@ -371,8 +564,7 @@ onBeforeMount(async () => {
 
   birthdaysLoading.value = true
   try {
-    const res = await $fetch(`/api/birthdays`, {
-    })
+    const res = await $fetch(`/api/birthdays?limit=${cardLimits.value.birthdays}`)
     birthdays.value = res || []
   } catch (err) {
     console.error('birthdays fetch failed', err)
@@ -421,20 +613,13 @@ async function refreshTeam() {
 
 async function handleAttendanceChanged() {
   await refreshTeam()
-  try {
-    const fresh = await $fetch(`/api/dashboard`, {
-    })
-    data.value.stats = fresh?.stats || data.value.stats
-  } catch (e) {
-    console.error('dashboard stats refresh failed', e)
-  }
+  await refreshStats()
 }
 
 async function refreshHolidays() {
   holidaysLoading.value = true
   try {
-    const res = await $fetch(`/api/holidays/upcoming`, {
-    })
+    const res = await $fetch(`/api/holidays/upcoming?limit=${MAX_LIST_ITEMS}`)
     holidays.value = res || []
   } catch (e) {
     console.error('holidays fetch failed', e)
@@ -447,8 +632,7 @@ async function refreshHolidays() {
 async function refreshAnnouncements() {
   announcementsLoading.value = true
   try {
-    const res = await $fetch(`/api/announcements?limit=5`, {
-    })
+    const res = await $fetch(`/api/announcements?limit=${MAX_LIST_ITEMS}`)
     announcements.value = res || []
   } catch (e) {
     console.error('announcements fetch failed', e)
@@ -470,6 +654,8 @@ async function refreshDocumentsSummary() {
     }
   } catch (e) {
     console.error('documents summary fetch failed', e)
+  } finally {
+    documentsLoaded.value = true
   }
 }
 

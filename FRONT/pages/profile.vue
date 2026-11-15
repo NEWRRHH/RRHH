@@ -63,25 +63,22 @@
             <div class="mb-6 pt-4 border-t border-gray-700">
               <h3 class="text-sm text-gray-300 mb-2">Cambiar contraseña</h3>
               <div class="mb-3">
-                <input
+                <PasswordInput
                   v-model="form.current_password"
-                  type="password"
                   placeholder="Contraseña actual"
                   class="w-full px-3 py-2 bg-gray-700/60 placeholder-gray-400 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
                 />
               </div>
               <div class="mb-3">
-                <input
+                <PasswordInput
                   v-model="form.password"
-                  type="password"
                   placeholder="Nueva contraseña"
                   class="w-full px-3 py-2 bg-gray-700/60 placeholder-gray-400 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
                 />
               </div>
               <div class="mb-3">
-                <input
+                <PasswordInput
                   v-model="form.password_confirmation"
-                  type="password"
                   placeholder="Confirmar contraseña"
                   class="w-full px-3 py-2 bg-gray-700/60 placeholder-gray-400 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
                 />

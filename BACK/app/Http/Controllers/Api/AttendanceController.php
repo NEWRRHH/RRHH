@@ -3,10 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Events\AttendanceStatusChanged;
+use App\Events\CompanyAttendanceChanged;
+use App\Support\Tenancy\Tenant;
 use App\Events\TimeOffRequestUpdated;
 use App\Models\Attendance;
 use App\Models\Document;
 use App\Models\Event;
+use App\Models\EventType;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\AttendanceService;
@@ -25,6 +29,23 @@ class AttendanceController extends Controller
         private ScheduleService $schedules,
         private AttendanceService $attendance,
     ) {
+    }
+
+    /**
+     * Tell the user's other tabs/devices that their clock-in status changed.
+     * The change is already saved: a WebSocket hiccup must not turn it into an error.
+     */
+    private function broadcastStatus(int $userId, string $status, bool $companyCountChanged = false): void
+    {
+        try {
+            event(new AttendanceStatusChanged($userId, $status));
+            // clock-in / clock-out change "who is working today" for the whole company
+            if ($companyCountChanged && Tenant::id() !== null) {
+                event(new CompanyAttendanceChanged((int) Tenant::id()));
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     /**
@@ -55,18 +76,35 @@ class AttendanceController extends Controller
         $effectiveSchedule = $this->schedules->loadEffectiveScheduleForUser((int) $user->id);
         if ($effectiveSchedule && !empty($effectiveSchedule->start_time)) {
             $weekMap = [1 => 'L', 2 => 'M', 3 => 'X', 4 => 'J', 5 => 'V', 6 => 'S', 7 => 'D'];
+            $dayNames = [1 => 'lunes', 2 => 'martes', 3 => 'miércoles', 4 => 'jueves', 5 => 'viernes', 6 => 'sábado', 7 => 'domingo'];
             $dayLetter = $weekMap[$now->dayOfWeekIso] ?? 'L';
             $scheduleDays = $this->schedules->normalizeScheduleDays($effectiveSchedule->days ?? null);
 
-            if (in_array($dayLetter, $scheduleDays, true)) {
-                $scheduleStart = substr((string) $effectiveSchedule->start_time, 0, 5);
-                $allowedFrom = Carbon::parse($today . ' ' . $scheduleStart)->subMinutes(15);
-                if ($now->lt($allowedFrom)) {
-                    return response()->json([
-                        'message' => 'Solo puedes fichar entrada hasta 15 minutos antes de tu horario.',
-                        'allowed_from' => $allowedFrom->format('H:i'),
-                    ], 422);
-                }
+            // No clocking in on a day outside the user's schedule (e.g. weekends)...
+            if (! in_array($dayLetter, $scheduleDays, true)) {
+                return response()->json([
+                    'message' => "Hoy ({$dayNames[$now->dayOfWeekIso]}) no es un día laboral en tu jornada, no puedes fichar.",
+                    'reason' => 'non_working_day',
+                ], 422);
+            }
+
+            // ...nor on a company holiday.
+            $holiday = $this->schedules->holidayName($now);
+            if ($holiday !== null) {
+                return response()->json([
+                    'message' => "Hoy es festivo ({$holiday}), no puedes fichar.",
+                    'reason' => 'holiday',
+                ], 422);
+            }
+
+            // ...nor more than 15 minutes before the schedule starts.
+            $scheduleStart = substr((string) $effectiveSchedule->start_time, 0, 5);
+            $allowedFrom = Carbon::parse($today . ' ' . $scheduleStart)->subMinutes(15);
+            if ($now->lt($allowedFrom)) {
+                return response()->json([
+                    'message' => "Solo puedes fichar entrada desde las {$allowedFrom->format('H:i')} (15 minutos antes de tu horario).",
+                    'allowed_from' => $allowedFrom->format('H:i'),
+                ], 422);
             }
         }
 
@@ -105,6 +143,8 @@ class AttendanceController extends Controller
                 'updated_at' => now(),
             ]);
         }
+
+        $this->broadcastStatus((int) $user->id, AttendanceStatusChanged::WORKING, true);
 
         return response()->json(['status' => 'ok']);
     }
@@ -181,6 +221,7 @@ class AttendanceController extends Controller
                     'status' => 'fuera_trabajo',
                     'updated_at' => now(),
                 ]);
+            $this->broadcastStatus((int) $user->id, AttendanceStatusChanged::IDLE, true);
         } else {
             // no open attendance found: maybe token changed or already closed
         }
@@ -216,6 +257,8 @@ class AttendanceController extends Controller
                 'updated_at' => now(),
             ]);
 
+        $this->broadcastStatus((int) $user->id, AttendanceStatusChanged::PAUSED);
+
         return response()->json(['status' => 'paused', 'pause_time' => $now]);
     }
 
@@ -248,6 +291,8 @@ class AttendanceController extends Controller
                 'updated_at' => now(),
             ]);
 
+        $this->broadcastStatus((int) $user->id, AttendanceStatusChanged::WORKING);
+
         return response()->json(['status' => 'resumed', 'resume_time' => $now]);
     }
 
@@ -263,8 +308,25 @@ class AttendanceController extends Controller
             'schedule' => null,
             'schedule_template_ids' => [],
             'assigned_schedule_templates' => [],
+            // today's day already clocked out (startAttendance refuses a second one)
+            'closed_today' => null,
         ];
         if ($user) {
+            $closed = Attendance::table()
+                ->where('user_id', $user->id)
+                ->whereDate('date', Carbon::today()->toDateString())
+                ->whereNotNull('start_time')
+                ->whereNotNull('end_time')
+                ->orderBy('created_at', 'desc')
+                ->first(['start_time', 'end_time', 'hours_worked']);
+            if ($closed) {
+                $info['closed_today'] = [
+                    'start_time' => $closed->start_time,
+                    'end_time' => $closed->end_time,
+                    'hours_worked' => $closed->hours_worked,
+                ];
+            }
+
             $info['working'] = Attendance::table()
                 ->where('user_id', $user->id)
                 ->where('status', 'en_trabajo')
@@ -455,6 +517,10 @@ class AttendanceController extends Controller
         $scheduleDays = $this->schedules->normalizeScheduleDays($schedule->days ?? null);
         $dailyTargetMinutes = $this->schedules->scheduleDailyMinutes($schedule);
 
+        // Days before the employee's hire date never count as absences.
+        $hireDate = User::table()->where('id', $selectedUserId)->value('hire_date');
+        $hireDateKey = $hireDate ? Carbon::parse($hireDate)->toDateString() : null;
+
         $rawRows = Attendance::table()
             ->where('user_id', $selectedUserId)
             ->whereDate('date', '>=', $monthStart->toDateString())
@@ -503,39 +569,9 @@ class AttendanceController extends Controller
                 'event_types.name as event_type_name',
             ]);
 
-        $attendanceRequestTypeId = $this->attendance->attendanceRequestEventTypeId();
-        $pendingAttendanceRequests = Event::table()
-            ->where('user_id', $selectedUserId)
-            ->where('event_type_id', $attendanceRequestTypeId)
-            ->whereNull('deleted_at')
-            ->where('approval_status', 'pending')
-            ->where(function ($q) use ($monthStart, $monthEnd) {
-                $q->whereBetween('start_at', [$monthStart->toDateTimeString(), $monthEnd->toDateTimeString()])
-                    ->orWhereBetween('end_at', [$monthStart->toDateTimeString(), $monthEnd->toDateTimeString()])
-                    ->orWhere(function ($q2) use ($monthStart, $monthEnd) {
-                        $q2->where('start_at', '<=', $monthStart->toDateTimeString())
-                            ->where(function ($q3) use ($monthEnd) {
-                                $q3->where('end_at', '>=', $monthEnd->toDateTimeString())
-                                    ->orWhereNull('end_at');
-                            });
-                    });
-            })
-            ->orderBy('created_at', 'desc')
-            ->get(['id', 'start_at', 'end_at']);
-
-        $pendingAttendanceRequestsByDate = [];
-        foreach ($pendingAttendanceRequests as $req) {
-            $reqStart = Carbon::parse($req->start_at)->startOfDay();
-            $reqEnd = $req->end_at ? Carbon::parse($req->end_at)->startOfDay() : $reqStart->copy();
-            $cursorReq = $reqStart->copy();
-            while ($cursorReq->lte($reqEnd)) {
-                $dateKey = $cursorReq->toDateString();
-                if (!isset($pendingAttendanceRequestsByDate[$dateKey])) {
-                    $pendingAttendanceRequestsByDate[$dateKey] = (int) $req->id;
-                }
-                $cursorReq->addDay();
-            }
-        }
+        // date => id of a pending attendance request (multi-day requests count
+        // only their pending days)
+        $pendingAttendanceRequestsByDate = $this->attendance->pendingAttendanceRequestDates((int) $selectedUserId, $monthStart, $monthEnd);
 
         $eventsByDate = [];
         $vacationsByDate = [];
@@ -618,8 +654,11 @@ class AttendanceController extends Controller
             $isScheduledDay = in_array($dayLetter, $scheduleDays, true);
             $holidayName = $isScheduledDay ? $this->schedules->holidayName($cursor) : null;
             $isWorkingDay = $isScheduledDay && $holidayName === null;
+            // label: day-off holidays and worked ones ("festivo laborable")
+            $holidayInfo = $isScheduledDay ? $this->schedules->holidayInfo($cursor) : null;
+            $isEmployed = $hireDateKey === null || $key >= $hireDateKey;
 
-            if ($isWorkingDay) {
+            if ($isWorkingDay && $isEmployed) {
                 $targetMinutes += $dailyTargetMinutes;
             }
 
@@ -639,11 +678,13 @@ class AttendanceController extends Controller
             $hasReceipt = isset($receiptDocsByDate[$key]);
             $isPastOrToday = $key <= $todayKey;
 
-            if ($isWorkingDay && $isPastOrToday && ! $hasAttendance && ! $hasVacation && ! $hasReceipt) {
+            if ($isWorkingDay && $isPastOrToday && $isEmployed && ! $hasAttendance && ! $hasVacation && ! $hasReceipt) {
                 $absences[] = [
                     'date' => $key,
                     'weekday' => $dayLetter,
                     'reason' => 'sin_fichaje',
+                    // already asked RRHH to regularise it
+                    'attendance_request_pending' => isset($pendingAttendanceRequestsByDate[$key]),
                 ];
             }
 
@@ -660,7 +701,8 @@ class AttendanceController extends Controller
                     'hours_worked' => $att->hours_worked ?? null,
                     'status' => $att->status ?? null,
                     'is_working_day' => $isWorkingDay,
-                    'holiday' => $holidayName,
+                    'holiday' => $holidayInfo['name'] ?? null,
+                    'holiday_working' => (bool) ($holidayInfo['working'] ?? false),
                     'events' => $eventsByDate[$key] ?? [],
                     'attendance_request_pending' => isset($pendingAttendanceRequestsByDate[$key]),
                     'attendance_request_id' => $pendingAttendanceRequestsByDate[$key] ?? null,
@@ -815,6 +857,108 @@ class AttendanceController extends Controller
         ]);
     }
 
+    /**
+     * One attendance request ("Fichaje") for several absence days at once,
+     * from Reportes > Ausencias. Each day keeps its own status so RRHH can
+     * accept some and reject others (see TimeOffController::review).
+     * Days already requested, in the future or already complete are skipped.
+     */
+    public function requestAttendanceDays(Request $request)
+    {
+        $user = $request->user();
+        $data = $request->validate([
+            'dates' => 'required|array|min:1|max:62',
+            'dates.*' => 'required|date_format:Y-m-d|distinct',
+        ], [
+            'dates.required' => 'Selecciona al menos un día.',
+            'dates.max' => 'Puedes solicitar como máximo 62 días a la vez.',
+        ]);
+
+        $today = Carbon::today()->toDateString();
+        $pending = $this->attendance->pendingAttendanceRequestDates((int) $user->id);
+        $schedule = $this->schedules->loadEffectiveScheduleForUser((int) $user->id);
+        $scheduleStart = isset($schedule->start_time) ? substr((string) $schedule->start_time, 0, 5) : '09:00';
+        $scheduleEnd = isset($schedule->end_time) ? substr((string) $schedule->end_time, 0, 5) : '18:00';
+
+        $dates = $data['dates'];
+        sort($dates);
+        $days = [];
+        $skipped = [];
+        foreach ($dates as $date) {
+            if ($date > $today) {
+                $skipped[] = ['date' => $date, 'reason' => 'futuro'];
+                continue;
+            }
+            if (isset($pending[$date])) {
+                $skipped[] = ['date' => $date, 'reason' => 'ya_solicitado'];
+                continue;
+            }
+            $attendance = Attendance::table()
+                ->where('user_id', $user->id)
+                ->whereDate('date', $date)
+                ->orderBy('created_at', 'desc')
+                ->first(['start_time', 'end_time']);
+            $missingEntry = ! $attendance || empty($attendance->start_time);
+            $missingExit = ! $attendance || empty($attendance->end_time);
+            if (! $missingEntry && ! $missingExit) {
+                $skipped[] = ['date' => $date, 'reason' => 'completo'];
+                continue;
+            }
+
+            $days[] = [
+                'date' => $date,
+                'kind' => $missingEntry && $missingExit ? 'entry_exit' : ($missingEntry ? 'entry' : 'exit'),
+                'start_time' => $missingEntry ? $scheduleStart : substr((string) $attendance->start_time, 0, 5),
+                'end_time' => $missingExit ? $scheduleEnd : substr((string) $attendance->end_time, 0, 5),
+                'status' => 'pending',
+            ];
+        }
+
+        if (! $days) {
+            return response()->json([
+                'message' => 'Ninguno de los días seleccionados necesita una solicitud de fichaje.',
+                'skipped' => $skipped,
+            ], 422);
+        }
+
+        $first = $days[0];
+        $last = $days[count($days) - 1];
+        $labels = array_map(fn ($d) => Carbon::parse($d['date'])->format('d/m'), $days);
+        $typeId = $this->attendance->attendanceRequestEventTypeId();
+
+        $eventId = Event::table()->insertGetId([
+            'title' => (string) (EventType::table()->where('id', $typeId)->value('name') ?: 'Fichaje'),
+            'description' => sprintf(
+                'Regularización de fichaje de %d %s: %s.',
+                count($days),
+                count($days) === 1 ? 'día' : 'días',
+                implode(', ', $labels),
+            ),
+            'request_days' => json_encode($days),
+            'start_at' => $first['date'] . ' ' . $first['start_time'] . ':00',
+            'end_at' => $last['date'] . ' ' . $last['end_time'] . ':00',
+            'user_id' => $user->id,
+            'event_type_id' => $typeId,
+            'all_day' => false,
+            'color' => EventType::colorFor(EventType::ATTENDANCE_REQUEST),
+            'approval_status' => 'pending',
+            'approval_comment' => null,
+            'reviewed_by_user_id' => null,
+            'reviewed_at' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        event(new TimeOffRequestUpdated((int) $eventId, (int) $user->id, 'created'));
+
+        return response()->json([
+            'status' => 'ok',
+            'request_id' => (int) $eventId,
+            'days' => array_column($days, 'date'),
+            'skipped' => $skipped,
+        ]);
+    }
+
     public function requestAttendanceAdjustment(Request $request)
     {
         $user = $request->user();
@@ -865,13 +1009,8 @@ class AttendanceController extends Controller
             : ($missingEntry ? 'entry' : 'exit');
 
         $eventTypeId = $this->attendance->attendanceRequestEventTypeId();
-        $pendingExists = Event::table()
-            ->where('user_id', $user->id)
-            ->where('event_type_id', $eventTypeId)
-            ->whereNull('deleted_at')
-            ->where('approval_status', 'pending')
-            ->whereDate('start_at', $targetDate->toDateString())
-            ->exists();
+        // also counts the pending days of multi-day requests
+        $pendingExists = isset($this->attendance->pendingAttendanceRequestDates((int) $user->id)[$targetDate->toDateString()]);
 
         if ($pendingExists) {
             return response()->json(['message' => 'Ya existe una solicitud pendiente para ese dia'], 422);
@@ -934,7 +1073,7 @@ class AttendanceController extends Controller
             'user_id' => $user->id,
             'event_type_id' => $eventTypeId,
             'all_day' => false,
-            'color' => '#F59E0B',
+            'color' => EventType::colorFor(EventType::ATTENDANCE_REQUEST),
             'approval_status' => 'pending',
             'approval_comment' => null,
             'reviewed_by_user_id' => null,

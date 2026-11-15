@@ -13,7 +13,7 @@
           </svg>
         </button>
         <h1 class="text-base font-semibold text-white hidden sm:block">Configuración</h1>
-        <div v-if="activeTab === 'permissions'" class="relative flex items-center ml-2 sm:ml-8 max-w-[120px] sm:max-w-none">
+        <div v-if="activeTab === 'permissions'" class="relative hidden md:flex items-center ml-8">
           <input
             v-model="searchQuery"
             type="search"
@@ -30,7 +30,7 @@
         </div>
       </header>
 
-      <main class="relative z-10 flex-1 min-h-0 p-6 overflow-auto">
+      <main class="relative z-10 flex-1 min-h-0 p-4 sm:p-6 overflow-auto">
         <div class="max-w-5xl mx-auto space-y-4">
           <!-- Plan & limits (company admins) -->
           <div v-if="planUsage" class="rounded-2xl border border-gray-800 bg-gray-900 px-5 py-4 flex flex-wrap items-center gap-x-8 gap-y-2 text-sm">
@@ -50,11 +50,11 @@
             </div>
             <span class="text-xs text-gray-500">Para ampliar el plan contacta con el soporte.</span>
           </div>
-          <div class="inline-flex max-w-full overflow-x-auto rounded-xl border border-gray-700 p-1 bg-gray-900">
+          <div class="flex w-max max-w-full overflow-x-auto rounded-xl border border-gray-700 p-1 bg-gray-900">
             <button
               v-for="tab in tabs"
               :key="tab.id"
-              class="mx-0.5 px-4 py-2 rounded-lg text-sm transition whitespace-nowrap"
+              class="shrink-0 mx-0.5 px-3 sm:px-4 py-2 rounded-lg text-sm transition whitespace-nowrap"
               :class="activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
               @click="selectTab(tab.id)"
             >
@@ -77,7 +77,7 @@
 
             <template v-else>
               <!-- Welcome message + live preview -->
-              <div class="rounded-2xl border border-gray-800 bg-gray-900 p-5">
+              <div class="rounded-2xl border border-gray-800 bg-gray-900 p-4 sm:p-5">
                 <h3 class="text-sm font-semibold text-white mb-4">Mensaje de bienvenida</h3>
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
                   <div class="space-y-4">
@@ -119,7 +119,7 @@
               </div>
 
               <!-- Cards -->
-              <div class="rounded-2xl border border-gray-800 bg-gray-900 p-5">
+              <div class="rounded-2xl border border-gray-800 bg-gray-900 p-4 sm:p-5">
                 <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
                   <div>
                     <h3 class="text-sm font-semibold text-white">Tarjetas</h3>
@@ -129,10 +129,10 @@
                     Restablecer diseño original
                   </button>
                 </div>
-                <DashboardLayoutEditor v-model="companySlots" />
+                <DashboardLayoutEditor v-model="companySlots" v-model:widths="companyWidths" />
               </div>
 
-              <p v-if="layoutUpdatedAt" class="text-xs text-gray-600">Última modificación: {{ new Date(layoutUpdatedAt).toLocaleString('es-ES') }}</p>
+              <p v-if="layoutUpdatedAt" class="text-xs text-gray-600">Última modificación: {{ parseDate(layoutUpdatedAt)?.toLocaleString('es-ES') }}</p>
             </template>
 
             <!-- Sticky save bar: only when there are unsaved changes -->
@@ -154,8 +154,22 @@
             </div>
           </section>
 
-          <section v-else-if="activeTab === 'permissions'" class="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-4">
+          <section v-else-if="activeTab === 'permissions'" class="rounded-2xl border border-gray-800 bg-gray-900 p-4 sm:p-5 space-y-4">
             <h2 class="text-white font-semibold">Roles y permisos</h2>
+
+            <!-- phones/tablets: the role search lives here instead of the header -->
+            <div class="relative md:hidden">
+              <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
+              <input
+                v-model="searchQuery"
+                type="search"
+                placeholder="Buscar rol..."
+                aria-label="Buscar rol"
+                class="!mb-0 w-full pl-9 pr-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
 
             <div v-if="permissionsLoading" class="space-y-3">
               <div v-for="i in 4" :key="'sk-perm-' + i" class="rounded-xl border border-gray-800 bg-gray-950 overflow-hidden">
@@ -169,11 +183,11 @@
               </div>
             </div>
 
-            <div v-else-if="!canManagePermissions" class="text-sm text-gray-400">No tienes permisos para gestionar esta seccion.</div>
+            <div v-else-if="!canManagePermissions" class="text-sm text-gray-400">No tienes permisos para gestionar esta sección.</div>
 
             <div v-else class="space-y-3">
               <p class="text-sm text-gray-400">
-                Cada usuario tiene un unico rol. Asigna permisos a cada rol: los cambios se aplican a todos los usuarios con ese rol.
+                Cada usuario tiene un único rol. Asigna permisos a cada rol: los cambios se aplican a todos los usuarios con ese rol.
                 El rol de administrador tiene siempre todos los permisos.
               </p>
 
@@ -210,8 +224,8 @@
               <template v-else>
                 <div v-for="role in filteredPermissionRoles" :key="role.id" class="rounded-xl border border-gray-800 bg-gray-950 overflow-hidden">
                   <!-- Accordion header -->
-                  <div class="w-full flex items-center justify-between gap-3 px-5 py-4 hover:bg-gray-800/40 transition">
-                    <button class="flex-1 flex items-center gap-3 text-left min-w-0" @click="toggleRoleExpanded(role.id)">
+                  <div class="w-full flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 sm:px-5 py-3 sm:py-4 hover:bg-gray-800/40 transition">
+                    <button class="flex-1 basis-56 flex flex-wrap items-center gap-x-3 gap-y-1 text-left min-w-0" @click="toggleRoleExpanded(role.id)">
                       <span class="font-medium text-white truncate">{{ role.name }}</span>
                       <span v-if="role.is_admin" class="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-medium">Administrador</span>
                       <span v-else class="text-xs px-2 py-0.5 rounded-full bg-blue-600/20 text-blue-400 font-medium relative">
@@ -254,7 +268,7 @@
                   </div>
 
                   <!-- Accordion body -->
-                  <div v-if="expandedRoles.includes(role.id)" class="border-t border-gray-800 px-5 py-4 space-y-3">
+                  <div v-if="expandedRoles.includes(role.id)" class="border-t border-gray-800 px-3 sm:px-5 py-4 space-y-3">
                     <p v-if="role.is_admin" class="text-sm text-gray-400">
                       Este rol tiene acceso total y todos los permisos. No se puede editar ni eliminar.
                     </p>
@@ -282,7 +296,7 @@
                       </div>
 
                       <!-- Bulk actions -->
-                      <div class="flex items-center gap-2">
+                      <div class="flex flex-wrap items-center gap-2">
                         <button
                           class="px-3 py-1.5 rounded-lg bg-green-600/20 border border-green-700/30 text-green-300 text-xs font-medium hover:bg-green-600/30 transition"
                           @click="selectAllPermissions(role.id)"
@@ -324,7 +338,7 @@
                           <div
                             v-for="p in group.permissions"
                             :key="p.code"
-                            class="flex items-center justify-between gap-4 rounded-lg bg-gray-900 px-4 py-3"
+                            class="flex items-center justify-between gap-3 sm:gap-4 rounded-lg bg-gray-900 px-3 sm:px-4 py-3"
                           >
                             <div class="min-w-0">
                               <div class="text-sm text-gray-200 font-medium">{{ p.name }}</div>
@@ -363,16 +377,16 @@
             </div>
           </section>
 
-          <section v-else-if="activeTab === 'schedules'" class="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-4">
-            <div class="flex items-center justify-between gap-3">
+          <section v-else-if="activeTab === 'schedules'" class="rounded-2xl border border-gray-800 bg-gray-900 p-4 sm:p-5 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
               <h2 class="text-white font-semibold">Jornadas laborales</h2>
-              <div class="flex items-center gap-2">
+              <div class="flex flex-wrap items-center gap-2">
                 <button
                   v-if="editingScheduleId"
                   class="px-3 py-2 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800"
                   @click="cancelEditScheduleTemplate"
                 >
-                  Cancelar edicion
+                  Cancelar edición
                 </button>
                 <button
                   class="px-3 py-2 rounded-lg bg-blue-600 text-white disabled:opacity-50"
@@ -384,7 +398,7 @@
               </div>
             </div>
 
-            <p class="text-sm text-gray-400">Define horarios y dias laborales en la tabla schedules para reutilizarlos al crear usuarios.</p>
+            <p class="text-sm text-gray-400">Define horarios y días laborales para reutilizarlos al crear usuarios.</p>
 
             <div class="rounded-xl border border-gray-800 bg-gray-950 p-4 space-y-3">
               <h3 class="text-sm text-white font-semibold">Nueva jornada</h3>
@@ -422,31 +436,27 @@
               <table v-else class="min-w-full text-sm">
                 <thead class="bg-gray-800/60 text-gray-300">
                   <tr>
-                    <th class="text-left px-4 py-2">Horario</th>
-                    <th class="text-left px-4 py-2">Dias</th>
-                    <th class="text-right px-4 py-2">Acciones</th>
+                    <th class="text-left px-3 sm:px-4 py-2">Horario</th>
+                    <th class="text-left px-3 sm:px-4 py-2">Días</th>
+                    <th class="text-right px-2 sm:px-4 py-2"><span class="sr-only">Acciones</span></th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="s in scheduleTemplates" :key="s.id" class="border-t border-gray-800 text-gray-200">
-                    <td class="px-4 py-2">{{ s.start_time }} - {{ s.end_time }}</td>
-                    <td class="px-4 py-2">{{ (s.days || []).join(', ') }}</td>
-                    <td class="px-4 py-2 text-right">
-                      <div class="inline-flex items-center gap-2">
+                    <td class="px-3 sm:px-4 py-2 whitespace-nowrap tabular-nums">{{ s.start_time }} - {{ s.end_time }}</td>
+                    <td class="px-3 sm:px-4 py-2">{{ (s.days || []).join(', ') }}</td>
+                    <td class="px-2 sm:px-4 py-2 text-right w-px">
+                      <RowActionsMenu :label="`Acciones de la jornada ${s.start_time} - ${s.end_time}`">
+                        <button type="button" class="row-action" @click="editScheduleTemplate(s)">Editar</button>
                         <button
-                          class="px-2 py-1 rounded border border-gray-700 text-xs text-gray-200 hover:bg-gray-800"
-                          @click="editScheduleTemplate(s)"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          class="px-2 py-1 rounded border border-red-700 text-xs text-red-300 hover:bg-red-900/20 disabled:opacity-50"
+                          type="button"
+                          class="row-action row-action--danger"
                           :disabled="scheduleDeletingId === s.id"
                           @click="deleteScheduleTemplate(s.id)"
                         >
                           {{ scheduleDeletingId === s.id ? 'Eliminando...' : 'Eliminar' }}
                         </button>
-                      </div>
+                      </RowActionsMenu>
                     </td>
                   </tr>
                 </tbody>
@@ -455,16 +465,16 @@
           </section>
 
 
-          <section v-else-if="activeTab === 'equipos'" class="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-4">
-            <div class="flex items-center justify-between gap-3">
-              <h2 class="text-white font-semibold">Gestion de Equipos</h2>
-              <div class="flex items-center gap-2">
+          <section v-else-if="activeTab === 'equipos'" class="rounded-2xl border border-gray-800 bg-gray-900 p-4 sm:p-5 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <h2 class="text-white font-semibold">Gestión de equipos</h2>
+              <div class="flex flex-wrap items-center gap-2">
                 <button
                   v-if="editingTeamId"
                   class="px-3 py-2 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800 text-xs transition"
                   @click="cancelEditTeam"
                 >
-                  Cancelar edicion
+                  Cancelar edición
                 </button>
                 <button
                   class="px-4 py-2 rounded-lg bg-blue-600 text-white text-xs font-medium disabled:opacity-50 hover:bg-blue-500 transition"
@@ -518,35 +528,31 @@
               <table v-else class="min-w-full text-sm">
                 <thead class="bg-gray-800/60 text-gray-300">
                   <tr>
-                    <th class="text-left px-4 py-2">Nombre</th>
-                    <th class="text-center px-4 py-2">Miembros</th>
-                    <th class="text-right px-4 py-2">Acciones</th>
+                    <th class="text-left px-3 sm:px-4 py-2">Nombre</th>
+                    <th class="text-center px-3 sm:px-4 py-2">Miembros</th>
+                    <th class="text-right px-2 sm:px-4 py-2"><span class="sr-only">Acciones</span></th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="t in teams" :key="t.id" class="border-t border-gray-800 text-gray-200 hover:bg-gray-800/30 transition">
-                    <td class="px-4 py-3 font-medium">{{ t.name }}</td>
-                    <td class="px-4 py-3 text-center">
+                    <td class="px-3 sm:px-4 py-3 font-medium break-words">{{ t.name }}</td>
+                    <td class="px-3 sm:px-4 py-3 text-center">
                       <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs" :class="t.members_count > 0 ? 'bg-blue-600/20 text-blue-400' : 'bg-gray-800 text-gray-500'">
                         {{ t.members_count }}
                       </span>
                     </td>
-                    <td class="px-4 py-3 text-right">
-                      <div class="inline-flex items-center gap-2">
+                    <td class="px-2 sm:px-4 py-3 text-right w-px">
+                      <RowActionsMenu :label="`Acciones del equipo ${t.name}`">
+                        <button type="button" class="row-action" @click="editTeam(t)">Editar</button>
                         <button
-                          class="px-2 py-1 rounded border border-gray-700 text-xs text-gray-200 hover:bg-gray-800 transition"
-                          @click="editTeam(t)"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          class="px-2 py-1 rounded border border-red-700 text-xs text-red-300 hover:bg-red-900/20 disabled:opacity-50 transition"
+                          type="button"
+                          class="row-action row-action--danger"
                           :disabled="teamDeletingId === t.id"
                           @click="deleteTeam(t.id)"
                         >
                           {{ teamDeletingId === t.id ? 'Eliminando...' : 'Eliminar' }}
                         </button>
-                      </div>
+                      </RowActionsMenu>
                     </td>
                   </tr>
                 </tbody>
@@ -554,6 +560,206 @@
             </div>
           </section>
 
+          <section v-else-if="activeTab === 'holidays'" class="space-y-4">
+            <!-- sub-tabs: the year calendar and the national catalog it imports from -->
+            <div class="flex w-max max-w-full overflow-x-auto rounded-lg border border-gray-800 bg-gray-900 p-0.5">
+              <button
+                v-for="st in [{ id: 'year', label: 'Festivos del año' }, { id: 'national', label: 'Feriados nacionales' }]"
+                :key="st.id"
+                type="button"
+                class="shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md text-xs sm:text-sm transition"
+                :class="holidaysSubTab === st.id ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'"
+                @click="holidaysSubTab = st.id"
+              >{{ st.label }}</button>
+            </div>
+            <HolidaysManager v-if="holidaysSubTab === 'year'" />
+            <NationalHolidaysManager v-else />
+          </section>
+
+          <section v-else-if="activeTab === 'limits'" class="rounded-2xl border border-gray-800 bg-gray-900 p-4 sm:p-5 space-y-4">
+            <div>
+              <h2 class="text-white font-semibold">Límites de tarjetas</h2>
+              <p class="text-sm text-gray-400 mt-1">
+                Controla el tamaño de las tarjetas con lista del dashboard. Se aplica a todos los empleados de la empresa.
+              </p>
+            </div>
+
+            <div v-if="layoutLoading" class="space-y-2">
+              <div v-for="i in 5" :key="i" class="h-12 rounded-lg bg-gray-800 animate-pulse"></div>
+            </div>
+
+            <form v-else class="space-y-2" @submit.prevent="saveCardLimits">
+              <div
+                v-for="w in limitWidgets"
+                :key="w.key"
+                class="flex items-center justify-between gap-4 rounded-lg border border-gray-800 bg-gray-800/40 px-4 py-3"
+              >
+                <label :for="`limit-${w.key}`" class="!mb-0 min-w-0">
+                  <span class="block text-sm text-gray-200">{{ w.name }}</span>
+                  <span class="block text-xs text-gray-500">
+                    {{ w.mode === 'max' ? 'Cantidad máxima que se muestra' : 'Visibles antes de que aparezca el scroll' }}
+                  </span>
+                </label>
+                <div class="flex items-center gap-2">
+                  <input
+                    :id="`limit-${w.key}`"
+                    v-model.number="cardLimits[w.key]"
+                    type="number"
+                    inputmode="numeric"
+                    min="1"
+                    :max="maxCardLimit"
+                    required
+                    class="!mb-0 w-20 rounded-lg bg-gray-800 border border-gray-700 px-3 py-1.5 text-white text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span class="text-xs text-gray-500 w-14">elementos</span>
+                </div>
+              </div>
+              <p class="text-xs text-gray-500">Entre 1 y {{ maxCardLimit }}. Por defecto {{ defaultCardLimit }}.</p>
+
+              <div class="flex flex-wrap justify-end gap-2 pt-2">
+                <button type="button" class="px-3 py-2 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800 text-sm" :disabled="limitsSaving" @click="resetCardLimits">
+                  Restablecer ({{ defaultCardLimit }})
+                </button>
+                <button type="submit" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium disabled:opacity-50" :disabled="limitsSaving || !limitsDirty">
+                  {{ limitsSaving ? 'Guardando...' : 'Guardar límites' }}
+                </button>
+              </div>
+            </form>
+          </section>
+
+          <section v-else-if="activeTab === 'celebrations'" class="rounded-2xl border border-gray-800 bg-gray-900 p-4 sm:p-5 space-y-4">
+            <div>
+              <h2 class="text-white font-semibold">Mensajes de festejo</h2>
+              <p class="text-sm text-gray-400 mt-1">
+                Lo que ve cada empleado, con confeti, al iniciar sesión el día de su cumpleaños o de su aniversario en la empresa.
+              </p>
+              <p class="text-xs text-gray-500 mt-2">
+                Puedes usar <code class="px-1 rounded bg-gray-800 text-gray-300">{nombre}</code> (nombre del empleado) y
+                <code class="px-1 rounded bg-gray-800 text-gray-300">{años}</code> (por ejemplo "3 años"). Si dejas un campo vacío se usa el texto por defecto.
+              </p>
+            </div>
+
+            <div v-if="layoutLoading" class="space-y-2">
+              <div v-for="i in 2" :key="i" class="h-40 rounded-lg bg-gray-800 animate-pulse"></div>
+            </div>
+
+            <form v-else class="space-y-4" @submit.prevent="saveCelebrations">
+              <div
+                v-for="kind in celebrationKinds"
+                :key="kind.key"
+                class="rounded-xl border border-gray-800 bg-gray-800/40 p-4 grid gap-4 lg:grid-cols-[1fr_260px]"
+              >
+                <div class="space-y-3 min-w-0">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 class="text-sm font-medium text-gray-100">{{ kind.emoji }} {{ kind.name }}</h3>
+                      <p class="text-xs text-gray-500">{{ kind.hint }}</p>
+                    </div>
+                    <button type="button" class="shrink-0 text-xs text-gray-400 hover:text-white underline-offset-2 hover:underline" @click="resetCelebration(kind.key)">
+                      Texto por defecto
+                    </button>
+                  </div>
+
+                  <div>
+                    <div class="flex items-center justify-between mb-1">
+                      <label :for="`celebration-${kind.key}-title`" class="!mb-0 text-xs text-gray-400 font-normal">Título</label>
+                      <span class="text-[11px] tabular-nums" :class="celebrationTexts[kind.key].title.length >= CELEBRATION_TITLE_MAX ? 'text-amber-300' : 'text-gray-500'">
+                        {{ celebrationTexts[kind.key].title.length }}/{{ CELEBRATION_TITLE_MAX }}
+                      </span>
+                    </div>
+                    <input
+                      :id="`celebration-${kind.key}-title`"
+                      v-model="celebrationTexts[kind.key].title"
+                      type="text"
+                      :maxlength="CELEBRATION_TITLE_MAX"
+                      class="!mb-0 w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <div class="flex items-center justify-between mb-1">
+                      <label :for="`celebration-${kind.key}-message`" class="!mb-0 text-xs text-gray-400 font-normal">Mensaje</label>
+                      <span class="text-[11px] tabular-nums" :class="celebrationTexts[kind.key].message.length >= CELEBRATION_MESSAGE_MAX ? 'text-amber-300' : 'text-gray-500'">
+                        {{ celebrationTexts[kind.key].message.length }}/{{ CELEBRATION_MESSAGE_MAX }}
+                      </span>
+                    </div>
+                    <textarea
+                      :id="`celebration-${kind.key}-message`"
+                      v-model="celebrationTexts[kind.key].message"
+                      rows="3"
+                      :maxlength="CELEBRATION_MESSAGE_MAX"
+                      class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white text-sm resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    ></textarea>
+                    <div class="flex flex-wrap gap-2 mt-1">
+                      <button
+                        v-for="token in ['{nombre}', '{años}']"
+                        :key="token"
+                        type="button"
+                        class="text-[11px] px-2 py-0.5 rounded-full border border-gray-700 text-gray-300 hover:bg-gray-700"
+                        @click="insertPlaceholder(kind.key, 'message', token)"
+                      >
+                        + {{ token }}
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- animations -->
+                  <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                      <span class="text-xs text-gray-400">Animaciones</span>
+                      <div class="flex gap-3 text-[11px]">
+                        <button type="button" class="text-gray-400 hover:text-white" @click="setAllEffects(kind.key, true)">Todas</button>
+                        <button type="button" class="text-gray-400 hover:text-white" @click="setAllEffects(kind.key, false)">Ninguna</button>
+                      </div>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                      <button
+                        v-for="fx in CELEBRATION_EFFECTS"
+                        :key="fx.key"
+                        type="button"
+                        :aria-pressed="celebrationTexts[kind.key].effects.includes(fx.key)"
+                        class="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition"
+                        :class="celebrationTexts[kind.key].effects.includes(fx.key)
+                          ? 'border-blue-500 bg-blue-600/20 text-white'
+                          : 'border-gray-700 text-gray-400 hover:bg-gray-800'"
+                        @click="toggleEffect(kind.key, fx.key)"
+                      >
+                        <span aria-hidden="true">{{ fx.emoji }}</span>{{ fx.name }}
+                        <svg v-if="celebrationTexts[kind.key].effects.includes(fx.key)" class="w-3 h-3 text-blue-300" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                      </button>
+                    </div>
+                    <p v-if="!celebrationTexts[kind.key].effects.length" class="text-[11px] text-gray-500 mt-1.5">Sin animaciones: solo se muestra el mensaje.</p>
+                  </div>
+                </div>
+
+                <!-- preview -->
+                <div class="rounded-2xl border border-white/10 bg-gray-950 p-5 text-center self-start">
+                  <div class="text-[10px] uppercase tracking-wide text-gray-500 mb-2">Vista previa</div>
+                  <div class="text-4xl mb-2" aria-hidden="true">{{ kind.emoji }}</div>
+                  <p class="text-base font-bold text-white leading-tight break-words">
+                    {{ previewCelebration(celebrationTexts[kind.key].title || defaultCelebrations[kind.key].title) }}
+                  </p>
+                  <p class="mt-2 text-xs text-gray-300 break-words">
+                    {{ previewCelebration(celebrationTexts[kind.key].message || defaultCelebrations[kind.key].message) }}
+                  </p>
+                  <button
+                    type="button"
+                    class="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-medium text-white transition"
+                    :class="kind.key === 'birthday' ? 'bg-rose-500/80 hover:bg-rose-500' : 'bg-amber-500/80 hover:bg-amber-500'"
+                    @click="simulateCelebration(kind.key)"
+                  >
+                    ▶ Simular festejo
+                  </button>
+                </div>
+              </div>
+
+              <div class="flex justify-end">
+                <button type="submit" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium disabled:opacity-50" :disabled="celebrationsSaving || !celebrationsDirty">
+                  {{ celebrationsSaving ? 'Guardando...' : 'Guardar mensajes' }}
+                </button>
+              </div>
+            </form>
+          </section>
 
         </div>
       </main>
@@ -565,10 +771,13 @@
 <script setup lang="ts">
 import { computed, onBeforeMount, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
-import { DASHBOARD_POSITIONS, normalizeDashboardSlots, type DashboardSlots } from '~/utils/dashboardWidgets'
+import { DASHBOARD_POSITIONS, normalizeDashboardSlots, normalizeDashboardWidths, type DashboardSlots, type DashboardWidths } from '~/utils/dashboardWidgets'
 import DashboardLayoutEditor from '../components/DashboardLayoutEditor.vue'
 import { useAuth } from '../composables/useAuth'
+import { CELEBRATION_EFFECTS, DEFAULT_CELEBRATION_EFFECTS, useCelebration, type CelebrationEffect } from '../composables/useCelebration'
 import AppSidebar from '../components/AppSidebar.vue'
+import HolidaysManager from '../components/settings/HolidaysManager.vue'
+import NationalHolidaysManager from '../components/settings/NationalHolidaysManager.vue'
 import AttendanceButton from '../components/AttendanceButton.vue'
 import UserMenu from '../components/UserMenu.vue'
 
@@ -608,24 +817,41 @@ const canManageDashboard = computed(() => {
   return permissions.includes('dashboard.manage')
 })
 
+const canManageHolidays = computed(() => {
+  const currentUser: any = user.value || {}
+  if (currentUser?.can_manage_holidays) return true
+  const permissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : []
+  return permissions.includes('holidays.manage')
+})
+
 const tabs = computed(() => {
   if (isAdminUser.value) {
     return [
       { id: 'dashboard', label: 'Dashboard' },
+      { id: 'limits', label: 'Límites de tarjetas' },
+      { id: 'celebrations', label: 'Festejos' },
       { id: 'permissions', label: 'Roles y permisos' },
       { id: 'schedules', label: 'Jornadas laborales' },
       { id: 'equipos', label: 'Equipos' },
+      { id: 'holidays', label: 'Festivos' },
     ]
   }
 
   const list: Array<{ id: string; label: string }> = []
-  if (canManageDashboard.value) list.push({ id: 'dashboard', label: 'Dashboard' })
+  if (canManageDashboard.value) {
+    list.push({ id: 'dashboard', label: 'Dashboard' })
+    list.push({ id: 'limits', label: 'Límites de tarjetas' })
+    list.push({ id: 'celebrations', label: 'Festejos' })
+  }
   if (canManageSchedules.value) list.push({ id: 'schedules', label: 'Jornadas laborales' })
   if (canManageTeams.value) list.push({ id: 'equipos', label: 'Equipos' })
+  // company holidays: RRHH and admins (holidays.manage)
+  if (canManageHolidays.value) list.push({ id: 'holidays', label: 'Festivos' })
   return list
 })
 
 const activeTab = ref('dashboard')
+const holidaysSubTab = ref<'year' | 'national'>('year')
 const canManagePermissions = ref(false)
 const permissionsLoading = ref(false)
 const permissionSaving = ref(false)
@@ -769,13 +995,14 @@ type WelcomeSettings = { title: string; subtitle: string; show_date: boolean }
 const layoutLoading = ref(false)
 const layoutSaving = ref(false)
 const companySlots = ref<DashboardSlots>(Array(DASHBOARD_POSITIONS).fill(null))
+const companyWidths = ref<DashboardWidths>(normalizeDashboardWidths(null))
 const welcome = ref<WelcomeSettings>({ title: '', subtitle: '', show_date: true })
 const defaultSlots = ref<DashboardSlots>([])
 const defaultWelcome = ref<WelcomeSettings>({ title: 'Bienvenido', subtitle: '', show_date: true })
 const layoutUpdatedAt = ref<string | null>(null)
 const savedLayoutSnapshot = ref('')
 
-const layoutSnapshot = () => JSON.stringify({ slots: companySlots.value, welcome: welcome.value })
+const layoutSnapshot = () => JSON.stringify({ slots: companySlots.value, welcome: welcome.value, widths: companyWidths.value })
 const layoutDirty = computed(() => !layoutLoading.value && savedLayoutSnapshot.value !== '' && layoutSnapshot() !== savedLayoutSnapshot.value)
 
 const previewName = computed(() => String((user.value as any)?.first_name || (user.value as any)?.name || 'Ana').split(' ')[0])
@@ -783,6 +1010,7 @@ const todayLabel = new Date().toLocaleDateString('es-ES', { weekday: 'long', day
 
 function applyCompanyLayout(res: any) {
   companySlots.value = normalizeDashboardSlots(res?.slots)
+  companyWidths.value = normalizeDashboardWidths(res?.widths)
   const w = res?.welcome || {}
   welcome.value = { title: String(w.title || ''), subtitle: String(w.subtitle || ''), show_date: w.show_date !== false }
   layoutUpdatedAt.value = res?.updated_at || null
@@ -796,7 +1024,13 @@ async function loadCompanyLayout() {
     const res: any = await $fetch('/api/settings/dashboard')
     defaultSlots.value = normalizeDashboardSlots(res?.default_slots)
     if (res?.default_welcome) defaultWelcome.value = { ...res.default_welcome }
+    if (Array.isArray(res?.limit_widgets)) limitWidgets.value = res.limit_widgets
+    if (res?.default_limit) defaultCardLimit.value = Number(res.default_limit)
+    if (res?.max_limit) maxCardLimit.value = Number(res.max_limit)
     applyCompanyLayout(res)
+    applyCardLimits(res?.limits)
+    if (res?.default_celebrations) defaultCelebrations.value = { ...defaultCelebrations.value, ...res.default_celebrations }
+    applyCelebrations(res?.celebrations)
   } catch (e) {
     $swal.toast('error', 'No se pudo cargar el dashboard de la empresa')
   } finally {
@@ -809,7 +1043,7 @@ async function saveCompanyLayout() {
   try {
     const res: any = await $fetch('/api/settings/dashboard', {
       method: 'PUT',
-      body: { slots: companySlots.value, welcome: welcome.value },
+      body: { slots: companySlots.value, welcome: welcome.value, widths: companyWidths.value },
     })
     applyCompanyLayout(res?.layout)
     $swal.toast('success', 'Dashboard de la empresa guardado')
@@ -825,18 +1059,20 @@ function discardLayoutChanges() {
   if (!savedLayoutSnapshot.value) return
   const saved = JSON.parse(savedLayoutSnapshot.value)
   companySlots.value = saved.slots
+  companyWidths.value = saved.widths
   welcome.value = saved.welcome
 }
 
 async function restoreLayoutDefaults() {
   const ok = await $swal.confirm(
     'Restablecer diseño original',
-    'Se volverá a la disposición de fábrica de las tarjetas y al mensaje de bienvenida por defecto. No se guarda hasta que pulses "Guardar".',
+    'Se volverá a la disposición de fábrica de las tarjetas (todas de 1 columna) y al mensaje de bienvenida por defecto. No se guarda hasta que pulses "Guardar".',
     'Restablecer',
     'Cancelar',
   )
   if (!ok) return
   companySlots.value = [...defaultSlots.value]
+  companyWidths.value = normalizeDashboardWidths(null)
   welcome.value = { ...defaultWelcome.value }
 }
 
@@ -865,6 +1101,138 @@ function warnBeforeUnload(event: BeforeUnloadEvent) {
 onMounted(() => window.addEventListener('beforeunload', warnBeforeUnload))
 onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnload))
 // ── End company dashboard ──
+
+// ── Card limits (items per list card on the dashboard) ──
+const limitWidgets = ref<Array<{ key: string; name: string; mode: 'max' | 'visible' }>>([])
+const cardLimits = ref<Record<string, number>>({})
+const savedCardLimits = ref('')
+const defaultCardLimit = ref(5)
+const maxCardLimit = ref(50)
+const limitsSaving = ref(false)
+const limitsDirty = computed(() => JSON.stringify(cardLimits.value) !== savedCardLimits.value)
+
+function applyCardLimits(limits: Record<string, number> | null | undefined) {
+  const next: Record<string, number> = {}
+  for (const w of limitWidgets.value) next[w.key] = Number(limits?.[w.key] ?? defaultCardLimit.value)
+  cardLimits.value = next
+  savedCardLimits.value = JSON.stringify(next)
+}
+
+function resetCardLimits() {
+  const next: Record<string, number> = {}
+  for (const w of limitWidgets.value) next[w.key] = defaultCardLimit.value
+  cardLimits.value = next
+}
+
+async function saveCardLimits() {
+  limitsSaving.value = true
+  try {
+    const res: any = await $fetch('/api/settings/dashboard/limits', {
+      method: 'PUT',
+      body: { limits: cardLimits.value },
+    })
+    applyCardLimits(res?.layout?.limits)
+    $swal.toast('success', 'Límites guardados')
+  } catch (e: any) {
+    const errors = e?.data?.errors
+    $swal.toast('error', errors ? String(Object.values(errors).flat()[0]) : 'No se pudieron guardar los límites')
+  } finally {
+    limitsSaving.value = false
+  }
+}
+// ── End card limits ──
+
+// ── Celebration texts (birthday / work anniversary overlay) ──
+type CelebrationKind = 'birthday' | 'anniversary'
+type CelebrationTexts = Record<CelebrationKind, { title: string; message: string; effects: CelebrationEffect[] }>
+const CELEBRATION_TITLE_MAX = 80
+const CELEBRATION_MESSAGE_MAX = 300
+const celebrationKinds: Array<{ key: CelebrationKind; name: string; emoji: string; hint: string }> = [
+  { key: 'anniversary', name: 'Aniversario en la empresa', emoji: '🏆', hint: 'Se muestra el día que el empleado cumple años desde su fecha de ingreso.' },
+  { key: 'birthday', name: 'Cumpleaños', emoji: '🎂', hint: 'Se muestra el día del cumpleaños del empleado.' },
+]
+const defaultCelebrations = ref<CelebrationTexts>({
+  birthday: { title: '¡Feliz cumpleaños, {nombre}!', message: 'Todo el equipo te desea un día increíble.', effects: [...DEFAULT_CELEBRATION_EFFECTS.birthday] },
+  anniversary: { title: '¡Feliz aniversario, {nombre}!', message: 'Hoy cumples {años} con nosotros. ¡Gracias por ser parte del equipo!', effects: [...DEFAULT_CELEBRATION_EFFECTS.anniversary] },
+})
+const { preview: previewCelebrationAnimation } = useCelebration()
+const celebrationTexts = ref<CelebrationTexts>(JSON.parse(JSON.stringify(defaultCelebrations.value)))
+const savedCelebrations = ref('')
+const celebrationsSaving = ref(false)
+const celebrationsDirty = computed(() => JSON.stringify(celebrationTexts.value) !== savedCelebrations.value)
+
+function applyCelebrations(input: Partial<CelebrationTexts> | null | undefined) {
+  const next = {} as CelebrationTexts
+  const known = CELEBRATION_EFFECTS.map(e => e.key)
+  for (const { key } of celebrationKinds) {
+    const effects = input?.[key]?.effects
+    next[key] = {
+      title: String(input?.[key]?.title || defaultCelebrations.value[key].title),
+      message: String(input?.[key]?.message || defaultCelebrations.value[key].message),
+      effects: Array.isArray(effects) ? known.filter(k => effects.includes(k)) : [...defaultCelebrations.value[key].effects],
+    }
+  }
+  celebrationTexts.value = next
+  savedCelebrations.value = JSON.stringify(next)
+}
+
+function resetCelebration(key: CelebrationKind) {
+  const d = defaultCelebrations.value[key]
+  celebrationTexts.value[key] = { ...d, effects: [...d.effects] }
+}
+
+// keep catalog order so the "dirty" check doesn't depend on click order
+function toggleEffect(key: CelebrationKind, effect: CelebrationEffect) {
+  const set = new Set(celebrationTexts.value[key].effects)
+  set.has(effect) ? set.delete(effect) : set.add(effect)
+  celebrationTexts.value[key].effects = CELEBRATION_EFFECTS.map(e => e.key).filter(k => set.has(k))
+}
+
+function setAllEffects(key: CelebrationKind, all: boolean) {
+  celebrationTexts.value[key].effects = all ? CELEBRATION_EFFECTS.map(e => e.key) : []
+}
+
+// plays the overlay with the current (even unsaved) texts and effects
+function simulateCelebration(key: CelebrationKind) {
+  const t = celebrationTexts.value[key]
+  previewCelebrationAnimation({
+    type: key,
+    years: 3,
+    title: previewCelebration(t.title || defaultCelebrations.value[key].title),
+    message: previewCelebration(t.message || defaultCelebrations.value[key].message),
+    effects: [...t.effects],
+  })
+}
+
+function insertPlaceholder(key: CelebrationKind, field: 'title' | 'message', token: string) {
+  const max = field === 'title' ? CELEBRATION_TITLE_MAX : CELEBRATION_MESSAGE_MAX
+  const current = celebrationTexts.value[key][field]
+  const sep = current && !current.endsWith(' ') ? ' ' : ''
+  celebrationTexts.value[key][field] = (current + sep + token).slice(0, max)
+}
+
+// preview with a sample person, same rules as the server
+function previewCelebration(text: string) {
+  return text.replace(/\{nombre\}/g, 'Juan').replace(/\{años\}/g, '3 años')
+}
+
+async function saveCelebrations() {
+  celebrationsSaving.value = true
+  try {
+    const res: any = await $fetch('/api/settings/dashboard/celebrations', {
+      method: 'PUT',
+      body: { celebrations: celebrationTexts.value },
+    })
+    applyCelebrations(res?.layout?.celebrations)
+    $swal.toast('success', 'Mensajes de festejo guardados')
+  } catch (e: any) {
+    const errors = e?.data?.errors
+    $swal.toast('error', errors ? String(Object.values(errors).flat()[0]) : 'No se pudieron guardar los mensajes')
+  } finally {
+    celebrationsSaving.value = false
+  }
+}
+// ── End celebration texts ──
 
 // ── Roles & permissions ──
 type PermissionRole = { id: number; name: string; description: string | null; is_admin: boolean; users_count: number; permission_codes: string[] }
@@ -1188,6 +1556,10 @@ onBeforeMount(async () => {
   if (!canAccessSettings) {
     return router.push('/dashboard')
   }
+
+  // ?tab=holidays (old /festivos links)
+  const wanted = String(useRoute().query.tab || '')
+  if (wanted && tabs.value.some((t) => t.id === wanted)) activeTab.value = wanted
 
   await loadCompanyLayout()
   await loadPermissions()

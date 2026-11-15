@@ -19,8 +19,8 @@ export const DASHBOARD_WIDGETS: Record<DashboardWidgetKey, { name: string; descr
     tone: 'bg-blue-600 text-white',
   },
   birthdays: {
-    name: 'Cumpleaños',
-    description: 'Próximos cumpleaños del equipo',
+    name: 'Cumpleaños y aniversarios',
+    description: 'Próximos cumpleaños y aniversarios en la empresa',
     icon: 'M12 8v4m0 0l-2 2m2-2l2 2M5 21h14a2 2 0 002-2v-5a2 2 0 00-2-2H5a2 2 0 00-2 2v5a2 2 0 002 2zM12 4v1',
     tone: 'bg-pink-500/15 text-pink-300',
   },
@@ -81,6 +81,88 @@ export function normalizeDashboardSlots(input: unknown): DashboardSlots {
   })
   return out
 }
+
+// ── Card widths (how many of the 3 desktop columns a card spans) ──
+
+export type DashboardWidths = Partial<Record<DashboardWidgetKey, number>>
+export const DASHBOARD_MAX_WIDTH = 3
+const ROWS = DASHBOARD_POSITIONS / DASHBOARD_COLUMNS.length // 3
+
+const posAt = (col: number, row: number) => col * ROWS + row
+
+export function normalizeDashboardWidths(input: unknown): DashboardWidths {
+  const out: DashboardWidths = {}
+  for (const key of DASHBOARD_WIDGET_KEYS) {
+    const n = Number((input as any)?.[key])
+    out[key] = Number.isFinite(n) ? Math.max(1, Math.min(DASHBOARD_MAX_WIDTH, Math.round(n))) : 1
+  }
+  return out
+}
+
+/**
+ * Columns the card at `pos` really gets: what RRHH chose, limited by the
+ * right edge and by taken positions to its right in the same row (the card
+ * narrows instead of covering another one).
+ */
+export function effectiveDashboardWidth(slots: DashboardSlots, widths: DashboardWidths, pos: number): number {
+  const key = slots[pos]
+  if (!key) return 1
+  const wanted = Math.max(1, Math.min(DASHBOARD_MAX_WIDTH, widths[key] ?? 1))
+  const col = Math.floor(pos / ROWS)
+  const row = pos % ROWS
+  let w = 1
+  while (w < wanted && col + w < DASHBOARD_COLUMNS.length && slots[posAt(col + w, row)] === null) w++
+  return w
+}
+
+export type DashboardCell = { col: number; span: number; positions: number[] }
+export type DashboardSegment = { key: string; cells: DashboardCell[] }
+
+/**
+ * How the board is drawn. Rows without wide cards are grouped and drawn as
+ * the usual 3 independent columns (cards stack with no gaps); a row with a
+ * wide card becomes a horizontal band where that card spans several
+ * columns. With no wide cards this is exactly the classic 3-column board.
+ */
+export function dashboardSegments(slots: DashboardSlots, widths: DashboardWidths): DashboardSegment[] {
+  const segments: DashboardSegment[] = []
+  let stackRows: number[] = []
+  const flushStack = () => {
+    if (!stackRows.length) return
+    const rows = stackRows
+    segments.push({
+      key: `cols-${rows.join('')}`,
+      cells: DASHBOARD_COLUMNS.map((_, col) => ({ col, span: 1, positions: rows.map((r) => posAt(col, r)) })),
+    })
+    stackRows = []
+  }
+
+  for (let row = 0; row < ROWS; row++) {
+    const cells: DashboardCell[] = []
+    let wide = false
+    for (let col = 0; col < DASHBOARD_COLUMNS.length;) {
+      const pos = posAt(col, row)
+      const span = effectiveDashboardWidth(slots, widths, pos)
+      if (span > 1) wide = true
+      cells.push({ col, span, positions: [pos] })
+      col += span
+    }
+    if (wide) {
+      flushStack()
+      segments.push({ key: `band-${row}`, cells })
+    } else {
+      stackRows.push(row)
+    }
+  }
+  flushStack()
+  return segments
+}
+
+// static class names so Tailwind generates them (desktop = xl)
+export const DASHBOARD_COL_START_XL = ['xl:col-start-1', 'xl:col-start-2', 'xl:col-start-3']
+export const DASHBOARD_COL_SPAN_XL = ['', 'xl:col-span-1', 'xl:col-span-2', 'xl:col-span-3']
+export const DASHBOARD_COL_START_SM = ['sm:col-start-1', 'sm:col-start-2', 'sm:col-start-3']
+export const DASHBOARD_COL_SPAN_SM = ['', 'sm:col-span-1', 'sm:col-span-2', 'sm:col-span-3']
 
 /** Pure move used by every drag & drop: grid<->grid swaps, tray<->grid places/hides. */
 export function moveDashboardWidget(slots: DashboardSlots, key: DashboardWidgetKey, to: number | 'hidden'): DashboardSlots {

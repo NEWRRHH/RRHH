@@ -47,7 +47,7 @@ class CompanyRegistrationTest extends TestCase
         $this->assertSame(['Admin', 'Empleado', 'RRHH'], $roles->all());
 
         $codes = EventType::withoutGlobalScopes()->where('company_id', $company->id)->whereNotNull('code')->pluck('code')->sort()->values();
-        $this->assertSame([EventType::ATTENDANCE_REQUEST, EventType::VACATION], $codes->all());
+        $this->assertSame([EventType::ATTENDANCE_REQUEST, EventType::GENERAL, EventType::MEETING, EventType::PERMISSION, EventType::VACATION], $codes->all());
 
         $this->assertSame(1, Schedule::withoutGlobalScopes()->where('company_id', $company->id)->count());
 
