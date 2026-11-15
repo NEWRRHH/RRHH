@@ -22,7 +22,14 @@
             <button v-for="tab in tabs" :key="tab.id" class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-2 rounded-lg text-sm transition"
               :class="activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
               @click="changeTab(tab.id)">
-              {{ tab.label }}
+              <span class="inline-flex items-center gap-1.5">
+                {{ tab.label }}
+                <span
+                  v-if="unreadByCategory[tab.id] > 0"
+                  class="min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-semibold leading-[18px] text-center"
+                  :aria-label="`${unreadByCategory[tab.id]} nuevo(s)`"
+                >{{ unreadByCategory[tab.id] }}</span>
+              </span>
             </button>
           </div>
 
@@ -113,7 +120,10 @@
                   </svg>
                 </div>
                 <div class="min-w-0">
-                  <div class="truncate">{{ d.original_name || d.filename }}</div>
+                  <div class="flex items-center gap-2 min-w-0">
+                    <span class="truncate">{{ d.original_name || d.filename }}</span>
+                    <span v-if="!d.read_at" class="shrink-0 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-red-600 text-white">Nueva</span>
+                  </div>
                   <div class="text-xs text-gray-500 truncate">{{ d.description || '-' }}</div>
                   <div class="sm:hidden text-[11px] text-gray-500 truncate">{{ formatDate(d.created_at) }} · {{ formatSize(d.size) }}</div>
                 </div>
@@ -144,7 +154,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeMount, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeMount, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import AppSidebar from '../components/AppSidebar.vue'
@@ -156,16 +166,18 @@ definePageMeta({ auth: true })
 declare const $fetch: any
 declare const process: any
 
-const { authenticated, fetchUser, logout, apiBase, user } = useAuth()
+const { authenticated, fetchUser, logout, apiBase, user, unreadDocuments, lastDocumentsChange } = useAuth()
+// unseen documents per tab (red dot); pushed in real time (DocumentsUpdated)
+const unreadByCategory = ref<Record<string, number>>({})
 const router = useRouter()
 const sidebar = ref<{ open: boolean } | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 
 const loading = ref(true)
 const tabs: Array<{ id: 'medical' | 'receipt' | 'payroll'; label: string }> = [
-  { id: 'medical', label: 'Certificados medicos' },
+  { id: 'medical', label: 'Certificados médicos' },
   { id: 'receipt', label: 'Comprobantes' },
-  { id: 'payroll', label: 'Nominas' },
+  { id: 'payroll', label: 'Nóminas' },
 ]
 const activeTab = ref<'medical' | 'receipt' | 'payroll'>('medical')
 const documents = ref<any[]>([])
@@ -208,6 +220,37 @@ function onFileSelected(e: Event) {
   selectedFile.value = input.files?.[0] || null
 }
 
+async function loadUnreadByCategory() {
+  try {
+    const res: any = await $fetch('/api/documents/unread')
+    unreadByCategory.value = res?.by_category || {}
+    unreadDocuments.value = Number(res?.unread) || 0
+  } catch {
+    unreadByCategory.value = {}
+  }
+}
+
+async function markTabRead(category: string) {
+  try {
+    const res: any = await $fetch('/api/documents/read', { method: 'POST', body: { category } })
+    unreadDocuments.value = Number(res?.unread) || 0
+    unreadByCategory.value = { ...unreadByCategory.value, [category]: 0 }
+  } catch (e) {
+    console.error('mark documents read failed', e)
+  }
+}
+
+// a payslip arrived while this page is open: show it and update the dots
+watch(lastDocumentsChange, async () => {
+  await loadUnreadByCategory()
+  // /documentos?tab=payroll (dashboard card / badge)
+  const wanted = String(useRoute().query.tab || '')
+  if (tabs.some((t) => t.id === wanted)) activeTab.value = wanted as any
+
+  await loadUnreadByCategory()
+  await loadDocuments()
+})
+
 async function loadDocuments() {
   if (!authenticated.value) return
   loading.value = true
@@ -215,6 +258,8 @@ async function loadDocuments() {
     const res: any = await $fetch(`/api/documents?category=${activeTab.value}`, {
     })
     documents.value = res?.documents || []
+    // opening the tab = seen; rows keep the "Nueva" tag until the next visit
+    if (documents.value.some((d: any) => !d.read_at)) void markTabRead(activeTab.value)
   } catch (e) {
     console.error('documents load failed', e)
     documents.value = []

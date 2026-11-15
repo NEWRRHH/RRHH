@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Company;
 use App\Models\EventType;
+use App\Models\NationalHoliday;
 use App\Models\Plan;
 use App\Models\Schedule;
 use App\Models\User;
@@ -81,6 +82,23 @@ class CompanyProvisioner
 
                 return $user;
             });
+
+            // its own national holidays catalog, copied from the platform template
+            // (rows without company: NationalHolidaysSeeder, holidays:good-friday)
+            $now = now();
+            $template = NationalHoliday::withoutGlobalScopes()->whereNull('company_id')->get();
+            foreach ($template->chunk(200) as $chunk) {
+                NationalHoliday::withoutGlobalScopes()->insert($chunk->map(fn ($h) => [
+                    'company_id' => $company->id,
+                    'country_code' => $h->country_code,
+                    'date' => $h->date->toDateString(),
+                    'name' => $h->name,
+                    'type' => $h->type,
+                    'recurring' => $h->recurring,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ])->all());
+            }
 
             // companies/{slug}/documents, chat, nominas/{admin}, avatars
             try {

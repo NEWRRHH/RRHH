@@ -652,12 +652,17 @@ async function refreshDocumentsSummary() {
       payroll: Number(res?.payroll || 0),
       total: Number(res?.total || 0),
     }
+    unreadDocuments.value = Number(res?.unread || 0)
   } catch (e) {
     console.error('documents summary fetch failed', e)
   } finally {
     documentsLoaded.value = true
   }
 }
+
+// a payslip arrived (DocumentsUpdated over WebSocket): refresh the card counts
+const { unreadDocuments, lastDocumentsChange } = useAuth()
+watch(lastDocumentsChange, () => { void refreshDocumentsSummary() })
 
 async function refreshDashboardNotifications() {
   if (!authenticated.value) return

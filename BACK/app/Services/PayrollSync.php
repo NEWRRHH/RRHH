@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Events\DocumentsUpdated;
+use App\Http\Controllers\Api\DocumentController;
 use App\Models\Document;
 use App\Models\User;
 use App\Support\FileStorage;
@@ -214,10 +216,20 @@ class PayrollSync
                 'visibility' => true,
                 'document_type_id' => null,
                 'category' => 'payroll',
+                'read_at' => null, // new: badge until the employee opens Nóminas
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
             $created++;
+        }
+
+        // real-time badge in the Documentos menu / card of the employee
+        if ($created) {
+            try {
+                event(new DocumentsUpdated($user->id, DocumentController::unreadCount($user->id), $created));
+            } catch (\Throwable $e) {
+                report($e); // websocket down: the badge still shows on next load
+            }
         }
 
         return $created;

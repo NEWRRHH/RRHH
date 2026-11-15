@@ -144,6 +144,36 @@ services:
       - back_db
       - back_reverb
 
+  # Laravel scheduler (routes/console.php): registers the payslips dropped in
+  # companies/{slug}/nominas/{employee}/ every minute and notifies the
+  # employee in real time.
+  scheduler:
+    image: rrhh_back_app:latest
+    restart: unless-stopped
+    working_dir: /var/www/html
+    command: php artisan schedule:work
+    volumes:
+      - ./BACK:/var/www/html:delegated
+      - back_vendor:/var/www/html/vendor
+    env_file:
+      - path: ./.env
+        required: false
+    environment:
+      - APP_ENV=${APP_ENV:-local}
+      - APP_DEBUG=${APP_DEBUG:-false}
+      - DB_CONNECTION=mysql
+      - DB_HOST=back_db
+      - DB_PORT=3306
+      - DB_DATABASE=${DB_DATABASE:-laravel}
+      - DB_USERNAME=${DB_USERNAME:-laravel}
+      - DB_PASSWORD=${DB_PASSWORD:-secret}
+      - REVERB_HOST=back_reverb
+      - REVERB_PORT=6001
+    depends_on:
+      - back_db
+      - back_reverb
+      - queue
+
   # Frontend (Nuxt dev server) — puede consumir la API vía http://back_nginx
   front:
     build:

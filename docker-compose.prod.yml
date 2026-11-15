@@ -78,6 +78,13 @@ services:
       env-check:
         condition: service_completed_successfully
 
+  scheduler:
+    depends_on:
+      env-check:
+        condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
+
   # Compiled Nuxt (nuxi build) instead of the dev server: no source mount,
   # no hot reload, no npm install on every start.
   front:

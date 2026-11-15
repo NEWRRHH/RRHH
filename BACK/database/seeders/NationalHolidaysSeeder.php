@@ -28,16 +28,16 @@ class NationalHolidaysSeeder extends Seeder
             ['2026-12-25', 'Navidad'],
         ];
         foreach ($recurring as [$date, $name]) {
-            NationalHoliday::firstOrCreate(
-                ['country_code' => 'ES', 'date' => $date],
+            NationalHoliday::withoutGlobalScopes()->firstOrCreate(
+                ['company_id' => null, 'country_code' => 'ES', 'date' => $date],
                 ['name' => $name, 'type' => 'national', 'recurring' => true],
             );
         }
 
         $thisYear = now()->year;
         foreach (range($thisYear - 1, $thisYear + 5) as $year) {
-            NationalHoliday::firstOrCreate(
-                ['country_code' => 'ES', 'date' => Easter::goodFriday($year)->toDateString()],
+            NationalHoliday::withoutGlobalScopes()->firstOrCreate(
+                ['company_id' => null, 'country_code' => 'ES', 'date' => Easter::goodFriday($year)->toDateString()],
                 ['name' => 'Viernes Santo', 'type' => 'national', 'recurring' => false],
             );
         }

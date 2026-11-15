@@ -40,6 +40,7 @@ No hace falta instalar PHP, Node, MySQL ni npm en la máquina: todo corre dentro
                                                           └─► back_nginx ─► app   /storage/*
                                                                   app ◄──► back_db (MySQL)
                                                                   queue (jobs)
+                                                                  scheduler (tareas cada minuto)
 ```
 
 | Servicio | Qué hace |
@@ -49,6 +50,7 @@ No hace falta instalar PHP, Node, MySQL ni npm en la máquina: todo corre dentro
 | `back_db` | MySQL 8. Los datos viven en el volumen `back_dbdata`. |
 | `back_reverb` | WebSockets (notificaciones y mensajes en tiempo real). |
 | `queue` | Procesa los jobs en cola (mails, etc.). |
+| `scheduler` | Tareas programadas de Laravel (`php artisan schedule:work`). Cada minuto registra las nóminas nuevas de las carpetas y avisa al empleado en tiempo real. |
 | `front` | Nuxt. En desarrollo: servidor dev con recarga en caliente. En producción: build compilado. |
 | `gateway` | Punto de entrada único: une front + WebSocket + `/storage` en la misma URL (local: `http://localhost:8080`). |
 | `tunnel` / `tunnel-domain` | Cloudflare Tunnel: publica el `gateway` en internet sin abrir puertos del router. |
@@ -234,7 +236,7 @@ Orden en el que arranca todo:
 1. `env-check`: comprueba el `.env` (ahora sale `.env de produccion OK`).
 2. `back_db`: MySQL. La primera vez crea la base con tus contraseñas (tarda ~30 s).
 3. `migrate`: hace `composer install`, ejecuta las migraciones y, **solo la primera vez**, crea el super admin y los catálogos iniciales (festivos nacionales, tipos de documento). **Nunca carga datos demo.**
-4. `app`, `back_reverb`, `queue`, `front`, `gateway`, `tunnel`.
+4. `app`, `back_reverb`, `queue`, `scheduler`, `front`, `gateway`, `tunnel`.
 
 **6. Comprobar**
 
@@ -529,7 +531,8 @@ companies/nano-tech/nominas/Juan Pérez - 30111222/nomina-2026-05.pdf
 - La carpeta se crea sola con el formato **`Nombre Apellido - DNI`**, o `Nombre Apellido - id` si el empleado no tiene DNI. El DNI distingue a dos personas que se llamen igual.
 - También sirve una carpeta creada a mano con solo el nombre completo, el DNI, el email, el usuario o el id. No importan acentos, mayúsculas ni separadores: `Juan Pérez`, `JUAN_PEREZ` y `juan-perez` son la misma.
 - Si una carpeta solo con el nombre coincide con varias personas, no se asigna a nadie; agrégale ` - DNI`.
-- La nómina aparece sola en **Documentos → Nóminas** del empleado la próxima vez que lo abre.
+- **En menos de un minuto** el servicio `scheduler` la registra y al empleado le aparece un **globito rojo en tiempo real**: en el menú Documentos, en la tarjeta Documentos del dashboard y en la pestaña Nóminas, con la etiqueta "Nueva" en el archivo. El globito se va cuando abre la pestaña Nóminas.
+- Si el `scheduler` no está corriendo, la nómina igual aparece cuando el empleado abre Documentos, pero sin aviso previo. Compruébalo con `docker compose ps scheduler`.
 - `docker compose exec app php artisan nominas:sync` registra todas las empresas de una vez y lista las carpetas que no coinciden con ningún empleado.
 - Formatos: PDF, imágenes, Word y Excel.
 

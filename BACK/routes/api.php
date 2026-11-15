@@ -146,6 +146,9 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     // documents center
     Route::get('/documents', [DocumentController::class, 'index']);
     Route::post('/documents/upload', [DocumentController::class, 'upload']);
+    // new documents (payslips) badge, updated in real time (DocumentsUpdated)
+    Route::get('/documents/unread', [DocumentController::class, 'unread']);
+    Route::post('/documents/read', [DocumentController::class, 'markRead']);
     Route::get('/documents/{id}/download', [DocumentController::class, 'download']);
     });
 

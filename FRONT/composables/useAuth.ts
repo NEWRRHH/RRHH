@@ -35,6 +35,11 @@ export const useAuth = () => {
   const attendanceStatus = useState<'idle' | 'working' | 'paused' | null>('attendance_status', () => null)
   // Bumped on every pushed change so the pill reloads its times.
   const lastAttendanceChange = useState<number>('last_attendance_change', () => 0)
+  // New (unseen) documents, e.g. a payslip RRHH just dropped: badge of the
+  // Documentos menu and card, pushed over WebSocket (DocumentsUpdated).
+  const unreadDocuments = useState<number>('unread_documents', () => 0)
+  // Bumped when new documents arrive so open lists reload.
+  const lastDocumentsChange = useState<number>('last_documents_change', () => 0)
 
   const { connect: connectRealtime, disconnect: disconnectRealtime, connected: realtimeConnected, instance: realtimeInstance, subscribedChannels } = useRealtime();
 
@@ -45,6 +50,7 @@ export const useAuth = () => {
     lastReceivedMessage.value = null
     lastReadReceipt.value = null
     attendanceStatus.value = null
+    unreadDocuments.value = 0
     disconnectRealtime()
   }
 
@@ -88,6 +94,10 @@ export const useAuth = () => {
                     attendanceStatus.value = e.status
                   }
                   lastAttendanceChange.value = Date.now()
+                })
+                .listen('.DocumentsUpdated', (e: any) => {
+                  unreadDocuments.value = Math.max(0, Number(e?.unread) || 0)
+                  if (Number(e?.created) > 0) lastDocumentsChange.value = Date.now()
                 })
             }
           }
@@ -152,6 +162,17 @@ export const useAuth = () => {
     }
   }
 
+  /** Unseen documents (payslips...). Also registers payslips just dropped in the folder. */
+  const fetchUnreadDocuments = async () => {
+    if (!authenticated.value) return
+    try {
+      const res: any = await $fetch('/api/documents/unread')
+      unreadDocuments.value = Number(res?.unread) || 0
+    } catch {
+      // no documents permission / offline: keep the current value
+    }
+  }
+
   // expose realtime helpers so pages/components can reuse the same echo instance
-  return { apiBase, authenticated, user, login, register, logout, fetchUser, unreadNotifications, fetchUnread, realtimeInstance, connectRealtime, disconnectRealtime, realtimeConnected, subscribedChannels, lastReceivedMessage, lastReadReceipt, attendanceStatus, lastAttendanceChange }
+  return { apiBase, authenticated, user, login, register, logout, fetchUser, unreadNotifications, fetchUnread, realtimeInstance, connectRealtime, disconnectRealtime, realtimeConnected, subscribedChannels, lastReceivedMessage, lastReadReceipt, attendanceStatus, lastAttendanceChange, unreadDocuments, lastDocumentsChange, fetchUnreadDocuments }
 }

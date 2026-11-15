@@ -435,6 +435,8 @@ class DashboardController extends Controller
             }
             $summary['total']++;
         }
+        // new (unseen) documents, e.g. payslips: badge on the card
+        $summary['unread'] = DocumentController::unreadCount($user->id);
 
         return response()->json($summary);
     }

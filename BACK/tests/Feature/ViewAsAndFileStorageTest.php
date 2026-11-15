@@ -148,6 +148,49 @@ class ViewAsAndFileStorageTest extends TestCase
         $this->assertSame(['junio.pdf'], $names($this->hr));
     }
 
+    public function test_new_payslip_notifies_the_employee_until_seen(): void
+    {
+        \Illuminate\Support\Facades\Event::fake([\App\Events\DocumentsUpdated::class]);
+        $this->employee->forceFill(['first_name' => 'Juan', 'last_name' => 'Pérez', 'dni' => '30111222'])->save();
+        Storage::disk('local')->put('companies/acme/nominas/Juan Pérez - 30111222/mayo.pdf', 'pdf');
+
+        // the scheduler registers it and pushes the badge in real time
+        $this->artisan('nominas:sync')->assertSuccessful();
+        \Illuminate\Support\Facades\Event::assertDispatched(
+            \App\Events\DocumentsUpdated::class,
+            fn ($e) => $e->userId === $this->employee->id && $e->unread === 1 && $e->created === 1,
+        );
+
+        $token = $this->employee->createToken('test')->plainTextToken;
+        $this->as($token)->getJson('/api/documents/unread')->assertOk()->assertJsonPath('unread', 1)->assertJsonPath('by_category.payroll', 1);
+        $this->as($token)->getJson('/api/documents/summary')->assertJsonPath('unread', 1);
+        $this->as($token)->getJson('/api/documents?category=payroll')->assertJsonPath('documents.0.read_at', null);
+
+        // opening Nóminas clears it (and tells the other tabs)
+        $this->as($token)->postJson('/api/documents/read', ['category' => 'payroll'])->assertOk()->assertJsonPath('unread', 0);
+        \Illuminate\Support\Facades\Event::assertDispatched(\App\Events\DocumentsUpdated::class, fn ($e) => $e->unread === 0);
+        $this->as($token)->getJson('/api/documents/unread')->assertJsonPath('unread', 0);
+
+        // own uploads never show as new
+        $this->as($token)->post('/api/documents/upload', [
+            'file' => UploadedFile::fake()->create('justificante.pdf', 20, 'application/pdf'),
+            'category' => 'medical',
+        ], ['Accept' => 'application/json'])->assertOk();
+        $this->as($token)->getJson('/api/documents/unread')->assertJsonPath('unread', 0);
+    }
+
+    public function test_new_company_gets_the_national_holidays_template(): void
+    {
+        \App\Models\NationalHoliday::withoutGlobalScopes()->create(['country_code' => 'ES', 'date' => '2020-12-25', 'name' => 'Navidad', 'recurring' => true]);
+
+        ['company' => $other] = app(CompanyProvisioner::class)
+            ->provision('Nano Tech', ['name' => 'Bea', 'email' => 'bea@nano.test', 'password' => 'Secreta123!']);
+
+        $this->assertSame('nano-tech', $other->slug);
+        $this->assertSame(1, \App\Models\NationalHoliday::withoutGlobalScopes()->where('company_id', $other->id)->count());
+        $this->assertTrue(Storage::disk('local')->directoryExists('companies/nano-tech/nominas'));
+    }
+
     public function test_new_employee_gets_a_payroll_folder(): void
     {
         $token = $this->admin->createToken('test')->plainTextToken;

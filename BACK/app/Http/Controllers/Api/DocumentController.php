@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\DocumentsUpdated;
 use App\Services\PayrollSync;
 use App\Support\FileStorage;
 use App\Http\Controllers\Controller;
@@ -50,6 +51,7 @@ class DocumentController extends Controller
             'size',
             'category',
             'created_at',
+            'read_at', // null = new (highlighted until the tab is opened)
         ]);
 
         return response()->json(['documents' => $rows]);
@@ -89,11 +91,65 @@ class DocumentController extends Controller
             'visibility' => true,
             'document_type_id' => null,
             'category' => $data['category'],
+            'read_at' => now(), // own upload: nothing new to warn about
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
         return response()->json(['status' => 'ok', 'document_id' => $id]);
+    }
+
+    /** Documents the user hasn't seen yet (badge of the Documentos menu / card). */
+    public static function unreadCount(int $userId): int
+    {
+        return Document::withoutGlobalScopes()
+            ->where('user_id', $userId)
+            ->whereNull('deleted_at')
+            ->whereNull('read_at')
+            ->count();
+    }
+
+    public function unread(Request $request)
+    {
+        $user = $request->user();
+        if (! $user->hasPermission('documents.view')) {
+            return response()->json(['unread' => 0, 'by_category' => []]);
+        }
+        // a payslip may have just been dropped in the folder
+        app(PayrollSync::class)->syncUser($user);
+
+        $byCategory = Document::table()
+            ->where('user_id', $user->id)
+            ->whereNull('deleted_at')
+            ->whereNull('read_at')
+            ->selectRaw('category, COUNT(*) as total')
+            ->groupBy('category')
+            ->pluck('total', 'category');
+
+        return response()->json(['unread' => (int) $byCategory->sum(), 'by_category' => $byCategory]);
+    }
+
+    /**
+     * The user opened a tab of Documentos: its documents count as seen.
+     * Other tabs/devices drop the badge in real time.
+     */
+    public function markRead(Request $request)
+    {
+        $user = $request->user();
+        $data = $request->validate(['category' => 'nullable|string|in:' . implode(',', $this->allowedCategories())]);
+
+        $updated = Document::table()
+            ->where('user_id', $user->id)
+            ->whereNull('read_at')
+            ->when($data['category'] ?? null, fn ($q, $c) => $q->where('category', $c))
+            ->update(['read_at' => now()]);
+
+        $unread = self::unreadCount($user->id);
+        if ($updated) {
+            event(new DocumentsUpdated($user->id, $unread));
+        }
+
+        return response()->json(['status' => 'ok', 'unread' => $unread]);
     }
 
     public function download(Request $request, int $id)

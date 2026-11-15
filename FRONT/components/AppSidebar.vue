@@ -128,6 +128,7 @@ onMounted(async () => {
   try {
     await fetchUser()
     await fetchUnread()
+    await fetchUnreadDocuments()
     await fetchRequestsBadge()
     setupRequestsRealtime()
     requestsTimer = setInterval(() => {
@@ -140,7 +141,7 @@ onMounted(async () => {
 
 const route = useRoute()
 const router = useRouter()
-const { fetchUser, unreadNotifications, fetchUnread, user, authenticated, apiBase, realtimeInstance, realtimeConnected } = useAuth()
+const { fetchUser, unreadNotifications, fetchUnread, unreadDocuments, fetchUnreadDocuments, user, authenticated, apiBase, realtimeInstance, realtimeConnected } = useAuth()
 
 const unreadCount = computed(() => unreadNotifications.value || 0)
 
@@ -297,7 +298,9 @@ const navItems = computed(() => [
     active: route.path.startsWith('/documentos'),
     icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" d="M7 7V3h10v4m-9 4h8m-8 4h8m-9 6h10a2 2 0 002-2V7H5v12a2 2 0 002 2z"/>
-    </svg>`
+    </svg>`,
+    // new payslips / documents, updated in real time
+    badge: unreadDocuments
   }] : []),
   ...(canSeeReports.value ? [{
     label: 'Reportes',
