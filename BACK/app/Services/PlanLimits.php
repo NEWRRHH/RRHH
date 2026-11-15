@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\ChatAttachment;
 use App\Models\Company;
 use App\Models\Document;
 use App\Models\Plan;
@@ -59,6 +60,8 @@ class PlanLimits
 
     private function storageBytes(Company $company): int
     {
-        return (int) Document::withoutGlobalScopes()->where('company_id', $company->id)->whereNull('deleted_at')->sum('size');
+        // documents + chat attachments
+        return (int) Document::withoutGlobalScopes()->where('company_id', $company->id)->whereNull('deleted_at')->sum('size')
+            + (int) ChatAttachment::withoutGlobalScopes()->where('company_id', $company->id)->sum('size');
     }
 }

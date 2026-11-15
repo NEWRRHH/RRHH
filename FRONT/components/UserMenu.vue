@@ -68,7 +68,7 @@
       class="block border-t border-gray-800 px-4 py-2.5 text-center text-sm text-blue-300 hover:bg-gray-800 hover:text-blue-200 transition"
       @click="bellOpen = false"
     >
-      Ver todas las notificaciones
+      Ir al chat
     </NuxtLink>
   </div>
   </div>

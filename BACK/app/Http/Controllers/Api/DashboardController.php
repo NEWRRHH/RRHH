@@ -291,7 +291,12 @@ class DashboardController extends Controller
                             'conversation_id' => $conv->id,
                             'sender_id' => $conv->sender_id,
                             'sender_name' => $conv->sender_name,
-                            'content' => $msg['content'] ?? '',
+                            // attachment-only chat messages show the file instead of an empty line
+                            'content' => ($msg['content'] ?? '') !== ''
+                                ? $msg['content']
+                                : (isset($msg['attachment'])
+                                    ? (($msg['attachment']['kind'] ?? '') === 'image' ? '📷 Imagen' : '📎 ' . ($msg['attachment']['name'] ?? 'Archivo'))
+                                    : ''),
                             'created_at' => $msg['created_at'] ?? null,
                             'read' => false,
                         ];

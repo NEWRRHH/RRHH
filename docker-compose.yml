@@ -14,6 +14,8 @@ services:
       - ./BACK:/var/www/html:delegated
       - back_vendor:/var/www/html/vendor
       - back_node_modules:/var/www/html/node_modules
+      # 10 MB uploads (documents, chat attachments); PHP defaults to 2M
+      - ./BACK/docker/php/uploads.ini:/usr/local/etc/php/conf.d/zz-uploads.ini:ro
     # Root .env (single file on the server, see .env.production.example).
     # In dev Laravel also reads BACK/.env; variables set here take precedence.
     env_file:

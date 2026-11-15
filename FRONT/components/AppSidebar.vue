@@ -260,7 +260,7 @@ const navItems = computed(() => [
     </svg>`
   },
   {
-    label: 'Notificaciones',
+    label: 'Chat',
     to: '/notificaciones',
     active: route.path.startsWith('/notificaciones'),
     icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">

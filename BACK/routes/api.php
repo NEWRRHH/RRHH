@@ -121,6 +121,7 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::get('/notifications/conversation/{userId}', [NotificationController::class, 'conversation']);
     Route::post('/notifications/send', [NotificationController::class, 'send']);
     Route::get('/notifications/users', [NotificationController::class, 'users']);
+    Route::get('/notifications/attachments/{id}', [NotificationController::class, 'attachment'])->whereNumber('id');
 
     // time-off / vacations calendar
     Route::get('/timeoff/calendar', [TimeOffController::class, 'calendar']);
