@@ -248,11 +248,11 @@
             </div>
             <div>
               <label class="block text-xs text-gray-400 mb-1">Contrasena *</label>
-              <input v-model="createForm.password" type="password" required class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
+              <PasswordInput v-model="createForm.password" required class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
             </div>
             <div>
               <label class="block text-xs text-gray-400 mb-1">Confirmar contrasena *</label>
-              <input v-model="createForm.password_confirmation" type="password" required class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
+              <PasswordInput v-model="createForm.password_confirmation" required class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
             </div>
           </div>
 
