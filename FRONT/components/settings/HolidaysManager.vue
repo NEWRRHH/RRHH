@@ -15,7 +15,11 @@
         <button class="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm" @click="openEditor(null, `${year}-01-01`)">Agregar festivo</button>
       </div>
     </div>
-    <p class="text-xs text-gray-500">Haz clic en un día del calendario para agregar un festivo, o en uno marcado para editarlo. Los festivos no cuentan como días de vacaciones ni como ausencias.</p>
+    <p class="text-xs text-gray-500">
+      Haz clic en un día del calendario para agregar un festivo, o en uno marcado para editarlo.
+      <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-blue-600"></span> no se trabaja</span> (no cuenta como vacaciones ni ausencia) ·
+      <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-amber-500"></span> laborable</span> (se ficha como un día normal).
+    </p>
 
     <div class="grid grid-cols-1 xl:grid-cols-[1fr,320px] gap-4">
       <!-- Year calendar -->
@@ -55,7 +59,10 @@
                 <span class="block text-sm text-gray-100">{{ h.name }}</span>
                 <span class="block text-[11px] text-gray-500">{{ formatLongDate(h.date) }}<template v-if="h.recurring"> · cada año</template></span>
               </span>
-              <span class="shrink-0 text-[10px] px-2 py-0.5 rounded-full" :class="typeBadge(h.type)">{{ typeLabel(h.type) }}</span>
+              <span class="shrink-0 flex flex-col items-end gap-1">
+                <span class="text-[10px] px-2 py-0.5 rounded-full" :class="typeBadge(h.type)">{{ typeLabel(h.type) }}</span>
+                <span v-if="h.is_working_day" class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300">Laborable</span>
+              </span>
             </button>
           </li>
         </ul>
@@ -83,6 +90,18 @@
         <input v-model="editor.recurring" type="checkbox" class="!w-auto !m-0 rounded border-gray-600 bg-gray-800" />
         Se repite todos los años en la misma fecha
       </label>
+      <!-- day off (default) or worked: a worked holiday is a normal working day (clock-in, absences) -->
+      <div class="rounded-lg border border-gray-700 bg-gray-950/60 p-3 space-y-2">
+        <span class="block text-xs text-gray-400">Ese día</span>
+        <label class="!mb-0 !font-normal flex items-start gap-2 text-sm text-gray-200">
+          <input v-model="editor.is_working_day" type="radio" :value="false" class="mt-0.5 accent-blue-500" />
+          <span>No se trabaja <span class="block text-[11px] text-gray-500">No se puede fichar y no cuenta como ausencia.</span></span>
+        </label>
+        <label class="!mb-0 !font-normal flex items-start gap-2 text-sm text-gray-200">
+          <input v-model="editor.is_working_day" type="radio" :value="true" class="mt-0.5 accent-amber-500" />
+          <span>Se trabaja (festivo laborable) <span class="block text-[11px] text-gray-500">Se ficha como un día normal y en los reportes aparece marcado como festivo laborable.</span></span>
+        </label>
+      </div>
       <div class="flex justify-between gap-2 pt-2">
         <button v-if="editor.id" type="button" class="px-3 py-2 rounded-lg border border-red-500/40 text-red-300 hover:bg-red-500/10 text-sm" @click="removeEditor">Eliminar</button>
         <span v-else></span>
@@ -188,7 +207,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 
-type HolidayRow = { id: number; date: string; original_date: string; name: string; type: string; recurring: boolean }
+type HolidayRow = { id: number; date: string; original_date: string; name: string; type: string; recurring: boolean; is_working_day?: boolean }
 
 const { $swal } = useNuxtApp() as any
 
@@ -220,7 +239,8 @@ const byDate = computed<Record<string, HolidayRow>>(() => Object.fromEntries(hol
 
 function dayClass(day: { iso: string; weekend: boolean }) {
   const h = byDate.value[day.iso]
-  if (h) return 'bg-blue-600 text-white font-semibold hover:bg-blue-500'
+  // worked holidays in amber, days off in blue
+  if (h) return h.is_working_day ? 'bg-amber-500/80 text-white font-semibold hover:bg-amber-500' : 'bg-blue-600 text-white font-semibold hover:bg-blue-500'
   const base = day.weekend ? 'text-gray-600 hover:bg-gray-800' : 'text-gray-300 hover:bg-gray-800'
   return day.iso === todayIso ? `${base} ring-1 ring-gray-500` : base
 }
@@ -257,8 +277,8 @@ const saving = ref(false)
 function openEditor(h: HolidayRow | null, date?: string) {
   editorError.value = ''
   editor.value = h
-    ? { id: h.id, date: h.original_date, name: h.name, type: h.type, recurring: h.recurring }
-    : { id: null, date: date || todayIso, name: '', type: 'company', recurring: false }
+    ? { id: h.id, date: h.original_date, name: h.name, type: h.type, recurring: h.recurring, is_working_day: !!h.is_working_day }
+    : { id: null, date: date || todayIso, name: '', type: 'company', recurring: false, is_working_day: false }
 }
 
 function onDayClick(iso: string) {
@@ -270,7 +290,7 @@ async function saveEditor() {
   saving.value = true
   editorError.value = ''
   try {
-    const body = { date: editor.value.date, name: editor.value.name, type: editor.value.type, recurring: editor.value.recurring }
+    const body = { date: editor.value.date, name: editor.value.name, type: editor.value.type, recurring: editor.value.recurring, is_working_day: !!editor.value.is_working_day }
     if (editor.value.id) await $fetch(`/api/holidays/${editor.value.id}`, { method: 'PUT', body })
     else await $fetch('/api/holidays', { method: 'POST', body })
     editor.value = null

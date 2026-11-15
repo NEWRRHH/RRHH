@@ -120,7 +120,7 @@
                   </thead>
                   <tbody>
                     <tr v-for="r in attendanceRows" :key="r.date" class="border-t border-gray-800 text-gray-200">
-                      <td class="px-2 sm:px-3 py-2">{{ formatDate(r.date) }}<span v-if="r.holiday" class="block text-[10px] text-blue-300">Festivo: {{ r.holiday }}</span></td>
+                      <td class="px-2 sm:px-3 py-2">{{ formatDate(r.date) }}<span v-if="r.holiday" class="block text-[10px]" :class="r.holiday_working ? 'text-amber-300' : 'text-blue-300'">{{ r.holiday_working ? 'Festivo laborable' : 'Festivo' }}: {{ r.holiday }}</span></td>
                       <td class="px-2 sm:px-3 py-2 tabular-nums">{{ r.start_time || '--:--' }}</td>
                       <td class="hidden md:table-cell px-3 py-2 tabular-nums">{{ r.pause_time || '--:--' }}</td>
                       <td class="hidden md:table-cell px-3 py-2 tabular-nums">{{ r.resume_time || '--:--' }}</td>

@@ -49,7 +49,7 @@ class HolidayController extends Controller
         $rows = Holiday::query()
             ->where(fn ($q) => $q->whereBetween('date', [$start->toDateString(), $end->toDateString()])->orWhere('recurring', true))
             ->orderBy('date')
-            ->get(['id', 'date', 'name', 'type', 'recurring'])
+            ->get(['id', 'date', 'name', 'type', 'recurring', 'is_working_day'])
             ->map(function (Holiday $h) use ($year) {
                 // recurring holidays are shown on this year's date
                 $date = $h->date->copy();
@@ -64,6 +64,7 @@ class HolidayController extends Controller
                     'name' => $h->name,
                     'type' => $h->type,
                     'recurring' => $h->recurring,
+                    'is_working_day' => (bool) $h->is_working_day,
                 ];
             })
             ->filter(fn ($h) => str_starts_with($h['date'], (string) $year))
@@ -251,6 +252,8 @@ class HolidayController extends Controller
             'name' => 'required|string|max:150',
             'type' => 'nullable|in:' . implode(',', self::TYPES),
             'recurring' => 'nullable|boolean',
+            // the company works that day (normal working day, still labelled as holiday)
+            'is_working_day' => 'nullable|boolean',
         ];
     }
 }

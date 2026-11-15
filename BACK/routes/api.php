@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\DocumentController;
 use App\Http\Controllers\Api\AnnouncementController;
 use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\HolidayController;
+use App\Http\Controllers\Api\NationalHolidayController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\ScheduleController;
@@ -105,6 +106,12 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::post('/holidays', [HolidayController::class, 'store']);
     Route::post('/holidays/import', [HolidayController::class, 'import']);
     Route::post('/holidays/import-national', [HolidayController::class, 'importNational']);
+    // the company's national holidays catalog (Configuración > Festivos > Feriados nacionales)
+    Route::get('/holidays/national', [NationalHolidayController::class, 'index']);
+    Route::post('/holidays/national', [NationalHolidayController::class, 'store']);
+    Route::post('/holidays/national/import', [NationalHolidayController::class, 'import']);
+    Route::put('/holidays/national/{id}', [NationalHolidayController::class, 'update'])->whereNumber('id');
+    Route::delete('/holidays/national/{id}', [NationalHolidayController::class, 'destroy'])->whereNumber('id');
     Route::put('/holidays/{id}', [HolidayController::class, 'update']);
     Route::delete('/holidays/{id}', [HolidayController::class, 'destroy']);
     Route::get('/announcements', [AnnouncementController::class, 'index']);

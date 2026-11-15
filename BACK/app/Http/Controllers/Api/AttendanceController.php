@@ -654,6 +654,8 @@ class AttendanceController extends Controller
             $isScheduledDay = in_array($dayLetter, $scheduleDays, true);
             $holidayName = $isScheduledDay ? $this->schedules->holidayName($cursor) : null;
             $isWorkingDay = $isScheduledDay && $holidayName === null;
+            // label: day-off holidays and worked ones ("festivo laborable")
+            $holidayInfo = $isScheduledDay ? $this->schedules->holidayInfo($cursor) : null;
             $isEmployed = $hireDateKey === null || $key >= $hireDateKey;
 
             if ($isWorkingDay && $isEmployed) {
@@ -699,7 +701,8 @@ class AttendanceController extends Controller
                     'hours_worked' => $att->hours_worked ?? null,
                     'status' => $att->status ?? null,
                     'is_working_day' => $isWorkingDay,
-                    'holiday' => $holidayName,
+                    'holiday' => $holidayInfo['name'] ?? null,
+                    'holiday_working' => (bool) ($holidayInfo['working'] ?? false),
                     'events' => $eventsByDate[$key] ?? [],
                     'attendance_request_pending' => isset($pendingAttendanceRequestsByDate[$key]),
                     'attendance_request_id' => $pendingAttendanceRequestsByDate[$key] ?? null,

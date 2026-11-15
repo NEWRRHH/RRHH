@@ -15,7 +15,10 @@
       </div>
       <div v-else v-visible-rows="visibleRows" class="holiday-scroll space-y-2 pr-1">
         <div v-for="h in holidays" :key="`${h.date}-${h.name}`" class="rounded-lg bg-gray-800/70 px-3 py-2">
-          <div class="text-sm text-white">{{ h.name }}</div>
+          <div class="flex items-center gap-2">
+            <div class="min-w-0 flex-1 text-sm text-white truncate">{{ h.name }}</div>
+            <span v-if="h.working" class="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300" title="La empresa trabaja este festivo">Laborable</span>
+          </div>
           <div class="text-xs text-gray-400">{{ formatDate(h.date) }}</div>
         </div>
         <div v-if="!holidays?.length" class="text-sm text-gray-400">No hay festivos próximos</div>

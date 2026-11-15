@@ -18,6 +18,19 @@ class ScheduleService
     /** @var array<int, array<string, string>> holidays of the current company per year */
     private array $holidaysByYear = [];
 
+    /** request the holiday caches belong to (the service can outlive a request, e.g. a cached controller) */
+    private ?int $holidayCacheRequest = null;
+
+    private function freshHolidayCache(): void
+    {
+        $current = spl_object_id(request());
+        if ($this->holidayCacheRequest !== $current) {
+            $this->holidaysByYear = [];
+            $this->allHolidaysByYear = [];
+            $this->holidayCacheRequest = $current;
+        }
+    }
+
     public function __construct(private HolidayService $holidays)
     {
     }
@@ -279,11 +292,33 @@ class ScheduleService
         return in_array($letter, $scheduleDays, true) && $this->holidayName($date) === null;
     }
 
+    /** @var array<int, array<string, array{name: string, working: bool}>> */
+    private array $allHolidaysByYear = [];
+
     /**
-     * Name of the company holiday on that date, or null.
+     * Any holiday on that date (day off or worked), for labels in reports.
+     *
+     * @return array{name: string, working: bool}|null
+     */
+    public function holidayInfo(Carbon $date): ?array
+    {
+        $this->freshHolidayCache();
+        $year = $date->year;
+        $this->allHolidaysByYear[$year] ??= $this->holidays->allForRange(
+            Carbon::create($year, 1, 1),
+            Carbon::create($year, 12, 31),
+        );
+
+        return $this->allHolidaysByYear[$year][$date->toDateString()] ?? null;
+    }
+
+    /**
+     * Name of the company holiday (day off) on that date, or null.
+     * Holidays the company works ("laborables") return null: normal day.
      */
     public function holidayName(Carbon $date): ?string
     {
+        $this->freshHolidayCache();
         $year = $date->year;
         $this->holidaysByYear[$year] ??= $this->holidays->forRange(
             Carbon::create($year, 1, 1),

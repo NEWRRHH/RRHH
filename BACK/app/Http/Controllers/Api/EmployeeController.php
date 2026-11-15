@@ -302,6 +302,8 @@ class EmployeeController extends Controller
             $isScheduledDay = in_array($dayLetter, $scheduleDays, true);
             $holidayName = $isScheduledDay ? $this->schedules->holidayName($cursor) : null;
             $isWorkingDay = $isScheduledDay && $holidayName === null;
+            // label: day-off holidays and worked ones ("festivo laborable")
+            $holidayInfo = $isScheduledDay ? $this->schedules->holidayInfo($cursor) : null;
 
             if ($isWorkingDay) {
                 $targetMinutes += $dailyTargetMinutes;
@@ -328,7 +330,8 @@ class EmployeeController extends Controller
                     'hours_worked' => $att->hours_worked ?? null,
                     'status' => $att->status ?? null,
                     'is_working_day' => $isWorkingDay,
-                    'holiday' => $holidayName,
+                    'holiday' => $holidayInfo['name'] ?? null,
+                    'holiday_working' => (bool) ($holidayInfo['working'] ?? false),
                 ];
             }
 

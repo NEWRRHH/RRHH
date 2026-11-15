@@ -214,7 +214,7 @@
                     <div class="min-w-0 text-gray-200 text-xs sm:text-sm">
                       <div class="font-medium">{{ shortDate(row.date) }}</div>
                       <div class="text-xs text-gray-500 uppercase">{{ row.weekday }}</div>
-                      <div v-if="row.holiday" class="mt-0.5 text-[10px] text-blue-300 truncate" :title="row.holiday">Festivo: {{ row.holiday }}</div>
+                      <div v-if="row.holiday" class="mt-0.5 text-[10px] truncate" :class="row.holiday_working ? 'text-amber-300' : 'text-blue-300'" :title="row.holiday">{{ row.holiday_working ? 'Festivo laborable' : 'Festivo' }}: {{ row.holiday }}</div>
                     </div>
                     <div class="text-gray-200 text-xs sm:text-sm font-medium">{{ workedLabel(row) }}</div>
                     <div class="relative h-5 rounded-full bg-gray-800 overflow-hidden">

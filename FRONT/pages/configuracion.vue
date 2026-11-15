@@ -560,8 +560,20 @@
             </div>
           </section>
 
-          <section v-else-if="activeTab === 'holidays'">
-            <HolidaysManager />
+          <section v-else-if="activeTab === 'holidays'" class="space-y-4">
+            <!-- sub-tabs: the year calendar and the national catalog it imports from -->
+            <div class="flex w-max max-w-full overflow-x-auto rounded-lg border border-gray-800 bg-gray-900 p-0.5">
+              <button
+                v-for="st in [{ id: 'year', label: 'Festivos del año' }, { id: 'national', label: 'Feriados nacionales' }]"
+                :key="st.id"
+                type="button"
+                class="shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md text-xs sm:text-sm transition"
+                :class="holidaysSubTab === st.id ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'"
+                @click="holidaysSubTab = st.id"
+              >{{ st.label }}</button>
+            </div>
+            <HolidaysManager v-if="holidaysSubTab === 'year'" />
+            <NationalHolidaysManager v-else />
           </section>
 
           <section v-else-if="activeTab === 'limits'" class="rounded-2xl border border-gray-800 bg-gray-900 p-4 sm:p-5 space-y-4">
@@ -765,6 +777,7 @@ import { useAuth } from '../composables/useAuth'
 import { CELEBRATION_EFFECTS, DEFAULT_CELEBRATION_EFFECTS, useCelebration, type CelebrationEffect } from '../composables/useCelebration'
 import AppSidebar from '../components/AppSidebar.vue'
 import HolidaysManager from '../components/settings/HolidaysManager.vue'
+import NationalHolidaysManager from '../components/settings/NationalHolidaysManager.vue'
 import AttendanceButton from '../components/AttendanceButton.vue'
 import UserMenu from '../components/UserMenu.vue'
 
@@ -838,6 +851,7 @@ const tabs = computed(() => {
 })
 
 const activeTab = ref('dashboard')
+const holidaysSubTab = ref<'year' | 'national'>('year')
 const canManagePermissions = ref(false)
 const permissionsLoading = ref(false)
 const permissionSaving = ref(false)
