@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Support\FileStorage;
 use App\Http\Controllers\Controller;
 use App\Models\Attendance;
 use App\Models\Document;
@@ -25,6 +26,74 @@ use Illuminate\Validation\Rules\Password;
  */
 class EmployeeController extends Controller
 {
+    /** "Ver como" tokens: "view-as:<viewer id>", read-only (see ReadOnlyViewAs). */
+    public const VIEW_AS_TOKEN_PREFIX = 'view-as:';
+
+    public const VIEW_AS_MINUTES = 30;
+
+    /**
+     * "Ver como": RRHH / admin open the app as this employee, read-only, for
+     * visual audits and support. Short-lived token, audited, no private chat.
+     */
+    public function viewAs(Request $request, int $id)
+    {
+        $viewer = $request->user();
+        if (! $viewer->hasPermission('employees.view_as')) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+        if (str_starts_with((string) $viewer->currentAccessToken()?->name, self::VIEW_AS_TOKEN_PREFIX)) {
+            return response()->json(['message' => 'Ya estás en modo "Ver como": sal primero.'], 409);
+        }
+
+        $target = User::find($id); // tenant scoped: only people of the same company
+        if (! $target) {
+            return response()->json(['message' => 'Empleado no encontrado'], 404);
+        }
+        if ($target->id === $viewer->id) {
+            return response()->json(['message' => 'No puedes verte a ti mismo.'], 422);
+        }
+        if ($target->disabled_at) {
+            return response()->json(['message' => 'El usuario está desactivado.'], 422);
+        }
+        if ($target->isAdmin() && ! $viewer->isAdmin()) {
+            return response()->json(['message' => 'Solo un administrador puede ver como otro administrador.'], 403);
+        }
+
+        $expiresAt = now()->addMinutes(self::VIEW_AS_MINUTES);
+        $token = $target->createToken(self::VIEW_AS_TOKEN_PREFIX . $viewer->id, ['view-as'], $expiresAt)->plainTextToken;
+
+        Audit::log('employee.view_as_started', $target, [
+            'viewer_id' => $viewer->id,
+            'viewer_email' => $viewer->email,
+            'expires_at' => $expiresAt->toIso8601String(),
+        ], 'Ver como (solo lectura)');
+
+        return response()->json([
+            'token' => $token,
+            'expires_at' => $expiresAt->toIso8601String(),
+            'user' => $target->only(['id', 'name', 'email']),
+        ]);
+    }
+
+    /**
+     * Leave "Ver como": revoke the temporary token (the Nuxt server restores
+     * the viewer's own session).
+     */
+    public function stopViewAs(Request $request)
+    {
+        $token = $request->user()?->currentAccessToken();
+        $name = (string) ($token?->name ?? '');
+        if (! str_starts_with($name, self::VIEW_AS_TOKEN_PREFIX)) {
+            return response()->json(['message' => 'No hay una sesión "Ver como" activa'], 422);
+        }
+
+        $viewer = User::find((int) substr($name, strlen(self::VIEW_AS_TOKEN_PREFIX)));
+        Audit::log('employee.view_as_stopped', $request->user(), ['viewer_id' => $viewer?->id], actor: $viewer);
+        $token->delete();
+
+        return response()->json(['status' => 'ok', 'user_id' => $request->user()->id]);
+    }
+
     public function __construct(private ScheduleService $schedules)
     {
     }
@@ -144,8 +213,7 @@ class EmployeeController extends Controller
         $employee->vacation_days_total = isset($data['vacation_days_total']) ? (int) $data['vacation_days_total'] : 0;
 
         if ($request->hasFile('photo')) {
-            $path = $request->file('photo')->store('avatars/' . $user->company_id, 'public');
-            $employee->photo = '/storage/' . $path;
+            $employee->photo = FileStorage::storeAvatar($request->file('photo'), $user->company_id);
         }
 
         $employee->save();
@@ -456,12 +524,12 @@ class EmployeeController extends Controller
         if (!$doc || empty($doc->filename)) {
             return response()->json(['message' => 'Documento no encontrado'], 404);
         }
-        if (!Storage::disk('local')->exists($doc->filename)) {
+        if (!FileStorage::disk()->exists($doc->filename)) {
             return response()->json(['message' => 'Archivo no disponible'], 404);
         }
 
         $downloadName = $doc->original_name ?: basename((string) $doc->filename);
-        return Storage::disk('local')->download($doc->filename, $downloadName);
+        return FileStorage::disk()->download($doc->filename, $downloadName);
     }
 
     /**
@@ -538,8 +606,7 @@ class EmployeeController extends Controller
         $employee->contract_start_date = $data['contract_start_date'] ?? null;
         $employee->vacation_days_total = isset($data['vacation_days_total']) ? (int) $data['vacation_days_total'] : (int) ($employee->vacation_days_total ?? 0);
         if ($request->hasFile('photo')) {
-            $path = $request->file('photo')->store('avatars/' . $user->company_id, 'public');
-            $employee->photo = '/storage/' . $path;
+            $employee->photo = FileStorage::storeAvatar($request->file('photo'), $user->company_id);
         }
         if (! empty($data['password'])) {
             $employee->password = Hash::make($data['password']);

@@ -13,7 +13,13 @@ export default defineEventHandler(async (event) => {
       // Even if the API is unreachable the local session must die.
     })
 
-  if (superToken) {
+  const viewerToken = getViewerToken(event)
+  if (viewerToken) {
+    // "Ver como": close the read-only token and the viewer's own session
+    if (token) await post('/api/view-as/stop', token)
+    await post('/api/logout', viewerToken)
+    clearViewerTokenCookie(event)
+  } else if (superToken) {
     // impersonation token: revoke it without touching the company user's data
     if (token) await post('/api/impersonation/stop', token)
     await post('/api/logout', superToken)

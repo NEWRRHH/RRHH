@@ -35,7 +35,7 @@ export const useCelebration = () => {
   const celebrations = computed<Celebration[]>(() => {
     const u = user.value as any
     // a super admin browsing a company is not the person being celebrated
-    if (!u || u.impersonated_by) return []
+    if (!u || u.impersonated_by || u.viewed_by) return []
     return Array.isArray(u.celebrations_today) ? u.celebrations_today : []
   })
 

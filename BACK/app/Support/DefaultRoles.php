@@ -36,6 +36,7 @@ final class DefaultRoles
         'announcements.manage',
         'holidays.manage',
         'dashboard.manage',
+        'employees.view_as',
     ];
 
     /** Self-service permissions of a regular employee. */

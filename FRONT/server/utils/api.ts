@@ -61,6 +61,32 @@ export function clearSuperTokenCookie(event: any): void {
   deleteCookie(event, SUPER_COOKIE_NAME, { path: '/' })
 }
 
+// ── "Ver como" (read-only view of an employee) ──
+// While RRHH/admin look as someone else, their own token waits here
+// (httpOnly) and the session cookie holds the short-lived view-as token.
+const VIEWER_COOKIE_NAME = 'rrhh_viewer_token'
+
+/** Matches the 30 min lifetime of view-as tokens in the API. */
+export const VIEW_AS_TTL_SECONDS = 30 * 60
+
+export function getViewerToken(event: any): string | undefined {
+  return getCookie(event, VIEWER_COOKIE_NAME)
+}
+
+export function setViewerTokenCookie(event: any, token: string): void {
+  setCookie(event, VIEWER_COOKIE_NAME, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: useRuntimeConfig().cookieSecure === true,
+    path: '/',
+    maxAge: TOKEN_TTL_SECONDS,
+  })
+}
+
+export function clearViewerTokenCookie(event: any): void {
+  deleteCookie(event, VIEWER_COOKIE_NAME, { path: '/' })
+}
+
 /**
  * Forward the incoming request (method, body, content-type) to `target`,
  * authenticating with the token stored in the httpOnly cookie.
@@ -93,7 +119,16 @@ export async function proxyFetch(event: any, target: string): Promise<{
 
   // The token is expired or was revoked: drop the cookie so the next
   // navigation is redirected to /login instead of looping on 401s.
-  if (upstream.status === 401) clearTokenCookie(event)
+  if (upstream.status === 401) {
+    // an expired "Ver como" session returns to the viewer's own session
+    const viewerToken = getViewerToken(event)
+    if (viewerToken && token !== viewerToken) {
+      setTokenCookie(event, viewerToken)
+      clearViewerTokenCookie(event)
+    } else {
+      clearTokenCookie(event)
+    }
+  }
 
   return { status: upstream.status, upstream, body: buffer }
 }

@@ -25,6 +25,14 @@ export default defineEventHandler(async (event) => {
       res = await fetchMe(superToken)
     }
 
+    // "Ver como" expired (30 min): back to the RRHH / admin session.
+    const viewerToken = getViewerToken(event)
+    if (res.status === 401 && viewerToken) {
+      setTokenCookie(event, viewerToken)
+      clearViewerTokenCookie(event)
+      res = await fetchMe(viewerToken)
+    }
+
     const data = await res.json().catch(() => ({}))
 
     if (!res.ok) {

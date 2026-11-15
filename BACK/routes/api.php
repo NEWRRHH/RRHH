@@ -38,7 +38,8 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
 
     // protected routes: auth first (so the api limiter can key by user id),
     // then bind the request to the user's company (multi-tenant filter)
-    Route::middleware(['auth:sanctum', \App\Http\Middleware\EnsureTenant::class, 'throttle:api'])->group(function () {
+    // ReadOnlyViewAs: "Ver como" sessions can only read (and never the private chat)
+    Route::middleware(['auth:sanctum', \App\Http\Middleware\EnsureTenant::class, \App\Http\Middleware\ReadOnlyViewAs::class, 'throttle:api'])->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::post('/impersonation/stop', [AuthController::class, 'stopImpersonation']);
         Route::get('/user', [AuthController::class, 'user']);
@@ -47,6 +48,9 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::put('/user/schedule', [ScheduleController::class, 'updateSchedule']);
     Route::get('/employees', [EmployeeController::class, 'employees']);
     Route::get('/employees/{id}', [EmployeeController::class, 'getEmployee']);
+    // "Ver como" (read-only, audited): start as RRHH/admin, stop from the view-as session
+    Route::post('/employees/{id}/view-as', [EmployeeController::class, 'viewAs'])->whereNumber('id');
+    Route::post('/view-as/stop', [EmployeeController::class, 'stopViewAs']);
     Route::get('/employees/{id}/attendance-month', [EmployeeController::class, 'employeeAttendanceMonth']);
     Route::get('/employees/{id}/documents', [EmployeeController::class, 'employeeDocuments']);
     Route::get('/employees/{employeeId}/documents/{docId}/download', [EmployeeController::class, 'employeeDocumentDownload']);

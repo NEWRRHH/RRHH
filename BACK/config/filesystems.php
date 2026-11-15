@@ -28,6 +28,24 @@ return [
     |
     */
 
+    /*
+    |--------------------------------------------------------------------------
+    | Where the app keeps uploaded files (see App\Support\FileStorage)
+    |--------------------------------------------------------------------------
+    |
+    | FILES_DISK: private files (documents, chat attachments). "local" keeps
+    | them on this server; "s3" sends them to S3 / any S3-compatible storage
+    | (MinIO, Cloudflare R2, DigitalOcean Spaces...) using the AWS_* vars.
+    | PUBLIC_FILES_DISK: profile photos (public URLs). "public" or "s3".
+    | Every file is stored under companies/{company id}/... on both disks.
+    | To move existing files: php artisan files:move --to=s3
+    |
+    */
+
+    'files_disk' => env('FILES_DISK', 'local'),
+
+    'public_files_disk' => env('PUBLIC_FILES_DISK', 'public'),
+
     'disks' => [
 
         'local' => [

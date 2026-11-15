@@ -77,7 +77,7 @@
               </div>
             </form>
             <div v-else class="rounded-xl border border-amber-600/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
-              {{ !canUploadDocs ? 'No tienes permisos para subir documentos.' : 'En la pestaña Nóminas no se permite subir archivos. Las nóminas se cargan externamente.' }}
+              {{ !canUploadDocs ? 'No tienes permisos para subir documentos.' : 'Las nóminas las carga RRHH y aparecen aquí automáticamente.' }}
             </div>
 
             <!-- table on sm+; on phones each row is icon · name (date · size) · download -->

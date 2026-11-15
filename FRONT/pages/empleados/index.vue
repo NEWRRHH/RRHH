@@ -121,7 +121,7 @@
                     <span v-else class="text-xs text-gray-500">Sin jornadas asignadas</span>
                   </td>
                   <td class="px-2 sm:px-4 py-3 text-right">
-                    <div v-if="canViewEmployeeDetails || canDeleteEmployee" class="relative inline-block action-menu">
+                    <div v-if="canViewEmployeeDetails || canDeleteEmployee || canViewAs" class="relative inline-block action-menu">
                       <button @click.stop="toggleMenu(employee.id, $event)" class="p-2 rounded hover:bg-gray-800">
                         <svg class="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" d="M12 6h.01M12 12h.01M12 18h.01"/>
@@ -140,6 +140,18 @@
                             <path stroke-linecap="round" stroke-linejoin="round" d="M11 5h2m-1-1v2m-7 8l9-9 3 3-9 9H5v-3z"/>
                           </svg>
                           Ver detalle
+                        </button>
+                        <!-- read-only look at the app as this person (audited) -->
+                        <button
+                          v-if="canViewAs && employee.id !== (user as any)?.id"
+                          @click="startViewAs(employee)"
+                          class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                        >
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                          </svg>
+                          Ver como
                         </button>
                         <button v-if="canDeleteEmployee" @click="removeEmployee(employee)" class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600">
                           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -451,6 +463,27 @@ function toggleMenu(id: number, event: MouseEvent) {
 
 function closeMenu() {
   openMenuId.value = null
+}
+
+// "Ver como": read-only, audited session as this employee (RRHH / admin)
+const canViewAs = computed(() => Boolean((user.value as any)?.can_view_as))
+
+async function startViewAs(employee: any) {
+  openMenuId.value = null
+  const ok = await $swal.confirm(
+    'Ver como',
+    `Vas a ver la aplicación como ${employee.name}, en modo solo lectura y sin acceso a su chat. El acceso queda registrado en la auditoría y dura 30 minutos.`,
+    'Ver como',
+    'Cancelar',
+  )
+  if (!ok) return
+  try {
+    await $fetch('/api/auth/view-as', { method: 'POST', body: { user_id: employee.id } })
+    await fetchUser()
+    await navigateTo('/dashboard')
+  } catch (e: any) {
+    $swal.toast('error', e?.data?.message || 'No se pudo iniciar el modo Ver como')
+  }
 }
 
 function goToEdit(employee: any) {

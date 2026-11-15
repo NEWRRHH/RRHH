@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Support\FileStorage;
 use App\Http\Controllers\Controller;
 use App\Support\Tenancy\TenantRule;
 use Illuminate\Http\Request;
@@ -132,19 +133,19 @@ class NotificationController extends Controller
         if (! $attachment || ! $attachment->isParticipant($user)) {
             return response()->json(['message' => 'Archivo no encontrado'], 404);
         }
-        if (! Storage::disk('local')->exists($attachment->path)) {
+        if (! FileStorage::disk()->exists($attachment->path)) {
             return response()->json(['message' => 'Archivo no disponible'], 404);
         }
 
         if ($request->boolean('inline') && $attachment->isImage()) {
-            return Storage::disk('local')->response($attachment->path, $attachment->original_name, [
+            return FileStorage::disk()->response($attachment->path, $attachment->original_name, [
                 'Content-Type' => $attachment->mime_type,
                 'Cache-Control' => 'private, max-age=3600',
                 'X-Content-Type-Options' => 'nosniff',
             ]);
         }
 
-        return Storage::disk('local')->download($attachment->path, $attachment->original_name);
+        return FileStorage::disk()->download($attachment->path, $attachment->original_name);
     }
 
     public function send(Request $request, PlanLimits $limits)
@@ -202,11 +203,8 @@ class NotificationController extends Controller
             ];
 
             if ($file) {
-                $stored = $file->storeAs(
-                    "chat/{$user->company_id}/{$userId}",
-                    Str::random(32) . '.' . strtolower($file->getClientOriginalExtension()),
-                    'local',
-                );
+                // companies/{company}/chat/{sender}/<random> on FILES_DISK
+                $stored = FileStorage::storePrivate($file, $user->company_id, FileStorage::CHAT, (string) $userId);
                 $attachment = ChatAttachment::create([
                     'notification_id' => $conversation?->id,
                     'uploader_id' => $userId,
@@ -246,7 +244,7 @@ class NotificationController extends Controller
         } catch (\Exception $e) {
             // don't keep a file that no message points to
             if ($attachment) {
-                Storage::disk('local')->delete($attachment->path);
+                FileStorage::disk()->delete($attachment->path);
                 $attachment->delete();
             }
             // log error for debugging
