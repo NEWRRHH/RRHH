@@ -218,6 +218,12 @@ class EmployeeController extends Controller
 
         $employee->save();
         Audit::log('employee.created', $employee, ['email' => $employee->email, 'role_id' => $employee->role_id]);
+        // payslip folder ready for RRHH: companies/{slug}/nominas/{"Nombre Apellido - DNI"}
+        try {
+            app(\App\Services\PayrollSync::class)->ensureEmployeeFolder($employee);
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         if ($user->can('employees.create')) {
             $days = array_values(array_unique($this->schedules->normalizeScheduleDays($data['days'] ?? null)));

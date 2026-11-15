@@ -448,9 +448,13 @@ docker compose logs tunnel | Select-String trycloudflare   # URL del túnel ráp
 docker compose exec app php artisan <comando>
 docker compose exec app php artisan migrate:status
 
+# Carpetas por empresa (documents, chat, nominas/<empleado>, avatars); se puede repetir
+docker compose exec app php artisan files:folders
+docker compose exec app php artisan files:folders --company=nano-tech
+
 # Nóminas: registrar las subidas a las carpetas de cada empleado
 docker compose exec app php artisan nominas:sync
-docker compose exec app php artisan nominas:sync --company=1
+docker compose exec app php artisan nominas:sync --company=1    # id de la empresa
 
 # Archivos: reorganizar por empresa o mover a otro almacenamiento
 docker compose exec app php artisan files:move --dry-run
@@ -494,16 +498,22 @@ Get-Content backup.sql | docker compose exec -T back_db sh -c 'mysql -uroot -p"$
 
 ### Dónde se guardan
 
-Todo archivo se guarda **por empresa**:
+Todo archivo se guarda **por empresa, con el nombre de la empresa** (su slug, que se fija al crearla y no cambia; p. ej. "Nano Tech" → `nano-tech`):
 
 ```
-companies/{id empresa}/documents/{id empleado}/...     documentos subidos por el empleado
-companies/{id empresa}/nominas/{carpeta empleado}/...  nóminas (ver abajo)
-companies/{id empresa}/chat/{id remitente}/...         adjuntos del chat
-companies/{id empresa}/avatars/...                     fotos de perfil
+companies/nano-tech/documents/{id empleado}/...         documentos subidos por el empleado
+companies/nano-tech/nominas/Juan Pérez - 30111222/...   nóminas (una carpeta por empleado, ver abajo)
+companies/nano-tech/chat/{id remitente}/...             adjuntos del chat
+companies/nano-tech/avatars/...                         fotos de perfil
 ```
 
-- Con `FILES_DISK=local` los archivos privados están en `BACK/storage/app/private/`. Con `PUBLIC_FILES_DISK=public` las fotos están en `BACK/storage/app/public/`.
+- **No hace falta configurar nada en el `.env`**: por defecto (`FILES_DISK=local`, `PUBLIC_FILES_DISK=public`) los archivos privados están en `BACK/storage/app/private/companies/` y las fotos en `BACK/storage/app/public/companies/`.
+- **Las carpetas se crean solas** al crear una empresa o un empleado. Para las empresas y empleados que ya existían, una sola vez:
+  ```powershell
+  docker compose exec app php artisan files:folders
+  docker compose exec app php artisan files:folders --company=nano-tech   # solo una empresa
+  ```
+  Lista las carpetas creadas. Se puede repetir: solo agrega lo que falta.
 - **Copias de seguridad:** además de la base de datos, guarda la carpeta `BACK/storage/app/`. Si usas S3, el bucket.
 - Límite por archivo: **10 MB**. PHP acepta hasta 12 MB gracias a `BACK/docker/php/uploads.ini`, montado en el contenedor `app`.
 - El tamaño de documentos, nóminas y adjuntos cuenta para el almacenamiento del plan de la empresa.
@@ -513,12 +523,12 @@ companies/{id empresa}/avatars/...                     fotos de perfil
 RRHH, o el proveedor de nóminas, deja cada archivo en la carpeta del empleado:
 
 ```
-companies/{id empresa}/nominas/{carpeta empleado}/nomina-2026-05.pdf
+companies/nano-tech/nominas/Juan Pérez - 30111222/nomina-2026-05.pdf
 ```
 
-- La **carpeta del empleado** puede llamarse con su nombre completo, DNI, email, usuario o id.
-- No importan acentos, mayúsculas ni separadores: `Juan Pérez`, `JUAN_PEREZ` y `juan-perez` son la misma.
-- **Usa el DNI** si hay empleados con el mismo nombre: una carpeta que coincide con varias personas no se asigna a nadie.
+- La carpeta se crea sola con el formato **`Nombre Apellido - DNI`**, o `Nombre Apellido - id` si el empleado no tiene DNI. El DNI distingue a dos personas que se llamen igual.
+- También sirve una carpeta creada a mano con solo el nombre completo, el DNI, el email, el usuario o el id. No importan acentos, mayúsculas ni separadores: `Juan Pérez`, `JUAN_PEREZ` y `juan-perez` son la misma.
+- Si una carpeta solo con el nombre coincide con varias personas, no se asigna a nadie; agrégale ` - DNI`.
 - La nómina aparece sola en **Documentos → Nóminas** del empleado la próxima vez que lo abre.
 - `docker compose exec app php artisan nominas:sync` registra todas las empresas de una vez y lista las carpetas que no coinciden con ningún empleado.
 - Formatos: PDF, imágenes, Word y Excel.

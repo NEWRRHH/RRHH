@@ -82,6 +82,13 @@ class CompanyProvisioner
                 return $user;
             });
 
+            // companies/{slug}/documents, chat, nominas/{admin}, avatars
+            try {
+                Tenant::run($company->id, fn () => app(PayrollSync::class)->ensureCompanyFolders($company->id));
+            } catch (\Throwable $e) {
+                report($e); // folders are a convenience: never block the sign-up
+            }
+
             return ['company' => $company, 'admin' => $user];
         });
     }

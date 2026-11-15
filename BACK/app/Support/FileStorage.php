@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Company;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -13,9 +14,12 @@ use Illuminate\Support\Str;
  * - The disks come from .env (config/filesystems.php): FILES_DISK for private
  *   files, PUBLIC_FILES_DISK for profile photos. Moving to S3 / R2 / MinIO is
  *   a matter of changing those variables (+ `php artisan files:move`).
- * - Every file lives under its company: companies/{company id}/{area}/...
- *   (documents, chat, avatars), so a company's files can be found, backed up
- *   or deleted together.
+ * - Every file lives under its company, named by the company slug:
+ *   companies/{slug}/{area}/... (e.g. companies/nano-tech/nominas/...), so a
+ *   company's files can be found, backed up or deleted together. The full
+ *   path is stored in the DB, so existing files are never lost.
+ * - ensureCompanyFolders() creates the whole tree up front (artisan
+ *   files:folders, new companies and new employees).
  */
 final class FileStorage
 {
@@ -46,10 +50,26 @@ final class FileStorage
         return Storage::disk(self::publicDiskName());
     }
 
-    /** companies/{id}/{area}[/sub] ("platform" for users without company). */
+    /** @var array<int, string> company id => folder name */
+    private static array $companyFolders = [];
+
+    /**
+     * Folder of a company: its slug ("nano-tech"), fixed and unique since the
+     * company was created; the id only if it has no slug.
+     */
+    public static function companyFolder(?int $companyId): string
+    {
+        if (! $companyId) {
+            return 'platform';
+        }
+
+        return self::$companyFolders[$companyId] ??= (string) (Company::withTrashed()->whereKey($companyId)->value('slug') ?: $companyId);
+    }
+
+    /** companies/{slug}/{area}[/sub] ("platform" for users without company). */
     public static function folder(?int $companyId, string $area, string $sub = ''): string
     {
-        $base = 'companies/' . ($companyId ?: 'platform') . '/' . $area;
+        $base = 'companies/' . self::companyFolder($companyId) . '/' . $area;
 
         return $sub !== '' ? $base . '/' . trim($sub, '/') : $base;
     }

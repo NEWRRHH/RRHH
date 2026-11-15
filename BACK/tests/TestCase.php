@@ -28,4 +28,16 @@ abstract class TestCase extends BaseTestCase
 
         return $app;
     }
+
+    /**
+     * Uploaded files never touch the real storage: every test gets fresh fake
+     * disks (companies, employees and uploads create folders/files).
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        \Illuminate\Support\Facades\Storage::fake('local');
+        \Illuminate\Support\Facades\Storage::fake('public');
+    }
 }

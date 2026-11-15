@@ -98,7 +98,7 @@ class ViewAsAndFileStorageTest extends TestCase
     {
         Storage::fake('local');
         $this->employee->forceFill(['first_name' => 'Juan', 'last_name' => 'Pérez', 'dni' => '30111222'])->save();
-        $root = "companies/{$this->companyId}/nominas";
+        $root = "companies/acme/nominas";
         // by name (accents / case / separators don't matter) and by DNI
         Storage::disk('local')->put("{$root}/JUAN_PEREZ/nomina-2026-05.pdf", 'pdf');
         Storage::disk('local')->put("{$root}/30111222/nomina-2026-06.pdf", 'pdf');
@@ -118,6 +118,47 @@ class ViewAsAndFileStorageTest extends TestCase
             ->assertSuccessful();
     }
 
+    public function test_folders_are_created_by_company_name_with_one_payroll_folder_per_employee(): void
+    {
+        // two people with the same name: the DNI in the folder tells them apart
+        $this->employee->forceFill(['first_name' => 'Juan', 'last_name' => 'Pérez', 'dni' => '30111222'])->save();
+        $this->hr->forceFill(['first_name' => 'Juan', 'last_name' => 'Pérez', 'dni' => '40999888'])->save();
+
+        $this->artisan('files:folders')->assertSuccessful();
+
+        $disk = Storage::disk('local');
+        foreach (['documents', 'chat', 'nominas'] as $area) {
+            $this->assertTrue($disk->directoryExists("companies/acme/{$area}"));
+        }
+        $this->assertTrue(Storage::disk('public')->directoryExists('companies/acme/avatars'));
+        $this->assertTrue($disk->directoryExists('companies/acme/nominas/Juan Pérez - 30111222'));
+        $this->assertTrue($disk->directoryExists('companies/acme/nominas/Juan Pérez - 40999888'));
+
+        // running it again doesn't duplicate folders
+        $this->artisan('files:folders')->assertSuccessful();
+        $this->assertCount(3, $disk->directories('companies/acme/nominas')); // 2 Juan + the admin
+
+        // a payslip in each folder reaches the right person
+        $disk->put('companies/acme/nominas/Juan Pérez - 30111222/mayo.pdf', 'pdf');
+        $disk->put('companies/acme/nominas/Juan Pérez - 40999888/junio.pdf', 'pdf');
+        $this->artisan('nominas:sync')->assertSuccessful();
+
+        $names = fn (User $u) => Document::withoutGlobalScopes()->where('user_id', $u->id)->pluck('original_name')->all();
+        $this->assertSame(['mayo.pdf'], $names($this->employee));
+        $this->assertSame(['junio.pdf'], $names($this->hr));
+    }
+
+    public function test_new_employee_gets_a_payroll_folder(): void
+    {
+        $token = $this->admin->createToken('test')->plainTextToken;
+        $this->as($token)->postJson('/api/employees', [
+            'name' => 'Lucía Gómez', 'first_name' => 'Lucía', 'last_name' => 'Gómez', 'dni' => '25555666',
+            'email' => 'lucia@acme.test', 'password' => 'Secreta123!', 'password_confirmation' => 'Secreta123!',
+        ])->assertSuccessful();
+
+        $this->assertTrue(Storage::disk('local')->directoryExists('companies/acme/nominas/Lucía Gómez - 25555666'));
+    }
+
     public function test_files_are_stored_per_company_on_the_configured_disk(): void
     {
         config(['filesystems.files_disk' => 'files_test']);
@@ -131,7 +172,7 @@ class ViewAsAndFileStorageTest extends TestCase
         ], ['Accept' => 'application/json'])->assertOk();
 
         $path = Document::withoutGlobalScopes()->value('filename');
-        $this->assertStringStartsWith("companies/{$this->companyId}/documents/{$this->admin->id}/", $path);
+        $this->assertStringStartsWith("companies/acme/documents/{$this->admin->id}/", $path);
         Storage::disk('files_test')->assertExists($path);
 
         // and it is served from that same disk

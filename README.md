@@ -29,7 +29,7 @@ RRHH/
 
 | Capa       | Tecnología                              |
 |------------|-----------------------------------------|
-| Backend    | PHP 8.2, Laravel 12, Laravel Sanctum 4  |
+| Backend    | PHP 8.5, Laravel 12, Laravel Sanctum 4  |
 | Frontend   | Nuxt 3, Vue 3, Tailwind CSS 3           |
 | Base datos | MySQL 8.0                               |
 | Servidor   | Nginx 1.25-alpine                       |
@@ -132,7 +132,10 @@ docker compose restart app
 # Ejecutar comandos Artisan (siempre dentro del contenedor "app")
 docker compose exec app php artisan <comando>
 
-# Registrar las nóminas dejadas en companies/{id}/nominas/{empleado}/
+# Crear las carpetas de cada empresa (documents, chat, nominas/<empleado>, avatars)
+docker compose exec app php artisan files:folders
+
+# Registrar las nóminas dejadas en companies/{empresa}/nominas/{empleado}/
 docker compose exec app php artisan nominas:sync
 
 # Reordenar archivos por empresa / moverlos a S3 (probar antes con --dry-run)
@@ -152,9 +155,11 @@ docker compose down -v
 
 ## Archivos subidos
 
-- Se guardan **por empresa** en `companies/{id}/documents|nominas|chat|avatars/...`.
-- El almacenamiento se elige en el `.env`: `FILES_DISK` para documentos, nóminas y chat, y `PUBLIC_FILES_DISK` para las fotos. `local`/`public` es este servidor; `s3` sirve para S3, R2, MinIO o Spaces.
-- **Nóminas:** se dejan en `companies/{id}/nominas/{empleado}/`, con la carpeta nombrada por nombre, DNI, email, usuario o id, y aparecen solas en Documentos → Nóminas.
+- Se guardan **por empresa, con su nombre** (el slug, fijo desde que se creó la empresa): `companies/nano-tech/documents|nominas|chat|avatars/...`.
+- Con la configuración por defecto **no hace falta tocar el `.env`**: en el servidor están en `BACK/storage/app/private/companies/`, y las fotos en `BACK/storage/app/public/companies/`.
+- Las carpetas se crean solas al crear una empresa o un empleado. Para las empresas y empleados que ya existían: `docker compose exec app php artisan files:folders`.
+- **Nóminas:** cada empleado tiene `companies/{empresa}/nominas/Nombre Apellido - DNI/`. Lo que se deja ahí aparece solo en Documentos → Nóminas.
+- Para usar S3, R2, MinIO o Spaces se cambian `FILES_DISK` y `PUBLIC_FILES_DISK` en el `.env`.
 - Límite de 10 MB por archivo.
 
 Detalle, migración a S3 y copias de seguridad: [DEPLOY.md → Archivos subidos](DEPLOY.md#11-archivos-subidos-dónde-se-guardan-nóminas-y-cómo-migrarlos).
@@ -184,13 +189,39 @@ Los archivos de `BACK/` también están montados como volumen. Los cambios en PH
 
 ---
 
-## Credenciales por defecto (seeder)
+## Roles y super admin
 
-Si el seeder genera un usuario de prueba, las credenciales son:
+La app es **multiempresa**. Hay cuatro tipos de usuario:
 
-| Campo    | Valor              |
-|----------|--------------------|
-| Email    | `admin@rrhh.test`  |
-| Password | `password`         |
+| Usuario | Qué hace | Dónde entra |
+|---------|----------|-------------|
+| **Super admin** | Dueño de la plataforma. No pertenece a ninguna empresa: crea, suspende y edita empresas (plan, país…), ve usuarios, errores y auditoría de todas, y puede **"entrar como empresa"** para dar soporte (sesión de 2 h, auditada). | Panel `/admin` |
+| **Admin** (de una empresa) | Tiene todos los permisos dentro de su empresa. No se puede borrar. | App normal |
+| **RRHH** | Empleados, solicitudes, reportes, documentos, festivos, configuración, "Ver como"… Sus permisos se editan en Configuración → Roles y permisos. | App normal |
+| **Empleado** | Ficha, pide vacaciones o permisos, ve sus documentos y nóminas, chatea. | App normal |
 
-> Revisar `BACK/database/seeders/` para confirmar los datos del seeder.
+- Cada empresa nueva se crea con los roles Admin, RRHH y Empleado. El admin puede crear más roles.
+- Una empresa se crea desde el **registro público** (`/register`: su primer usuario es el admin) o la crea el super admin.
+
+## Credenciales
+
+### Desarrollo (`migrate --seed`, empresa "Empresa Demo")
+
+| Usuario | Email | Contraseña |
+|---------|-------|------------|
+| Super admin | `superadmin@rrhh.test` | `SuperAdmin1234!` |
+| Admin de la empresa demo | `admin@rrhh.test` | `Admin1234!` |
+| RRHH de la empresa demo | `rrhh@rrhh.test` | `Admin1234!` |
+| Empleados de prueba (generados) | aleatorios (ver Empleados) | `password` |
+
+Se pueden cambiar antes de sembrar con `SEED_SUPERADMIN_EMAIL` / `SEED_SUPERADMIN_PASSWORD` y `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` (`BACK/database/seeders/`).
+
+### Producción
+
+- **No hay datos demo ni usuarios de prueba.** El primer arranque crea solo el **super admin**.
+- Su email es `SEED_SUPERADMIN_EMAIL`, que lo escribes tú en el `.env`.
+- Su contraseña es `SEED_SUPERADMIN_PASSWORD`, que la **genera `env-check`** en el primer `docker compose up`. Si arrancaste con `-d`, la ves con `docker compose logs env-check`. Pégala en el `.env`.
+- Entra con esos datos y **cambia la contraseña desde la app**: el seeder no la vuelve a sobrescribir.
+- Las empresas y sus admins se crean después, desde `/register` o desde el panel del super admin.
+
+Paso a paso completo en [DEPLOY.md → Producción](DEPLOY.md#4-producción-pc-servidor).

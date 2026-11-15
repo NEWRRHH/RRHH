@@ -126,7 +126,7 @@ class SuperAdminPanelTest extends TestCase
         $this->assertNotNull(User::withoutGlobalScopes()->find($this->acmeAdmin->id)->last_login_at);
 
         Sanctum::actingAs($this->super);
-        $this->getJson('/api/admin/users?q=ana')->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.company.name', 'Acme');
+        $this->getJson('/api/admin/users?q=ana@acme')->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.company.name', 'Acme');
 
         $newPassword = $this->postJson("/api/admin/users/{$this->acmeAdmin->id}/reset-password")->assertOk()->json('password');
         $this->assertNotEmpty($newPassword);
