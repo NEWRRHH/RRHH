@@ -106,6 +106,7 @@ class PayrollSync
         if (! $user->company_id) {
             return 0;
         }
+        $this->pruneMissing($user->company_id, $user->id);
         $users = $this->companyUsers($user->company_id);
         $created = 0;
         foreach (FileStorage::disk()->directories(FileStorage::folder($user->company_id, FileStorage::PAYROLL)) as $dir) {
@@ -122,10 +123,11 @@ class PayrollSync
      * Whole company (artisan nominas:sync). Folders that match nobody, or
      * more than one person, are reported and left untouched.
      *
-     * @return array{created: int, unmatched: array<int, string>, ambiguous: array<int, string>}
+     * @return array{created: int, removed: int, unmatched: array<int, string>, ambiguous: array<int, string>}
      */
     public function syncCompany(int $companyId): array
     {
+        $removed = $this->pruneMissing($companyId);
         $users = $this->companyUsers($companyId);
         $created = 0;
         $unmatched = [];
@@ -141,7 +143,7 @@ class PayrollSync
             }
         }
 
-        return compact('created', 'unmatched', 'ambiguous');
+        return compact('created', 'removed', 'unmatched', 'ambiguous');
     }
 
     /**
@@ -194,15 +196,71 @@ class PayrollSync
         return array_values(array_filter($done));
     }
 
+    /**
+     * The folder is the source of truth: a payslip whose file was removed
+     * from it disappears from Documentos too (soft delete, recoverable).
+     * Skipped when the payroll root itself is missing (disk not mounted /
+     * wrong FILES_DISK), so a storage problem never hides every payslip.
+     *
+     * @return int documents removed
+     */
+    public function pruneMissing(int $companyId, ?int $userId = null): int
+    {
+        $disk = FileStorage::disk();
+        if (! $disk->directoryExists(FileStorage::folder($companyId, FileStorage::PAYROLL))) {
+            return 0;
+        }
+
+        $rows = Document::withoutGlobalScopes()
+            ->where('company_id', $companyId)
+            ->where('category', 'payroll')
+            ->whereNull('deleted_at')
+            ->when($userId, fn ($q, $id) => $q->where('user_id', $id))
+            ->get(['id', 'user_id', 'filename']);
+
+        $affected = [];
+        $removed = 0;
+        foreach ($rows as $row) {
+            if ($row->filename && ! $disk->exists($row->filename)) {
+                Document::withoutGlobalScopes()->whereKey($row->id)->update(['deleted_at' => now()]);
+                $affected[$row->user_id] = true;
+                $removed++;
+            }
+        }
+
+        foreach (array_keys($affected) as $id) {
+            try {
+                event(new DocumentsUpdated((int) $id, DocumentController::unreadCount((int) $id)));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        return $removed;
+    }
+
     private function registerFolder(string $dir, User $user): int
     {
         $disk = FileStorage::disk();
-        $known = Document::withoutGlobalScopes()->where('user_id', $user->id)->where('category', 'payroll')->pluck('filename')->flip();
+        $rows = Document::withoutGlobalScopes()->where('user_id', $user->id)->where('category', 'payroll')->get(['id', 'filename', 'deleted_at']);
+        $known = $rows->whereNull('deleted_at')->pluck('filename')->flip();
+        // removed earlier (file deleted) and now back in the folder: restore as new
+        $removed = $rows->whereNotNull('deleted_at')->pluck('id', 'filename');
 
         $created = 0;
         foreach ($disk->files($dir) as $path) {
             $ext = Str::lower(pathinfo($path, PATHINFO_EXTENSION));
             if (isset($known[$path]) || ! in_array($ext, self::EXTENSIONS, true)) {
+                continue;
+            }
+            if (isset($removed[$path])) {
+                Document::withoutGlobalScopes()->whereKey($removed[$path])->update([
+                    'deleted_at' => null,
+                    'read_at' => null,
+                    'size' => (int) $disk->size($path),
+                    'updated_at' => now(),
+                ]);
+                $created++;
                 continue;
             }
             Document::withoutGlobalScopes()->insert([

@@ -179,6 +179,29 @@ class ViewAsAndFileStorageTest extends TestCase
         $this->as($token)->getJson('/api/documents/unread')->assertJsonPath('unread', 0);
     }
 
+    public function test_payslip_removed_from_the_folder_disappears_from_documents(): void
+    {
+        $this->employee->forceFill(['first_name' => 'Juan', 'last_name' => 'Pérez', 'dni' => '30111222'])->save();
+        $path = 'companies/acme/nominas/Juan Pérez - 30111222/prueba.pdf';
+        Storage::disk('local')->put($path, 'pdf');
+        $this->artisan('nominas:sync')->assertSuccessful();
+
+        $token = $this->employee->createToken('test')->plainTextToken;
+        $this->as($token)->getJson('/api/documents/summary')->assertJsonPath('payroll', 1)->assertJsonPath('unread', 1);
+
+        // RRHH deletes the file: no ghost payslip, no badge
+        Storage::disk('local')->delete($path);
+        $this->as($token)->getJson('/api/documents?category=payroll')->assertJsonCount(0, 'documents');
+        $this->as($token)->getJson('/api/documents/summary')->assertJsonPath('payroll', 0)->assertJsonPath('unread', 0);
+
+        // but a missing nominas folder (storage not mounted) never wipes them
+        Storage::disk('local')->put($path, 'pdf');
+        $this->artisan('nominas:sync')->assertSuccessful();
+        Storage::disk('local')->deleteDirectory('companies/acme/nominas');
+        $this->artisan('nominas:sync')->assertSuccessful();
+        $this->assertSame(1, Document::withoutGlobalScopes()->where('user_id', $this->employee->id)->whereNull('deleted_at')->count());
+    }
+
     public function test_new_company_gets_the_national_holidays_template(): void
     {
         \App\Models\NationalHoliday::withoutGlobalScopes()->create(['country_code' => 'ES', 'date' => '2020-12-25', 'name' => 'Navidad', 'recurring' => true]);
