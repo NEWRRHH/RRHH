@@ -605,6 +605,104 @@
             </form>
           </section>
 
+          <section v-else-if="activeTab === 'celebrations'" class="rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-4">
+            <div>
+              <h2 class="text-white font-semibold">Mensajes de festejo</h2>
+              <p class="text-sm text-gray-400 mt-1">
+                Lo que ve cada empleado, con confeti, al iniciar sesión el día de su cumpleaños o de su aniversario en la empresa.
+              </p>
+              <p class="text-xs text-gray-500 mt-2">
+                Puedes usar <code class="px-1 rounded bg-gray-800 text-gray-300">{nombre}</code> (nombre del empleado) y
+                <code class="px-1 rounded bg-gray-800 text-gray-300">{años}</code> (por ejemplo "3 años"). Si dejas un campo vacío se usa el texto por defecto.
+              </p>
+            </div>
+
+            <div v-if="layoutLoading" class="space-y-2">
+              <div v-for="i in 2" :key="i" class="h-40 rounded-lg bg-gray-800 animate-pulse"></div>
+            </div>
+
+            <form v-else class="space-y-4" @submit.prevent="saveCelebrations">
+              <div
+                v-for="kind in celebrationKinds"
+                :key="kind.key"
+                class="rounded-xl border border-gray-800 bg-gray-800/40 p-4 grid gap-4 lg:grid-cols-[1fr_260px]"
+              >
+                <div class="space-y-3 min-w-0">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 class="text-sm font-medium text-gray-100">{{ kind.emoji }} {{ kind.name }}</h3>
+                      <p class="text-xs text-gray-500">{{ kind.hint }}</p>
+                    </div>
+                    <button type="button" class="shrink-0 text-xs text-gray-400 hover:text-white underline-offset-2 hover:underline" @click="resetCelebration(kind.key)">
+                      Texto por defecto
+                    </button>
+                  </div>
+
+                  <div>
+                    <div class="flex items-center justify-between mb-1">
+                      <label :for="`celebration-${kind.key}-title`" class="!mb-0 text-xs text-gray-400 font-normal">Título</label>
+                      <span class="text-[11px] tabular-nums" :class="celebrationTexts[kind.key].title.length >= CELEBRATION_TITLE_MAX ? 'text-amber-300' : 'text-gray-500'">
+                        {{ celebrationTexts[kind.key].title.length }}/{{ CELEBRATION_TITLE_MAX }}
+                      </span>
+                    </div>
+                    <input
+                      :id="`celebration-${kind.key}-title`"
+                      v-model="celebrationTexts[kind.key].title"
+                      type="text"
+                      :maxlength="CELEBRATION_TITLE_MAX"
+                      class="!mb-0 w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <div class="flex items-center justify-between mb-1">
+                      <label :for="`celebration-${kind.key}-message`" class="!mb-0 text-xs text-gray-400 font-normal">Mensaje</label>
+                      <span class="text-[11px] tabular-nums" :class="celebrationTexts[kind.key].message.length >= CELEBRATION_MESSAGE_MAX ? 'text-amber-300' : 'text-gray-500'">
+                        {{ celebrationTexts[kind.key].message.length }}/{{ CELEBRATION_MESSAGE_MAX }}
+                      </span>
+                    </div>
+                    <textarea
+                      :id="`celebration-${kind.key}-message`"
+                      v-model="celebrationTexts[kind.key].message"
+                      rows="3"
+                      :maxlength="CELEBRATION_MESSAGE_MAX"
+                      class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white text-sm resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    ></textarea>
+                    <div class="flex flex-wrap gap-2 mt-1">
+                      <button
+                        v-for="token in ['{nombre}', '{años}']"
+                        :key="token"
+                        type="button"
+                        class="text-[11px] px-2 py-0.5 rounded-full border border-gray-700 text-gray-300 hover:bg-gray-700"
+                        @click="insertPlaceholder(kind.key, 'message', token)"
+                      >
+                        + {{ token }}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- preview -->
+                <div class="rounded-2xl border border-white/10 bg-gray-950 p-5 text-center self-start">
+                  <div class="text-[10px] uppercase tracking-wide text-gray-500 mb-2">Vista previa</div>
+                  <div class="text-4xl mb-2" aria-hidden="true">{{ kind.emoji }}</div>
+                  <p class="text-base font-bold text-white leading-tight break-words">
+                    {{ previewCelebration(celebrationTexts[kind.key].title || defaultCelebrations[kind.key].title) }}
+                  </p>
+                  <p class="mt-2 text-xs text-gray-300 break-words">
+                    {{ previewCelebration(celebrationTexts[kind.key].message || defaultCelebrations[kind.key].message) }}
+                  </p>
+                </div>
+              </div>
+
+              <div class="flex justify-end">
+                <button type="submit" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium disabled:opacity-50" :disabled="celebrationsSaving || !celebrationsDirty">
+                  {{ celebrationsSaving ? 'Guardando...' : 'Guardar mensajes' }}
+                </button>
+              </div>
+            </form>
+          </section>
+
         </div>
       </main>
     </div>
@@ -663,6 +761,7 @@ const tabs = computed(() => {
     return [
       { id: 'dashboard', label: 'Dashboard' },
       { id: 'limits', label: 'Límites de tarjetas' },
+      { id: 'celebrations', label: 'Festejos' },
       { id: 'permissions', label: 'Roles y permisos' },
       { id: 'schedules', label: 'Jornadas laborales' },
       { id: 'equipos', label: 'Equipos' },
@@ -673,6 +772,7 @@ const tabs = computed(() => {
   if (canManageDashboard.value) {
     list.push({ id: 'dashboard', label: 'Dashboard' })
     list.push({ id: 'limits', label: 'Límites de tarjetas' })
+    list.push({ id: 'celebrations', label: 'Festejos' })
   }
   if (canManageSchedules.value) list.push({ id: 'schedules', label: 'Jornadas laborales' })
   if (canManageTeams.value) list.push({ id: 'equipos', label: 'Equipos' })
@@ -855,6 +955,8 @@ async function loadCompanyLayout() {
     if (res?.max_limit) maxCardLimit.value = Number(res.max_limit)
     applyCompanyLayout(res)
     applyCardLimits(res?.limits)
+    if (res?.default_celebrations) defaultCelebrations.value = res.default_celebrations
+    applyCelebrations(res?.celebrations)
   } catch (e) {
     $swal.toast('error', 'No se pudo cargar el dashboard de la empresa')
   } finally {
@@ -963,6 +1065,70 @@ async function saveCardLimits() {
   }
 }
 // ── End card limits ──
+
+// ── Celebration texts (birthday / work anniversary overlay) ──
+type CelebrationKind = 'birthday' | 'anniversary'
+type CelebrationTexts = Record<CelebrationKind, { title: string; message: string }>
+const CELEBRATION_TITLE_MAX = 80
+const CELEBRATION_MESSAGE_MAX = 300
+const celebrationKinds: Array<{ key: CelebrationKind; name: string; emoji: string; hint: string }> = [
+  { key: 'anniversary', name: 'Aniversario en la empresa', emoji: '🏆', hint: 'Se muestra el día que el empleado cumple años desde su fecha de ingreso.' },
+  { key: 'birthday', name: 'Cumpleaños', emoji: '🎂', hint: 'Se muestra el día del cumpleaños del empleado.' },
+]
+const defaultCelebrations = ref<CelebrationTexts>({
+  birthday: { title: '¡Feliz cumpleaños, {nombre}!', message: 'Todo el equipo te desea un día increíble.' },
+  anniversary: { title: '¡Feliz aniversario, {nombre}!', message: 'Hoy cumples {años} con nosotros. ¡Gracias por ser parte del equipo!' },
+})
+const celebrationTexts = ref<CelebrationTexts>(JSON.parse(JSON.stringify(defaultCelebrations.value)))
+const savedCelebrations = ref('')
+const celebrationsSaving = ref(false)
+const celebrationsDirty = computed(() => JSON.stringify(celebrationTexts.value) !== savedCelebrations.value)
+
+function applyCelebrations(input: Partial<CelebrationTexts> | null | undefined) {
+  const next = {} as CelebrationTexts
+  for (const { key } of celebrationKinds) {
+    next[key] = {
+      title: String(input?.[key]?.title || defaultCelebrations.value[key].title),
+      message: String(input?.[key]?.message || defaultCelebrations.value[key].message),
+    }
+  }
+  celebrationTexts.value = next
+  savedCelebrations.value = JSON.stringify(next)
+}
+
+function resetCelebration(key: CelebrationKind) {
+  celebrationTexts.value[key] = { ...defaultCelebrations.value[key] }
+}
+
+function insertPlaceholder(key: CelebrationKind, field: 'title' | 'message', token: string) {
+  const max = field === 'title' ? CELEBRATION_TITLE_MAX : CELEBRATION_MESSAGE_MAX
+  const current = celebrationTexts.value[key][field]
+  const sep = current && !current.endsWith(' ') ? ' ' : ''
+  celebrationTexts.value[key][field] = (current + sep + token).slice(0, max)
+}
+
+// preview with a sample person, same rules as the server
+function previewCelebration(text: string) {
+  return text.replace(/\{nombre\}/g, 'Juan').replace(/\{años\}/g, '3 años')
+}
+
+async function saveCelebrations() {
+  celebrationsSaving.value = true
+  try {
+    const res: any = await $fetch('/api/settings/dashboard/celebrations', {
+      method: 'PUT',
+      body: { celebrations: celebrationTexts.value },
+    })
+    applyCelebrations(res?.layout?.celebrations)
+    $swal.toast('success', 'Mensajes de festejo guardados')
+  } catch (e: any) {
+    const errors = e?.data?.errors
+    $swal.toast('error', errors ? String(Object.values(errors).flat()[0]) : 'No se pudieron guardar los mensajes')
+  } finally {
+    celebrationsSaving.value = false
+  }
+}
+// ── End celebration texts ──
 
 // ── Roles & permissions ──
 type PermissionRole = { id: number; name: string; description: string | null; is_admin: boolean; users_count: number; permission_codes: string[] }

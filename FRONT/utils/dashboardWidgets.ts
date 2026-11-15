@@ -19,8 +19,8 @@ export const DASHBOARD_WIDGETS: Record<DashboardWidgetKey, { name: string; descr
     tone: 'bg-blue-600 text-white',
   },
   birthdays: {
-    name: 'Cumpleaños',
-    description: 'Próximos cumpleaños del equipo',
+    name: 'Cumpleaños y aniversarios',
+    description: 'Próximos cumpleaños y aniversarios en la empresa',
     icon: 'M12 8v4m0 0l-2 2m2-2l2 2M5 21h14a2 2 0 002-2v-5a2 2 0 00-2-2H5a2 2 0 00-2 2v5a2 2 0 002 2zM12 4v1',
     tone: 'bg-pink-500/15 text-pink-300',
   },

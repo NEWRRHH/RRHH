@@ -14,6 +14,7 @@ use App\Models\Event;
 use App\Models\EventType;
 use App\Models\Post;
 use App\Models\Team;
+use App\Services\CelebrationService;
 use App\Services\DashboardLayoutService;
 use App\Services\ScheduleService;
 use App\Support\Audit;
@@ -161,7 +162,38 @@ class DashboardController extends Controller
             'limit_widgets' => $layouts->limitCatalog(),
             'default_limit' => DashboardLayoutService::DEFAULT_LIMIT,
             'max_limit' => DashboardLayoutService::MAX_LIMIT,
+            'default_celebrations' => DashboardLayoutService::DEFAULT_CELEBRATIONS,
         ]);
+    }
+
+    /**
+     * Birthday / anniversary celebration texts (RRHH, "dashboard.manage").
+     */
+    public function saveCompanyCelebrations(Request $request, DashboardLayoutService $layouts)
+    {
+        if ($request->user()->cannot('dashboard.manage')) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $title = 'nullable|string|max:' . DashboardLayoutService::CELEBRATION_TITLE_MAX;
+        $message = 'nullable|string|max:' . DashboardLayoutService::CELEBRATION_MESSAGE_MAX;
+        $data = $request->validate([
+            'celebrations' => 'required|array',
+            'celebrations.birthday' => 'required|array',
+            'celebrations.birthday.title' => $title,
+            'celebrations.birthday.message' => $message,
+            'celebrations.anniversary' => 'required|array',
+            'celebrations.anniversary.title' => $title,
+            'celebrations.anniversary.message' => $message,
+        ], [
+            'celebrations.*.title.max' => 'El título admite hasta ' . DashboardLayoutService::CELEBRATION_TITLE_MAX . ' caracteres.',
+            'celebrations.*.message.max' => 'El mensaje admite hasta ' . DashboardLayoutService::CELEBRATION_MESSAGE_MAX . ' caracteres.',
+        ]);
+
+        $layout = $layouts->saveCompanyCelebrations($request->user(), $data['celebrations']);
+        Audit::log('dashboard.company_celebrations_updated', null, ['celebrations' => $layout['celebrations']]);
+
+        return response()->json(['status' => 'ok', 'layout' => $layout]);
     }
 
     /**
@@ -395,45 +427,15 @@ class DashboardController extends Controller
     }
 
     /**
-     * Return upcoming birthdays (authenticated)
+     * Upcoming birthdays and work anniversaries, soonest first (authenticated).
+     * Each item: type (birthday|anniversary), date, years, is_today + person.
      */
-    public function birthdays(Request $request)
+    public function birthdays(Request $request, CelebrationService $celebrations)
     {
-        $today = Carbon::today();
-
-        $users = User::whereNotNull('birth_date')
-            ->get()
-            ->map(function ($u) use ($today) {
-                try {
-                    $dob = Carbon::parse($u->birth_date);
-                } catch (\Exception $e) {
-                    return null;
-                }
-
-                $next = $dob->copy()->year($today->year);
-                if ($next->lt($today)) {
-                    $next->addYear();
-                }
-
-                return [
-                    'id' => $u->id,
-                    'first_name' => $u->first_name ?? $u->name ?? null,
-                    'last_name' => $u->last_name ?? null,
-                    'full_name' => trim(($u->first_name ?? $u->name ?? '') . ' ' . ($u->last_name ?? '')),
-                    'photo' => $u->photo ?? $u->profile_photo_path ?? null,
-                    'birth_date' => $dob->toDateString(),
-                    'next_birthday' => $next->toDateString(),
-                    'age' => $next->year - $dob->year,
-                ];
-            })
-            ->filter()
-            ->sortBy('next_birthday')
-            ->values();
-
         // ?limit= comes from the company's card limit (Configuración > Límites).
         $limit = max(1, min(DashboardLayoutService::MAX_LIMIT, (int) $request->query('limit', DashboardLayoutService::DEFAULT_LIMIT)));
 
-        return response()->json($users->take($limit)->values());
+        return response()->json($celebrations->upcoming()->take($limit)->values());
     }
 
     /**

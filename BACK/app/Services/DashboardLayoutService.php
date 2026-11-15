@@ -25,7 +25,7 @@ class DashboardLayoutService
     /** Widget catalog in built-in default order. */
     public const WIDGETS = [
         'welcome' => 'Bienvenida',
-        'birthdays' => 'Cumpleaños',
+        'birthdays' => 'Cumpleaños y aniversarios',
         'team' => 'Tu equipo',
         'vacation' => 'Vacaciones',
         'notifications' => 'Notificaciones',
@@ -58,6 +58,25 @@ class DashboardLayoutService
         'show_date' => true,
     ];
 
+    /**
+     * Celebration overlay texts (RRHH, Configuración > Festejos).
+     * Placeholders: {nombre} = first name, {años} = "3 años" / "1 año".
+     */
+    public const DEFAULT_CELEBRATIONS = [
+        'birthday' => [
+            'title' => '¡Feliz cumpleaños, {nombre}!',
+            'message' => 'Todo el equipo te desea un día increíble.',
+        ],
+        'anniversary' => [
+            'title' => '¡Feliz aniversario, {nombre}!',
+            'message' => 'Hoy cumples {años} con nosotros. ¡Gracias por ser parte del equipo!',
+        ],
+    ];
+
+    public const CELEBRATION_TITLE_MAX = 80;
+
+    public const CELEBRATION_MESSAGE_MAX = 300;
+
     /** @return array<int, array{key: string, name: string}> */
     public function catalog(): array
     {
@@ -83,6 +102,7 @@ class DashboardLayoutService
             'slots' => $row ? $this->sanitize($row->slots ?? []) : $this->defaultSlots(),
             'welcome' => $this->welcome($row?->settings['welcome'] ?? null),
             'limits' => $this->limits($row?->settings['limits'] ?? null),
+            'celebrations' => $this->celebrations($row?->settings['celebrations'] ?? null),
             'configured' => (bool) $row,
             'updated_at' => $row?->updated_at?->toIso8601String(),
         ];
@@ -137,17 +157,7 @@ class DashboardLayoutService
 
     public function saveCompanyLayout(User $editor, array $slots, array $welcome): array
     {
-        $slots = $this->validateSlots($slots);
-        $current = $this->companyLayout();
-
-        CompanyDashboardLayout::query()->updateOrCreate([], [
-            'slots' => $slots,
-            // limits are edited in their own tab: keep them as they are
-            'settings' => ['welcome' => $this->welcome($welcome), 'limits' => $current['limits']],
-            'updated_by' => $editor->id,
-        ]);
-
-        return $this->companyLayout();
+        return $this->store($editor, $this->validateSlots($slots), ['welcome' => $this->welcome($welcome)]);
     }
 
     /**
@@ -155,15 +165,57 @@ class DashboardLayoutService
      */
     public function saveCompanyLimits(User $editor, array $limits): array
     {
+        return $this->store($editor, null, ['limits' => $this->limits($limits)]);
+    }
+
+    /**
+     * Save the birthday / anniversary celebration texts.
+     */
+    public function saveCompanyCelebrations(User $editor, array $celebrations): array
+    {
+        return $this->store($editor, null, ['celebrations' => $this->celebrations($celebrations)]);
+    }
+
+    /**
+     * Each settings tab saves its own part; the rest is kept as it is.
+     */
+    private function store(User $editor, ?array $slots, array $settings): array
+    {
         $current = $this->companyLayout();
 
         CompanyDashboardLayout::query()->updateOrCreate([], [
-            'slots' => $current['slots'],
-            'settings' => ['welcome' => $current['welcome'], 'limits' => $this->limits($limits)],
+            'slots' => $slots ?? $current['slots'],
+            'settings' => array_merge([
+                'welcome' => $current['welcome'],
+                'limits' => $current['limits'],
+                'celebrations' => $current['celebrations'],
+            ], $settings),
             'updated_by' => $editor->id,
         ]);
 
         return $this->companyLayout();
+    }
+
+    /**
+     * Celebration texts with the placeholders filled in for this person.
+     *
+     * @return array{title: string, message: string}
+     */
+    public function celebrationText(string $type, string $firstName, int $years): array
+    {
+        $texts = $this->companyLayout()['celebrations'][$type] ?? self::DEFAULT_CELEBRATIONS['birthday'];
+        $yearsText = $years . ' ' . ($years === 1 ? 'año' : 'años');
+        $fill = function (string $text) use ($firstName, $yearsText) {
+            if ($firstName === '') {
+                // no name: "¡Feliz cumpleaños, {nombre}!" -> "¡Feliz cumpleaños!"
+                $text = preg_replace('/,?\s*\{nombre\}/u', '', $text);
+            }
+            $text = str_replace(['{nombre}', '{años}'], [$firstName, $yearsText], $text);
+
+            return trim(preg_replace('/\s{2,}/u', ' ', $text));
+        };
+
+        return ['title' => $fill($texts['title']), 'message' => $fill($texts['message'])];
     }
 
     /** @return array<int, array{key: string, name: string, mode: string}> */
@@ -252,6 +304,26 @@ class DashboardLayoutService
             if (is_string($key) && isset(self::WIDGETS[$key]) && ! in_array($key, $out, true)) {
                 $out[$i] = $key;
             }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Celebration texts; an empty field falls back to the default text.
+     *
+     * @return array<string, array{title: string, message: string}>
+     */
+    private function celebrations(?array $input): array
+    {
+        $out = [];
+        foreach (self::DEFAULT_CELEBRATIONS as $type => $defaults) {
+            $title = trim((string) ($input[$type]['title'] ?? ''));
+            $message = trim((string) ($input[$type]['message'] ?? ''));
+            $out[$type] = [
+                'title' => mb_substr($title !== '' ? $title : $defaults['title'], 0, self::CELEBRATION_TITLE_MAX),
+                'message' => mb_substr($message !== '' ? $message : $defaults['message'], 0, self::CELEBRATION_MESSAGE_MAX),
+            ];
         }
 
         return $out;

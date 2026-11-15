@@ -10,7 +10,7 @@
   <aside
     :class="[
       'fixed lg:relative inset-y-0 left-0 z-40 flex flex-col bg-gray-900 border-r border-gray-800 transition-all duration-300 ease-in-out',
-      collapsed ? 'w-16' : 'w-64',
+      compact ? 'w-16' : 'w-64 max-w-[85vw]',
       open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
     ]"
   >
@@ -20,14 +20,14 @@
         <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
         </svg>
-        <!-- Clock-in status dot (collapsed mode); pulses while live updates are connected -->
+        <!-- Clock-in status dot (compact mode); pulses while live updates are connected -->
         <span
-          v-if="collapsed"
+          v-if="compact"
           :class="['absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-gray-900 transition-colors duration-300', statusDotClass]"
           :title="statusDotTitle"
         />
       </div>
-      <div v-if="!collapsed" class="flex items-center gap-2 min-w-0">
+      <div v-if="!compact" class="flex items-center gap-2 min-w-0">
         <span class="text-white font-bold text-base tracking-tight truncate">RRHH</span>
         <span
           :class="['inline-block w-2 h-2 rounded-full shrink-0 transition-colors duration-300', statusDotClass]"
@@ -37,28 +37,30 @@
     </div>
 
     <!-- Collapse toggle (local) -->
-    <DashboardSidebarCollapse :collapsed="collapsed" @toggle="collapsed = !collapsed" />
+    <DashboardSidebarCollapse v-if="!isMobile" :collapsed="collapsed" @toggle="collapsed = !collapsed" />
 
     <!-- Body / Nav -->
     <nav class="flex flex-col flex-1 overflow-y-auto overflow-x-visible py-4 px-2 gap-1">
       <template v-for="item in navItems" :key="item.label">
         <NuxtLink
           :to="item.to"
+          :title="compact ? item.label : undefined"
+          :aria-label="item.label"
           :class="[
             'relative flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium transition group overflow-visible',
-            collapsed ? 'justify-center' : '',
+            compact ? 'justify-center' : '',
             item.active
               ? 'bg-blue-600/15 text-blue-400'
               : 'text-gray-400 hover:text-white hover:bg-gray-800'
           ]"
         >
           <span class="shrink-0 inline-flex items-center" v-html="item.icon" />
-          <span v-if="!collapsed" class="truncate">{{ item.label }}</span>
+          <span v-if="!compact" class="truncate">{{ item.label }}</span>
           <span
             v-if="item.badge && item.badge.value > 0"
             :class="[
               'inline-flex items-center justify-center rounded-full text-xs font-semibold bg-red-600 text-white',
-              collapsed
+              compact
                 ? 'absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1'
                 : 'ml-auto px-2 py-0.5'
             ]"
@@ -72,25 +74,25 @@
     <div v-if="isMobile" class="shrink-0 px-2 py-3 border-t border-gray-800 overflow-hidden space-y-2">
       <button
         class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition"
-        :class="collapsed ? 'justify-center' : ''"
+        :class="compact ? 'justify-center' : ''"
         @click="goToProfile"
       >
         <div class="w-7 h-7 rounded-full overflow-hidden bg-gray-700 flex items-center justify-center text-[11px] font-semibold shrink-0">
           <img v-if="(user as any)?.photo || (user as any)?.profile_photo_path" :src="(user as any)?.photo || (user as any)?.profile_photo_path" class="w-full h-full object-cover" />
           <span v-else>{{ userInitial }}</span>
         </div>
-        <span v-if="!collapsed" class="truncate">Mi perfil</span>
+        <span v-if="!compact" class="truncate">Mi perfil</span>
       </button>
 
       <button
         class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-red-300 hover:bg-red-500/10 transition"
-        :class="collapsed ? 'justify-center' : ''"
+        :class="compact ? 'justify-center' : ''"
         @click="emit('logout')"
       >
         <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2h5a2 2 0 012 2v1"/>
         </svg>
-        <span v-if="!collapsed">Cerrar sesion</span>
+        <span v-if="!compact">Cerrar sesión</span>
       </button>
     </div>
   </aside>
@@ -109,6 +111,9 @@ const emit = defineEmits<{ logout: [] }>()
 const collapsed = ref(true)
 const open = ref(false)
 const isMobile = ref(false)
+// Icons-only mode is a desktop thing: the mobile drawer always shows the
+// module names (new users don't know what each icon means).
+const compact = computed(() => collapsed.value && !isMobile.value)
 
 // expose open so parent can toggle on mobile
 defineExpose({ open })
@@ -324,7 +329,7 @@ const navItems = computed(() => [
     </svg>`
   }] : []),
   ...(canAccessSettings.value ? [{
-    label: 'Configuracion',
+    label: 'Configuración',
     to: '/configuracion',
     active: route.path.startsWith('/configuracion'),
     icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">

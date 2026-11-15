@@ -298,7 +298,7 @@ const documentsLoaded = ref(false)
 const EMPTY_CARD_TEXT: Partial<Record<CardKey, string>> = {
   notifications: 'No hay notificaciones',
   announcements: 'Sin comunicados',
-  birthdays: 'Sin próximos cumpleaños',
+  birthdays: 'Sin próximos cumpleaños ni aniversarios',
   holidays: 'Sin próximos festivos',
   team: 'Sin compañeros de equipo',
   documents: 'Sin documentos',

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Attendance;
 use App\Models\User;
 use App\Services\AttendanceService;
+use App\Services\CelebrationService;
 use App\Services\CompanyProvisioner;
 use App\Services\PlanLimits;
 use App\Support\Audit;
@@ -151,6 +152,8 @@ class AuthController extends Controller
         // Super admin browsing this company through "entrar como empresa".
         $payload['impersonated_by'] = $this->impersonator($request);
         $payload['is_admin'] = $user->isAdmin();
+        // birthday / work anniversary today -> the frontend plays a celebration
+        $payload['celebrations_today'] = app(CelebrationService::class)->todayFor($user);
         // legacy flag name kept for the frontend: "can see everybody's attendance"
         $payload['is_hr_team'] = $user->hasPermission('attendance.view_all');
         $payload['can_view_employee_details'] = $user->hasPermission('employees.view_details');

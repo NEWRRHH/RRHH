@@ -90,6 +90,7 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::get('/settings/dashboard', [DashboardController::class, 'companyLayout']);
     Route::put('/settings/dashboard', [DashboardController::class, 'saveCompanyLayout']);
     Route::put('/settings/dashboard/limits', [DashboardController::class, 'saveCompanyLimits']);
+    Route::put('/settings/dashboard/celebrations', [DashboardController::class, 'saveCompanyCelebrations']);
     // upcoming birthdays for dashboard UI
     Route::get('/birthdays', [DashboardController::class, 'birthdays']);
     // workers currently "en_trabajo"
