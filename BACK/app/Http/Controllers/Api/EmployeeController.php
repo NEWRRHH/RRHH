@@ -173,9 +173,12 @@ class EmployeeController extends Controller
             'phone' => 'nullable|string|max:20',
             'hire_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
             'birth_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
-            'dni' => 'nullable|string|max:30',
-            'social_security_number' => 'nullable|string|max:50',
+            // required: payslips are distributed by DNI (Nóminas module), unique in the company
+            'dni' => ['required', 'string', 'max:30', TenantRule::unique('users', 'dni', true)],
+            'social_security_number' => 'required|string|max:50',
             'contract_type' => 'nullable|string|max:50',
+            // modalidad: null = office + remote on request, office = always office, remote = always remote
+            'work_mode' => 'nullable|in:office,remote',
             'contract_start_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
             'vacation_days_total' => 'nullable|integer|min:0|max:365',
             'start_time' => 'nullable|date_format:H:i',
@@ -184,6 +187,10 @@ class EmployeeController extends Controller
             'days.*' => 'in:L,M,X,J,V,S,D',
             'schedule_template_ids' => 'nullable|array',
             'schedule_template_ids.*' => ['integer', TenantRule::exists('schedules', 'id', true)],
+        ], [
+            'dni.required' => 'El DNI es obligatorio (las nóminas se reparten por DNI).',
+            'dni.unique' => 'Ya hay un empleado con ese DNI.',
+            'social_security_number.required' => 'El número de la Seguridad Social es obligatorio.',
         ]);
 
         // Privilege escalation guard: only an admin may grant the admin role
@@ -209,6 +216,7 @@ class EmployeeController extends Controller
         $employee->dni = $data['dni'] ?? null;
         $employee->social_security_number = $data['social_security_number'] ?? null;
         $employee->contract_type = $data['contract_type'] ?? null;
+        $employee->work_mode = $data['work_mode'] ?? null;
         $employee->contract_start_date = $data['contract_start_date'] ?? null;
         $employee->vacation_days_total = isset($data['vacation_days_total']) ? (int) $data['vacation_days_total'] : 0;
 
@@ -218,6 +226,12 @@ class EmployeeController extends Controller
 
         $employee->save();
         Audit::log('employee.created', $employee, ['email' => $employee->email, 'role_id' => $employee->role_id]);
+        // payslip folder ready for RRHH: companies/{slug}/nominas/{DNI}
+        try {
+            app(\App\Services\PayrollSync::class)->ensureEmployeeFolder($employee);
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         if ($user->can('employees.create')) {
             $days = array_values(array_unique($this->schedules->normalizeScheduleDays($data['days'] ?? null)));
@@ -563,9 +577,11 @@ class EmployeeController extends Controller
             'phone' => 'nullable|string|max:20',
             'hire_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
             'birth_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
-            'dni' => 'nullable|string|max:30',
-            'social_security_number' => 'nullable|string|max:50',
+            'dni' => ['required', 'string', 'max:30', TenantRule::unique('users', 'dni', true)->ignore($employee->id)],
+            'social_security_number' => 'required|string|max:50',
             'contract_type' => 'nullable|string|max:50',
+            // modalidad: null = office + remote on request, office = always office, remote = always remote
+            'work_mode' => 'nullable|in:office,remote',
             'contract_start_date' => ['nullable', 'regex:/^\d{4}-\d{2}-\d{2}$/', 'date'],
             'vacation_days_total' => 'nullable|integer|min:0|max:365',
             'password' => ['nullable','confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
@@ -575,6 +591,10 @@ class EmployeeController extends Controller
             'days.*' => 'in:L,M,X,J,V,S,D',
             'schedule_template_ids' => 'nullable|array',
             'schedule_template_ids.*' => ['integer', TenantRule::exists('schedules', 'id', true)],
+        ], [
+            'dni.required' => 'El DNI es obligatorio (las nóminas se reparten por DNI).',
+            'dni.unique' => 'Ya hay un empleado con ese DNI.',
+            'social_security_number.required' => 'El número de la Seguridad Social es obligatorio.',
         ]);
 
         // Role change: only when the field is sent, never on yourself (an
@@ -603,6 +623,7 @@ class EmployeeController extends Controller
         $employee->dni = $data['dni'] ?? null;
         $employee->social_security_number = $data['social_security_number'] ?? null;
         $employee->contract_type = $data['contract_type'] ?? null;
+        $employee->work_mode = $data['work_mode'] ?? null;
         $employee->contract_start_date = $data['contract_start_date'] ?? null;
         $employee->vacation_days_total = isset($data['vacation_days_total']) ? (int) $data['vacation_days_total'] : (int) ($employee->vacation_days_total ?? 0);
         if ($request->hasFile('photo')) {

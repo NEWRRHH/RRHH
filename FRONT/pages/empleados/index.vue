@@ -90,9 +90,12 @@
                 <tr v-for="employee in filteredEmployees" :key="employee.id" class="border-t border-gray-800 text-gray-200 hover:bg-gray-800/40">
                   <td class="px-3 sm:px-4 py-3 max-w-0 w-full sm:max-w-none sm:w-auto">
                     <button class="flex items-center gap-3 w-full text-left min-w-0" :disabled="!canEditEmployee" @click="goToEdit(employee)">
-                      <div class="w-9 h-9 shrink-0 rounded-full overflow-hidden bg-blue-600 flex items-center justify-center font-semibold">
-                        <img v-if="employee.photo || employee.profile_photo_path" :src="resolvePhotoUrl(employee.photo || employee.profile_photo_path)" class="w-full h-full object-cover" />
-                        <span v-else>{{ (employee.name || '?').charAt(0).toUpperCase() }}</span>
+                      <div class="relative shrink-0">
+                        <div class="w-9 h-9 rounded-full overflow-hidden bg-blue-600 flex items-center justify-center font-semibold">
+                          <img v-if="employee.photo || employee.profile_photo_path" :src="resolvePhotoUrl(employee.photo || employee.profile_photo_path)" class="w-full h-full object-cover" />
+                          <span v-else>{{ (employee.name || '?').charAt(0).toUpperCase() }}</span>
+                        </div>
+                        <PresenceBadge :user-id="employee.id" size="xs" />
                       </div>
                       <span class="min-w-0">
                         <span class="block truncate" :class="canViewEmployeeDetails ? 'text-white' : 'text-gray-300'">{{ employee.name }}</span>
@@ -228,12 +231,12 @@
               </select>
             </div>
             <div>
-              <label class="block text-xs text-gray-400 mb-1">DNI</label>
-              <input v-model="createForm.dni" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
+              <label class="block text-xs text-gray-400 mb-1">DNI / NIE * <span class="text-gray-500 font-normal">(las nóminas se reparten por DNI)</span></label>
+              <input v-model="createForm.dni" required maxlength="30" autocapitalize="characters" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
             </div>
             <div>
-              <label class="block text-xs text-gray-400 mb-1">Nro seguridad social</label>
-              <input v-model="createForm.social_security_number" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
+              <label class="block text-xs text-gray-400 mb-1">Nº de la Seguridad Social *</label>
+              <input v-model="createForm.social_security_number" required maxlength="50" inputmode="numeric" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white" />
             </div>
             <div>
               <label class="block text-xs text-gray-400 mb-1">Fecha de nacimiento</label>
@@ -252,6 +255,15 @@
                 <option value="practicas">Prácticas</option>
                 <option value="autonomo">Autónomo</option>
               </select>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-400 mb-1">Modalidad de trabajo</label>
+              <select v-model="createForm.work_mode" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white">
+                <option value="">Sin definir (oficina; teletrabajo a pedido)</option>
+                <option value="office">Solo oficina</option>
+                <option value="remote">Solo teletrabajo</option>
+              </select>
+              <p class="mt-1 text-[11px] text-gray-500">{{ workModeHint(createForm.work_mode) }}</p>
             </div>
             <div>
               <label class="block text-xs text-gray-400 mb-1">Inicio de contrato</label>
@@ -374,6 +386,7 @@ const createForm = ref<any>({
   dni: '',
   social_security_number: '',
   contract_type: '',
+  work_mode: '',
   contract_start_date: '',
   vacation_days_total: 0,
   schedule_template_ids: [],
@@ -509,6 +522,7 @@ function resetCreateForm() {
     dni: '',
     social_security_number: '',
     contract_type: '',
+    work_mode: '',
     contract_start_date: '',
     vacation_days_total: 0,
     schedule_template_ids: [],
@@ -642,6 +656,7 @@ async function submitCreateEmployee() {
     data.append('dni', createForm.value.dni || '')
     data.append('social_security_number', createForm.value.social_security_number || '')
     data.append('contract_type', createForm.value.contract_type || '')
+    data.append('work_mode', createForm.value.work_mode || '')
     data.append('contract_start_date', createForm.value.contract_start_date || '')
     data.append('vacation_days_total', String(Number(createForm.value.vacation_days_total || 0)))
 
@@ -717,4 +732,11 @@ onBeforeMount(async () => {
 
   await loadEmployees()
 })
+
+// Modalidad de trabajo: '' = office + remote on request, office / remote = fixed
+function workModeHint(mode: string) {
+  if (mode === 'remote') return 'Siempre de teletrabajo, sin necesidad de solicitarlo.'
+  if (mode === 'office') return 'Siempre en la oficina; no puede solicitar teletrabajo.'
+  return 'En la oficina; teletrabajo solo los días que solicite y se aprueben.'
+}
 </script>

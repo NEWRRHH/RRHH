@@ -47,7 +47,7 @@ class CompanyRegistrationTest extends TestCase
         $this->assertSame(['Admin', 'Empleado', 'RRHH'], $roles->all());
 
         $codes = EventType::withoutGlobalScopes()->where('company_id', $company->id)->whereNotNull('code')->pluck('code')->sort()->values();
-        $this->assertSame([EventType::ATTENDANCE_REQUEST, EventType::GENERAL, EventType::MEETING, EventType::PERMISSION, EventType::VACATION], $codes->all());
+        $this->assertSame([EventType::ATTENDANCE_REQUEST, EventType::GENERAL, EventType::MEETING, EventType::PERMISSION, EventType::REMOTE_WORK, EventType::VACATION], $codes->all());
 
         $this->assertSame(1, Schedule::withoutGlobalScopes()->where('company_id', $company->id)->count());
 
@@ -66,7 +66,7 @@ class CompanyRegistrationTest extends TestCase
 
         $this->withToken($token)->getJson('/api/employees')->assertOk()->assertJsonCount(1, 'employees');
         $this->withToken($token)->postJson('/api/employees', [
-            'name' => 'Juan', 'email' => 'juan@acme.test', 'password' => 'Secreta123!', 'password_confirmation' => 'Secreta123!',
+            'name' => 'Juan', 'dni' => '11111111A', 'social_security_number' => '280000000001', 'email' => 'juan@acme.test', 'password' => 'Secreta123!', 'password_confirmation' => 'Secreta123!',
         ])->assertCreated();
     }
 

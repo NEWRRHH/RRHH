@@ -435,6 +435,8 @@ class DashboardController extends Controller
             }
             $summary['total']++;
         }
+        // new (unseen) documents, e.g. payslips: badge on the card
+        $summary['unread'] = DocumentController::unreadCount($user->id);
 
         return response()->json($summary);
     }
@@ -512,48 +514,11 @@ class DashboardController extends Controller
         $user  = $request->user();
         $today = Carbon::today();
         $scheduleDays = $this->schedules->loadScheduleDaysForUser((int) $user->id);
-        $yearStart = $today->copy()->startOfYear();
-        $yearEnd = $today->copy()->endOfYear();
-
         $vacationTypeId = EventType::idFor(EventType::VACATION);
-        $requestedWorkingDates = [];
-        $requestedRows = Event::table()
-            ->where('events.user_id', $user->id)
-            ->where('events.event_type_id', $vacationTypeId)
-            ->whereNull('events.deleted_at')
-            ->where(function ($q) {
-                $q->whereNull('events.approval_status')
-                    ->orWhereIn('events.approval_status', ['approved', 'pending']);
-            })
-            ->where(function ($q) use ($yearStart, $yearEnd) {
-                $q->whereBetween('events.start_at', [$yearStart->toDateTimeString(), $yearEnd->toDateTimeString()])
-                  ->orWhereBetween('events.end_at', [$yearStart->toDateTimeString(), $yearEnd->toDateTimeString()])
-                  ->orWhere(function ($q2) use ($yearStart, $yearEnd) {
-                      $q2->where('events.start_at', '<=', $yearStart->toDateTimeString())
-                         ->where(function ($q3) use ($yearEnd) {
-                             $q3->where('events.end_at', '>=', $yearEnd->toDateTimeString())
-                                ->orWhereNull('events.end_at');
-                         });
-                  });
-            })
-            ->get(['events.start_at', 'events.end_at']);
 
-        foreach ($requestedRows as $row) {
-            $start = Carbon::parse($row->start_at)->startOfDay();
-            $end = $row->end_at ? Carbon::parse($row->end_at)->startOfDay() : $start->copy();
-            if ($end->lt($yearStart) || $start->gt($yearEnd)) continue;
-            $clampedStart = $start->lt($yearStart) ? $yearStart->copy() : $start->copy();
-            $clampedEnd = $end->gt($yearEnd) ? $yearEnd->copy() : $end->copy();
-
-            $cursor = $clampedStart->copy();
-            while ($cursor->lte($clampedEnd)) {
-                if ($this->schedules->isWorkingDate($cursor, $scheduleDays)) {
-                    $requestedWorkingDates[$cursor->toDateString()] = true;
-                }
-                $cursor->addDay();
-            }
-        }
-        $requestedYear = count($requestedWorkingDates);
+        // days charged to this year's allowance (incl. those of early next year)
+        $allowance = app(\App\Services\VacationAllowance::class);
+        $requestedYear = count($allowance->usedDates($user, $allowance->currentAllowanceYear(), $scheduleDays));
 
         $vacationDaysTotal = (int) ($user->vacation_days_total ?? 0);
         $vacationDaysRemaining = max(0, $vacationDaysTotal - $requestedYear);

@@ -105,9 +105,12 @@
                   ]"
                 >
                   <div class="flex items-center gap-2.5">
-                    <div class="w-9 h-9 rounded-full overflow-hidden bg-gray-700 flex items-center justify-center text-xs font-semibold">
-                      <img v-if="u.photo" :src="u.photo" class="w-full h-full object-cover" />
-                      <span v-else>{{ (u.full_name || '?').charAt(0).toUpperCase() }}</span>
+                    <div class="relative shrink-0">
+                      <div class="w-9 h-9 rounded-full overflow-hidden bg-gray-700 flex items-center justify-center text-xs font-semibold">
+                        <img v-if="u.photo" :src="u.photo" class="w-full h-full object-cover" />
+                        <span v-else>{{ (u.full_name || '?').charAt(0).toUpperCase() }}</span>
+                      </div>
+                      <PresenceBadge :user-id="u.id" size="xs" />
                     </div>
                     <div class="min-w-0">
                       <div class="text-sm truncate">{{ u.full_name }}</div>
@@ -216,7 +219,15 @@
                       <div class="text-xs text-gray-500 uppercase">{{ row.weekday }}</div>
                       <div v-if="row.holiday" class="mt-0.5 text-[10px] truncate" :class="row.holiday_working ? 'text-amber-300' : 'text-blue-300'" :title="row.holiday">{{ row.holiday_working ? 'Festivo laborable' : 'Festivo' }}: {{ row.holiday }}</div>
                     </div>
-                    <div class="text-gray-200 text-xs sm:text-sm font-medium">{{ workedLabel(row) }}</div>
+                    <div class="text-gray-200 text-xs sm:text-sm font-medium">
+                      {{ workedLabel(row) }}
+                      <!-- forgot to clock out: closed by the system at the end of the schedule -->
+                      <span
+                        v-if="row.auto_closed"
+                        class="block mt-0.5 text-[10px] font-normal text-amber-300 truncate"
+                        :title="row.note || 'Salida no fichada: cerrada automáticamente'"
+                      >Salida automática</span>
+                    </div>
                     <div class="relative h-5 rounded-full bg-gray-800 overflow-hidden">
                       <div
                         v-for="(tick, idx) in hourTicks"
@@ -288,9 +299,12 @@
                   ]"
                 >
                   <div class="flex items-center gap-2.5">
-                    <div class="w-9 h-9 rounded-full overflow-hidden bg-gray-700 flex items-center justify-center text-xs font-semibold">
-                      <img v-if="u.photo" :src="u.photo" class="w-full h-full object-cover" />
-                      <span v-else>{{ (u.full_name || '?').charAt(0).toUpperCase() }}</span>
+                    <div class="relative shrink-0">
+                      <div class="w-9 h-9 rounded-full overflow-hidden bg-gray-700 flex items-center justify-center text-xs font-semibold">
+                        <img v-if="u.photo" :src="u.photo" class="w-full h-full object-cover" />
+                        <span v-else>{{ (u.full_name || '?').charAt(0).toUpperCase() }}</span>
+                      </div>
+                      <PresenceBadge :user-id="u.id" size="xs" />
                     </div>
                     <div class="min-w-0">
                       <div class="text-sm truncate">{{ u.full_name }}</div>
@@ -434,9 +448,12 @@
               <div v-else class="flex-1 min-h-0 overflow-y-auto">
                 <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8 gap-4">
                   <div v-for="p in whoIsInRows" :key="p.attendance_id" class="flex flex-col items-center gap-1">
-                    <div class="w-14 h-14 rounded-full overflow-hidden border-2 border-emerald-400/70 bg-gray-700 flex items-center justify-center">
-                      <img v-if="p.photo" :src="p.photo" class="w-full h-full object-cover" />
-                      <span v-else class="text-xs text-gray-200 font-semibold">{{ (p.full_name || '?').charAt(0) }}</span>
+                    <div class="relative">
+                      <div class="w-14 h-14 rounded-full overflow-hidden border-2 border-emerald-400/70 bg-gray-700 flex items-center justify-center">
+                        <img v-if="p.photo" :src="p.photo" class="w-full h-full object-cover" />
+                        <span v-else class="text-xs text-gray-200 font-semibold">{{ (p.full_name || '?').charAt(0) }}</span>
+                      </div>
+                      <PresenceBadge :user-id="p.user_id" size="md" />
                     </div>
                     <p class="text-[11px] text-gray-200 text-center leading-tight line-clamp-2">{{ p.full_name }}</p>
                     <p class="text-[10px] text-gray-500 text-center">{{ p.team_name || 'Sin equipo' }}</p>
@@ -446,13 +463,42 @@
                 <div v-if="!whoIsInRows.length" class="text-center text-sm text-gray-500 py-12">
                   No hay personas trabajando en este momento.
                 </div>
+
+                <!-- approved remote work / vacation today -->
+                <div v-for="group in presenceGroups" :key="group.id" class="mt-6 pt-4 border-t border-gray-800">
+                  <div class="flex items-center gap-2 mb-3">
+                    <span class="w-6 h-6 rounded-md flex items-center justify-center" :class="group.tone">
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" :d="group.icon" />
+                      </svg>
+                    </span>
+                    <h3 class="text-sm font-semibold text-white">{{ group.title }}</h3>
+                    <span class="text-xs text-gray-500">({{ group.rows.length }})</span>
+                  </div>
+                  <div v-if="group.rows.length" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8 gap-4">
+                    <div v-for="p in group.rows" :key="`${group.id}-${p.user_id}`" class="flex flex-col items-center gap-1">
+                      <div class="relative">
+                        <div class="w-12 h-12 rounded-full overflow-hidden border-2 bg-gray-700 flex items-center justify-center" :class="group.ring">
+                          <img v-if="p.photo" :src="p.photo" class="w-full h-full object-cover" />
+                          <span v-else class="text-xs text-gray-200 font-semibold">{{ (p.full_name || '?').charAt(0) }}</span>
+                        </div>
+                        <PresenceBadge :user-id="p.user_id" />
+                      </div>
+                      <p class="text-[11px] text-gray-200 text-center leading-tight line-clamp-2">{{ p.full_name }}</p>
+                      <p class="text-[10px] text-gray-500 text-center">
+                        {{ p.team_name || 'Sin equipo' }}<template v-if="group.id === 'remote'"> · {{ p.working ? 'fichó' : 'sin fichar' }}</template>
+                      </p>
+                    </div>
+                  </div>
+                  <p v-else class="text-xs text-gray-500">{{ group.empty }}</p>
+                </div>
               </div>
             </section>
 
             <aside class="min-w-0 bg-gray-900 border border-gray-800 rounded-3xl p-3 sm:p-5 flex flex-col xl:min-h-0 shadow-sm">
               <div class="flex items-center justify-between mb-4">
                 <h3 class="text-sm font-semibold text-white">Detalle de fichajes</h3>
-                <button class="text-xs text-gray-300 border border-gray-700 rounded-lg px-2.5 py-1.5 hover:bg-gray-800" @click="loadWhoIsInData">
+                <button class="text-xs text-gray-300 border border-gray-700 rounded-lg px-2.5 py-1.5 hover:bg-gray-800" @click="loadWhoIsInData()">
                   Actualizar
                 </button>
               </div>
@@ -524,6 +570,29 @@ const includeNonWorkingDays = ref(false)
 
 const canViewAllWhoIsIn = ref(false)
 const whoIsInRows = ref<any[]>([])
+// approved remote work / vacation today (who's in)
+const remoteRows = ref<any[]>([])
+const vacationRows = ref<any[]>([])
+const presenceGroups = computed(() => [
+  {
+    id: 'remote',
+    title: 'Teletrabajo hoy',
+    rows: remoteRows.value,
+    empty: 'Nadie tiene teletrabajo hoy.',
+    tone: eventTypeVisual('remote_work').tone,
+    icon: eventTypeVisual('remote_work').icon,
+    ring: 'border-sky-400/70',
+  },
+  {
+    id: 'vacation',
+    title: 'De vacaciones hoy',
+    rows: vacationRows.value,
+    empty: 'Nadie está de vacaciones hoy.',
+    tone: eventTypeVisual('vacation').tone,
+    icon: eventTypeVisual('vacation').icon,
+    ring: 'border-teal-400/70',
+  },
+])
 const whoIsInLoading = ref(false)
 const whoIsInTeamFilter = ref('')
 const whoIsInTeams = ref<any[]>([])
@@ -679,7 +748,12 @@ function workedColorClass(seconds?: number) {
 
 // ── Ausencias: ask RRHH to regularise several days in one request ──
 const selectedAbsenceDates = ref<string[]>([])
-const canSelectAbsence = (row: any) => isOwnSelectedUser.value && !row?.attendance_request_pending
+// attendance.request: ask RRHH to fix the clock-in of a day
+const canRequestAttendance = computed(() => {
+  const u: any = user.value || {}
+  return Boolean(u?.can_request_attendance) || (Array.isArray(u?.permissions) && u.permissions.includes('attendance.request'))
+})
+const canSelectAbsence = (row: any) => canRequestAttendance.value && isOwnSelectedUser.value && !row?.attendance_request_pending
 const requestableAbsences = computed(() => absencesRows.value.filter(canSelectAbsence))
 const allAbsencesSelected = computed(() =>
   requestableAbsences.value.length > 0 && selectedAbsenceDates.value.length === requestableAbsences.value.length,
@@ -738,9 +812,11 @@ async function loadMonthData() {
   selectedMonth.value = res?.month || selectedMonth.value
 }
 
-async function loadWhoIsInData() {
+// silent: the 30 s auto refresh updates the list in place, without the
+// skeleton (it looked like a page reload)
+async function loadWhoIsInData(silent = false) {
   if (!authenticated.value) return
-  whoIsInLoading.value = true
+  if (!silent) whoIsInLoading.value = true
   try {
     const params = new URLSearchParams()
     if (whoIsInTeamFilter.value) params.set('team_id', whoIsInTeamFilter.value)
@@ -750,12 +826,16 @@ async function loadWhoIsInData() {
 
     canViewAllWhoIsIn.value = !!res?.can_view_all
     whoIsInRows.value = res?.rows || []
+    remoteRows.value = res?.remote_rows || []
+    vacationRows.value = res?.vacation_rows || []
     whoIsInTeams.value = res?.teams || []
     whoIsInWorkingCount.value = Number(res?.working_count || 0)
   } catch (e) {
     console.error('who-is-in load failed', e)
-    whoIsInRows.value = []
-    whoIsInWorkingCount.value = 0
+    if (!silent) {
+      whoIsInRows.value = []
+      whoIsInWorkingCount.value = 0
+    }
   } finally {
     whoIsInLoading.value = false
   }
@@ -811,7 +891,7 @@ onBeforeMount(async () => {
 
   whoIsInInterval = setInterval(() => {
     if (activeTab.value !== 'who_is_in') return
-    loadWhoIsInData()
+    void loadWhoIsInData(true)
   }, 30000)
 })
 

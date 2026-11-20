@@ -576,6 +576,9 @@
             <NationalHolidaysManager v-else />
           </section>
 
+          <!-- vacation window of next year + monthly attendance summary -->
+          <HrPoliciesManager v-else-if="activeTab === 'policies'" />
+
           <section v-else-if="activeTab === 'limits'" class="rounded-2xl border border-gray-800 bg-gray-900 p-4 sm:p-5 space-y-4">
             <div>
               <h2 class="text-white font-semibold">Límites de tarjetas</h2>
@@ -778,6 +781,7 @@ import { CELEBRATION_EFFECTS, DEFAULT_CELEBRATION_EFFECTS, useCelebration, type 
 import AppSidebar from '../components/AppSidebar.vue'
 import HolidaysManager from '../components/settings/HolidaysManager.vue'
 import NationalHolidaysManager from '../components/settings/NationalHolidaysManager.vue'
+import HrPoliciesManager from '../components/settings/HrPoliciesManager.vue'
 import AttendanceButton from '../components/AttendanceButton.vue'
 import UserMenu from '../components/UserMenu.vue'
 
@@ -824,6 +828,13 @@ const canManageHolidays = computed(() => {
   return permissions.includes('holidays.manage')
 })
 
+const canManagePolicies = computed(() => {
+  const currentUser: any = user.value || {}
+  if (currentUser?.can_manage_policies) return true
+  const permissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : []
+  return permissions.includes('policies.manage')
+})
+
 const tabs = computed(() => {
   if (isAdminUser.value) {
     return [
@@ -834,6 +845,7 @@ const tabs = computed(() => {
       { id: 'schedules', label: 'Jornadas laborales' },
       { id: 'equipos', label: 'Equipos' },
       { id: 'holidays', label: 'Festivos' },
+      { id: 'policies', label: 'Empresa y políticas' },
     ]
   }
 
@@ -847,6 +859,8 @@ const tabs = computed(() => {
   if (canManageTeams.value) list.push({ id: 'equipos', label: 'Equipos' })
   // company holidays: RRHH and admins (holidays.manage)
   if (canManageHolidays.value) list.push({ id: 'holidays', label: 'Festivos' })
+  // vacation window + summary email (policies.manage)
+  if (canManagePolicies.value) list.push({ id: 'policies', label: 'Empresa y políticas' })
   return list
 })
 
@@ -889,6 +903,11 @@ const GROUP_LABELS: Record<string, string> = {
   schedules: 'Jornadas',
   teams: 'Equipos',
   announcements: 'Comunicados',
+  remote_work: 'Teletrabajo',
+  holidays: 'Festivos',
+  dashboard: 'Dashboard',
+  payroll: 'Nóminas',
+  policies: 'Empresa y políticas',
 }
 
 const permissionGroups = computed(() => {

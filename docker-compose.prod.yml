@@ -69,13 +69,25 @@ services:
         condition: service_completed_successfully
 
   back_reverb:
+    # Sin puertos al host: en producción todo entra por gateway (tunnel común).
+    ports: !reset []
     depends_on:
       env-check:
         condition: service_completed_successfully
 
+  back_nginx:
+    ports: !reset []
+
   queue:
     depends_on:
       env-check:
+        condition: service_completed_successfully
+
+  scheduler:
+    depends_on:
+      env-check:
+        condition: service_completed_successfully
+      migrate:
         condition: service_completed_successfully
 
   # Compiled Nuxt (nuxi build) instead of the dev server: no source mount,
@@ -87,6 +99,7 @@ services:
     user: node
     command: !reset null
     volumes: !reset []
+    ports: !reset []
     # Only the root .env: a leftover FRONT/.env (dev values, e.g. another
     # Reverb key) must never override production settings.
     env_file: !override

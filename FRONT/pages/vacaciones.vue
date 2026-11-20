@@ -77,9 +77,21 @@
             <button class="w-8 h-8 rounded-lg text-gray-300 hover:bg-gray-800" @click="changeMonth(1)">&#62;</button>
           </div>
 
-          <div class="ml-auto text-xs text-gray-300">
-            Dias laborales del horario: {{ scheduleDaysText }}
+          <div class="ml-auto text-xs text-gray-300 text-right space-y-0.5">
+            <div>Dias laborales del horario: {{ scheduleDaysText }}</div>
+            <div>
+              Vacaciones {{ allowanceYear }}: <strong class="text-white">{{ vacationAvailableDays }}</strong> de {{ vacationLimit }} disponibles
+              · hasta el {{ formatIso(vacationMaxDate) }}
+            </div>
           </div>
+        </div>
+
+        <div
+          v-if="canRequestRemoteWork"
+          class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sm text-sky-100"
+        >
+          <span>El teletrabajo ahora se solicita desde su propia sección.</span>
+          <NuxtLink to="/teletrabajo" class="text-xs border border-sky-400/40 rounded-lg px-2 py-1.5 hover:bg-sky-500/20">Ir a Teletrabajo</NuxtLink>
         </div>
 
         <div
@@ -88,9 +100,9 @@
         >
           <span>
             Inicio: <strong>{{ tapStartIso }}</strong> — mueve el ratón y haz clic (o toca) en el día fin para cerrar el rango (o en el mismo día para un solo día).
-            <span class="block text-xs mt-0.5" :class="excessDates.size ? 'text-red-300' : 'text-blue-200'">
-              Días de vacaciones seleccionados: {{ selectionVacationDays }} · Disponibles: {{ vacationAvailableDays }}
-              <template v-if="excessDates.size"> · Excedes en {{ excessDates.size }}</template>
+            <span class="block text-xs mt-0.5 text-blue-200">
+              Si son vacaciones: {{ selectionVacationDays }} día(s) · Disponibles: {{ vacationAvailableDays }}
+              <template v-if="excessDates.size"> · excedes en {{ excessDates.size }} (puedes pedir otro tipo de ausencia)</template>
             </span>
           </span>
           <button class="text-xs border border-blue-400/40 rounded-lg px-2 py-1.5 hover:bg-blue-500/20" @click="cancelTapSelection">
@@ -251,6 +263,19 @@
         <div class="rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-xs text-gray-300">
           Al guardar, la solicitud queda <strong>pendiente</strong> y RRHH debe aprobarla.
         </div>
+        <div
+          v-if="isVacationSelected && vacationProblem"
+          class="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200"
+          role="alert"
+        >
+          {{ vacationProblem }}
+        </div>
+        <div
+          v-else-if="isVacationSelected && selectionCrossesYear"
+          class="rounded-lg border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-xs text-teal-100"
+        >
+          Los días de {{ allowanceYear + 1 }} se descuentan de tus vacaciones de {{ allowanceYear }}.
+        </div>
 
         <div class="grid gap-3">
           <!-- the type is also the title of the request -->
@@ -409,6 +434,13 @@ const editingEventId = ref<number | null>(null)
 const holidays = ref<Record<string, string>>({})
 const vacationTypeId = ref<number | null>(null)
 const vacationLimit = ref(0)
+// new requests are charged to this year; vacation can be requested up to vacationMaxDate
+const allowanceYear = ref(new Date().getFullYear())
+const vacationMaxDate = ref(`${new Date().getFullYear()}-12-31`)
+const vacationNextYearDays = ref(0)
+// days already charged to allowanceYear, per request (from the API)
+const usedByEvent = ref<Record<string, string[]>>({})
+const canRequestRemoteWork = computed(() => Boolean((user.value as any)?.can_request_remote_work))
 const dragStartIso = ref('')
 const dragEndIso = ref('')
 const tapStartIso = ref('')
@@ -607,6 +639,7 @@ const canSave = computed(() => {
   if (!selectedRange.value.start || !selectedRange.value.end) return false
   if (!(form.value.event_type_id > 0)) return false
   if (descriptionRequired.value && !String(form.value.description || '').trim()) return false
+  if (isVacationSelected.value && vacationProblem.value) return false
   if (!canChooseHours.value) return true
   if (!form.value.all_day) {
     if (!form.value.start_time || !form.value.end_time) return false
@@ -677,17 +710,13 @@ const selectionSourceEventId = computed<number | null>(() => {
   return startIso ? (firstEventForDay(startIso)?.id ?? null) : null
 })
 
-// Vacation days already requested (pending/approved) in the selection's year.
+// Vacation days already charged (pending/approved) to this year's allowance,
+// including days of early next year. The request being edited doesn't count.
 const usedVacationDates = computed(() => {
   const set = new Set<string>()
-  const year = (selectedRange.value.start || todayIso).slice(0, 4)
-  for (const ev of events.value) {
-    if (ev.event_type_id !== vacationTypeId.value) continue
-    if (ev.approval_status === 'rejected') continue
-    if (ev.id === selectionSourceEventId.value) continue
-    eachIso(ev.start_date, ev.end_date, (iso) => {
-      if (iso.startsWith(year) && isVacationCountableIso(iso)) set.add(iso)
-    })
+  for (const [eventId, dates] of Object.entries(usedByEvent.value)) {
+    if (Number(eventId) === selectionSourceEventId.value) continue
+    for (const iso of dates || []) set.add(iso)
   }
   return set
 })
@@ -706,6 +735,30 @@ const selectionNewVacationDates = computed(() => {
 const selectionVacationDays = computed(() => selectionNewVacationDates.value.length)
 const excessDates = computed(() => new Set(selectionNewVacationDates.value.slice(vacationAvailableDays.value)))
 
+// The allowance only matters for vacation: other absences (permiso, general...)
+// can be requested even with no vacation days assigned.
+const isVacationSelected = computed(() => vacationTypeId.value !== null && form.value.event_type_id === vacationTypeId.value)
+const selectionCrossesYear = computed(() => Boolean(selectedRange.value.end) && selectedRange.value.end > `${allowanceYear.value}-12-31`)
+const vacationProblem = computed(() => {
+  if (!selectedRange.value.end) return ''
+  if (selectedRange.value.end > vacationMaxDate.value) {
+    return vacationNextYearDays.value > 0
+      ? `Solo puedes solicitar vacaciones hasta el ${formatIso(vacationMaxDate.value)} (se descuentan de los días de ${allowanceYear.value}).`
+      : `Solo puedes solicitar vacaciones del año en curso (${allowanceYear.value}).`
+  }
+  if (vacationLimit.value <= 0) return 'No tienes días de vacaciones asignados. Consulta con RRHH.'
+  if (excessDates.value.size > 0) {
+    const n = excessDates.value.size
+    return `Superas tus días de vacaciones en ${n} ${n === 1 ? 'día' : 'días'} (disponibles: ${vacationAvailableDays.value}).`
+  }
+  return ''
+})
+
+function formatIso(iso: string): string {
+  const [y, m, d] = String(iso || '').split('-')
+  return y && m && d ? `${d}/${m}/${y}` : iso
+}
+
 function isInSelectedRange(iso: string): boolean {
   if (!selectedRange.value.start || !selectedRange.value.end) return false
   if (!isWorkingIso(iso)) return false
@@ -718,7 +771,10 @@ function dayCellClass(iso: string, currentMonth: boolean): string {
   }
   const inRange = isInSelectedRange(iso)
   const base = currentMonth ? 'bg-gray-900 text-gray-100 hover:bg-gray-800' : 'bg-gray-950 text-gray-600 hover:bg-gray-900'
-  if (inRange && excessDates.value.has(iso)) return 'bg-red-600/40 text-white border border-red-500'
+  // red = would exceed the allowance, only once "Vacaciones" is the chosen type
+  if (inRange && showModal.value && isVacationSelected.value && (excessDates.value.has(iso) || iso > vacationMaxDate.value)) {
+    return 'bg-red-600/40 text-white border border-red-500'
+  }
   if (inRange) return 'bg-blue-600/35 text-white border border-blue-500'
   if (!isWorkingIso(iso)) return `${base} border border-gray-800/60`
   return `${base} border border-gray-800`
@@ -834,16 +890,9 @@ function handleDayTap(iso: string) {
 function finishSelection(startIso: string, endIso: string) {
   const range = sortRange(startIso, endIso)
   const sourceDayEvent = firstEventForDay(startIso)
-
-  // Over the allowance: keep the range on screen with the excess in red and
-  // do not open the confirmation modal. (Computed before clearing tapStartIso,
-  // which identifies the event being extended.)
-  const excess = excessDates.value.size
+  // The vacation allowance is checked in the modal once the type is chosen:
+  // with no vacation days left the employee can still ask for other absences.
   tapStartIso.value = ''
-  if (excess > 0) {
-    $swal.toast('error', `Superas tus días de vacaciones en ${excess} ${excess === 1 ? 'día' : 'días'} (disponibles: ${vacationAvailableDays.value})`)
-    return
-  }
 
   if (startIso === endIso) {
     if (sourceDayEvent) {
@@ -908,6 +957,10 @@ async function loadCalendar() {
     holidays.value = res?.holidays || {}
     vacationTypeId.value = res?.vacation?.event_type_id ?? null
     vacationLimit.value = Number(res?.vacation?.limit || 0)
+    allowanceYear.value = Number(res?.vacation?.allowance_year) || new Date().getFullYear()
+    vacationMaxDate.value = res?.vacation?.max_date || `${allowanceYear.value}-12-31`
+    vacationNextYearDays.value = Number(res?.vacation?.next_year_days || 0)
+    usedByEvent.value = res?.vacation?.used_by_event || {}
     eventTypes.value = res?.event_types || []
     events.value = res?.events || []
     if (!form.value.event_type_id && eventTypes.value.length) {

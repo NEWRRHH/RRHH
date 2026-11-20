@@ -28,6 +28,7 @@
                 <span v-else class="text-sm">{{ (u.first_name || u.full_name || '?').charAt(0) }}</span>
               </div>
               <span class="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-400 rounded-full ring-2 ring-gray-900"></span>
+              <PresenceBadge :user-id="u.id" corner="top-left" size="xs" />
             </div>
             <span class="text-xs text-gray-200 truncate">{{ u.full_name || u.first_name }}</span>
           </div>

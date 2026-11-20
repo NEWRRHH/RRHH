@@ -26,6 +26,7 @@
       </header>
 
       <main ref="boardRoot" class="relative z-10 flex-1 p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-auto">
+        <AutoClosedNotice />
         <div class="flex flex-wrap items-center gap-3">
           <div class="bg-white/5 border border-white/5 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm">
             <div class="text-2xl text-blue-300 font-semibold">{{ data.stats?.users_count ?? 0 }}</div>
@@ -224,6 +225,7 @@ import HolidaysCard from '../components/HolidaysCard.vue'
 import AnnouncementsCard from '../components/AnnouncementsCard.vue'
 import DocumentsSummaryCard from '../components/DocumentsSummaryCard.vue'
 import AttendanceButton from '../components/AttendanceButton.vue'
+import AutoClosedNotice from '../components/AutoClosedNotice.vue'
 import UserMenu from '../components/UserMenu.vue'
 
 
@@ -525,22 +527,25 @@ async function refreshStats() {
   }
 }
 
+// named so leaving the dashboard removes only this listener (usePresence shares the channel)
+function onCompanyAttendanceChanged() {
+  // several people clocking in at 9:00 -> one request
+  if (statsRefreshTimer) clearTimeout(statsRefreshTimer)
+  statsRefreshTimer = setTimeout(() => { void refreshStats() }, 400)
+}
+
 function subscribeCompanyAttendance() {
   const echo: any = realtimeInstance?.()
   const companyId = Number((user.value as any)?.company_id || 0)
   if (!echo || !companyId || companyAttendanceChannel) return
   companyAttendanceChannel = echo.private(`company.${companyId}.attendance`)
-  companyAttendanceChannel.listen('.CompanyAttendanceChanged', () => {
-    // several people clocking in at 9:00 -> one request
-    if (statsRefreshTimer) clearTimeout(statsRefreshTimer)
-    statsRefreshTimer = setTimeout(() => { void refreshStats() }, 400)
-  })
+  companyAttendanceChannel.listen('.CompanyAttendanceChanged', onCompanyAttendanceChanged)
 }
 
 onBeforeUnmount(() => {
   if (statsRefreshTimer) clearTimeout(statsRefreshTimer)
   try {
-    companyAttendanceChannel?.stopListening?.('.CompanyAttendanceChanged')
+    companyAttendanceChannel?.stopListening?.('.CompanyAttendanceChanged', onCompanyAttendanceChanged)
   } catch {
     // ignore
   }
@@ -652,12 +657,17 @@ async function refreshDocumentsSummary() {
       payroll: Number(res?.payroll || 0),
       total: Number(res?.total || 0),
     }
+    unreadDocuments.value = Number(res?.unread || 0)
   } catch (e) {
     console.error('documents summary fetch failed', e)
   } finally {
     documentsLoaded.value = true
   }
 }
+
+// a payslip arrived (DocumentsUpdated over WebSocket): refresh the card counts
+const { unreadDocuments, lastDocumentsChange } = useAuth()
+watch(lastDocumentsChange, () => { void refreshDocumentsSummary() })
 
 async function refreshDashboardNotifications() {
   if (!authenticated.value) return

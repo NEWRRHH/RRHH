@@ -43,7 +43,8 @@ return new class extends Migration
                     DB::table('national_holidays')->insert($chunk);
                 }
             }
-            DB::table('national_holidays')->whereNull('company_id')->delete();
+            // rows without company stay as the template new companies copy
+            // (NationalHolidaysSeeder / holidays:good-friday fill it)
         }
 
         if (! Schema::hasColumn('holidays', 'is_working_day')) {

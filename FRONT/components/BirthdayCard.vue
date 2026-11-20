@@ -45,6 +45,7 @@
                 <span v-else>{{ initials(featured) }}</span>
               </div>
               <span v-if="featured.is_today" class="absolute -bottom-1 -right-1 text-base leading-none celebrate-bounce" aria-hidden="true">{{ todayEmoji(featured) }}</span>
+              <PresenceBadge :user-id="featured.user_id" corner="top-left" />
             </div>
             <div class="min-w-0 flex-1">
               <p class="text-white font-semibold truncate">{{ featured.full_name || featured.first_name }}</p>
@@ -81,6 +82,7 @@
                 <span v-else>{{ initials(b) }}</span>
               </div>
               <span v-if="b.is_today" class="absolute -bottom-1 -right-1 text-xs leading-none" aria-hidden="true">{{ todayEmoji(b) }}</span>
+              <PresenceBadge :user-id="b.user_id" corner="top-left" size="xs" />
             </div>
             <div class="min-w-0 flex-1">
               <p class="text-sm text-gray-100 truncate">{{ b.full_name || b.first_name }}</p>

@@ -12,6 +12,8 @@ use App\Http\Controllers\Admin\PermissionCatalogController as AdminPermissionCat
 use App\Http\Controllers\Admin\PlanController as AdminPlans;
 use App\Http\Controllers\Admin\UserController as AdminUsers;
 use App\Http\Controllers\Api\AttendanceController;
+use App\Http\Controllers\Api\HrPolicyController;
+use App\Http\Controllers\Api\RemoteWorkController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\TimeOffController;
@@ -20,6 +22,7 @@ use App\Http\Controllers\Api\AnnouncementController;
 use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\HolidayController;
 use App\Http\Controllers\Api\NationalHolidayController;
+use App\Http\Controllers\Api\PayrollController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\ScheduleController;
@@ -79,12 +82,17 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::post('/attendance/pause', [AttendanceController::class, 'pauseAttendance']);
     Route::post('/attendance/resume', [AttendanceController::class, 'resumeAttendance']);
     Route::get('/attendance/status', [AttendanceController::class, 'attendanceStatus']);
+    // clock-ins closed by the system (forgot to clock out): dashboard notice
+    Route::get('/attendance/auto-closed', [AttendanceController::class, 'autoClosed']);
+    Route::post('/attendance/auto-closed/seen', [AttendanceController::class, 'autoClosedSeen']);
     Route::get('/attendance/current', [AttendanceController::class, 'currentAttendance']);
     Route::post('/attendance/stop', [AttendanceController::class, 'stopAttendance']);
     Route::get('/attendance/info', [AttendanceController::class, 'attendanceInfo']);
     Route::get('/attendance/day', [AttendanceController::class, 'attendanceDay']);
     Route::get('/attendance/month', [AttendanceController::class, 'attendanceMonth']);
     Route::get('/attendance/who-is-in', [AttendanceController::class, 'attendanceWhoIsIn']);
+    // today's presence of the company (remote / office / vacation): icon on every avatar
+    Route::get('/presence/today', [AttendanceController::class, 'presenceToday']);
     Route::post('/attendance/requests', [AttendanceController::class, 'requestAttendanceAdjustment']);
     // several absence days in one request (Reportes > Ausencias)
     Route::post('/attendance/requests/days', [AttendanceController::class, 'requestAttendanceDays']);
@@ -142,10 +150,33 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::put('/timeoff/events/{id}', [TimeOffController::class, 'update']);
     Route::get('/timeoff/requests', [TimeOffController::class, 'requests']);
     Route::post('/timeoff/requests/{id}/review', [TimeOffController::class, 'review']);
+    // Teletrabajo: own view, independent of the vacation days
+    Route::get('/remote-work', [RemoteWorkController::class, 'index']);
+    Route::post('/remote-work', [RemoteWorkController::class, 'store']);
+    Route::delete('/remote-work/{id}', [RemoteWorkController::class, 'destroy'])->whereNumber('id');
+
+    // company HR policies (the monthly attendance summary itself is automatic: attendance:summaries)
+    Route::get('/settings/policies', [HrPolicyController::class, 'show']);
+    Route::put('/settings/policies', [HrPolicyController::class, 'update']);
+    // company logo (sidebar + favicon), company admin
+    Route::post('/settings/company-logo', [HrPolicyController::class, 'uploadLogo']);
+    Route::delete('/settings/company-logo', [HrPolicyController::class, 'deleteLogo']);
 
     // documents center
     Route::get('/documents', [DocumentController::class, 'index']);
     Route::post('/documents/upload', [DocumentController::class, 'upload']);
+    // Nóminas module (payroll.manage): upload the gestoría's payslips and send them
+    Route::get('/payroll/batches', [PayrollController::class, 'index']);
+    Route::post('/payroll/batches', [PayrollController::class, 'store']);
+    Route::get('/payroll/batches/{id}', [PayrollController::class, 'show'])->whereNumber('id');
+    Route::post('/payroll/batches/{id}/files', [PayrollController::class, 'upload'])->whereNumber('id');
+    Route::put('/payroll/batches/{id}/files/{fileId}', [PayrollController::class, 'assign'])->whereNumber(['id', 'fileId']);
+    Route::delete('/payroll/batches/{id}/files/{fileId}', [PayrollController::class, 'removeFile'])->whereNumber(['id', 'fileId']);
+    Route::post('/payroll/batches/{id}/send', [PayrollController::class, 'send'])->whereNumber('id');
+    Route::delete('/payroll/batches/{id}', [PayrollController::class, 'destroy'])->whereNumber('id');
+    // new documents (payslips) badge, updated in real time (DocumentsUpdated)
+    Route::get('/documents/unread', [DocumentController::class, 'unread']);
+    Route::post('/documents/read', [DocumentController::class, 'markRead']);
     Route::get('/documents/{id}/download', [DocumentController::class, 'download']);
     });
 

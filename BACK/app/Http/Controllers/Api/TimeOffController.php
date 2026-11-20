@@ -11,12 +11,14 @@ use Illuminate\Support\Facades\DB;
 use App\Models\Attendance;
 use App\Models\Event;
 use App\Models\EventType;
+use App\Models\User;
 use App\Services\ScheduleService;
+use App\Services\VacationAllowance;
 use App\Support\WorkTime;
 
 class TimeOffController extends Controller
 {
-    public function __construct(private ScheduleService $schedules)
+    public function __construct(private ScheduleService $schedules, private VacationAllowance $allowance)
     {
     }
     private function parseAttendanceRequestKindFromEvent(object $event): string
@@ -125,68 +127,21 @@ class TimeOffController extends Controller
         }
     }
 
-    private function vacationWorkingDaysSetForYear(int $userId, int $year, array $scheduleDays, ?int $excludeEventId = null): array
+    /**
+     * Vacation rules for create/update: only up to the end of the current year
+     * (+ the days of next year the company allows) and within the yearly
+     * allowance. Returns the 422 response or null.
+     */
+    private function checkVacation(User $user, Carbon $start, Carbon $end, array $scheduleDays, ?int $excludeEventId = null)
     {
-        $yearStart = Carbon::create($year, 1, 1)->startOfDay();
-        $yearEnd = Carbon::create($year, 12, 31)->endOfDay();
-
-        $rowsQuery = Event::table()
-            ->where('user_id', $userId)
-            ->where('event_type_id', EventType::idFor(EventType::VACATION))
-            ->whereNull('deleted_at')
-            ->where(function ($q) {
-                $q->whereNull('approval_status')
-                    ->orWhereIn('approval_status', ['approved', 'pending']);
-            })
-            ->where(function ($q) use ($yearStart, $yearEnd) {
-                $q->whereBetween('start_at', [$yearStart->toDateTimeString(), $yearEnd->toDateTimeString()])
-                    ->orWhereBetween('end_at', [$yearStart->toDateTimeString(), $yearEnd->toDateTimeString()])
-                    ->orWhere(function ($q2) use ($yearStart, $yearEnd) {
-                        $q2->where('start_at', '<=', $yearStart->toDateTimeString())
-                            ->where(function ($q3) use ($yearEnd) {
-                                $q3->where('end_at', '>=', $yearEnd->toDateTimeString())
-                                    ->orWhereNull('end_at');
-                            });
-                    });
-            });
-
-        if ($excludeEventId) {
-            $rowsQuery->where('id', '!=', $excludeEventId);
+        if ($message = $this->allowance->rangeError($user->company_id, $end)) {
+            return response()->json(['message' => $message, 'max_date' => $this->allowance->maxRequestDate($user->company_id)->toDateString()], 422);
+        }
+        if ($error = $this->allowance->limitError($user, $start, $end, $scheduleDays, $excludeEventId)) {
+            return response()->json($error, 422);
         }
 
-        $rows = $rowsQuery->get(['start_at', 'end_at']);
-        $set = [];
-
-        foreach ($rows as $row) {
-            $start = Carbon::parse($row->start_at)->startOfDay();
-            $end = $row->end_at ? Carbon::parse($row->end_at)->startOfDay() : $start->copy();
-            if ($end->lt($yearStart) || $start->gt($yearEnd)) continue;
-            $clampedStart = $start->lt($yearStart) ? $yearStart->copy() : $start->copy();
-            $clampedEnd = $end->gt($yearEnd) ? $yearEnd->copy() : $end->copy();
-
-            $cursor = $clampedStart->copy();
-            while ($cursor->lte($clampedEnd)) {
-                if ($this->schedules->isWorkingDate($cursor, $scheduleDays)) {
-                    $set[$cursor->toDateString()] = true;
-                }
-                $cursor->addDay();
-            }
-        }
-
-        return $set;
-    }
-
-    private function appendWorkingRangeToSet(array $set, Carbon $start, Carbon $end, array $scheduleDays): array
-    {
-        $cursor = $start->copy()->startOfDay();
-        $last = $end->copy()->startOfDay();
-        while ($cursor->lte($last)) {
-            if ($this->schedules->isWorkingDate($cursor, $scheduleDays)) {
-                $set[$cursor->toDateString()] = true;
-            }
-            $cursor->addDay();
-        }
-        return $set;
+        return null;
     }
 
     private function canReviewRequests(?object $user): bool
@@ -225,11 +180,12 @@ class TimeOffController extends Controller
         $schedule = $this->schedules->loadEffectiveScheduleForUser((int) $user->id);
         $scheduleDays = $this->schedules->normalizeScheduleDays($schedule->days ?? null);
 
-        // types the employee can request here ("Fichaje" lives in Reportes > Ausencias);
+        // types the employee can request here: "Fichaje" lives in Reportes > Ausencias
+        // and "Teletrabajo" in its own view (it never depends on vacation days);
         // code drives the icon and whether the description is required
         $eventTypes = EventType::table()
             ->whereNull('deleted_at')
-            ->where(fn ($q) => $q->whereNull('code')->orWhere('code', '<>', EventType::ATTENDANCE_REQUEST))
+            ->where(fn ($q) => $q->whereNull('code')->whereNotIn('code', [EventType::ATTENDANCE_REQUEST, EventType::REMOTE_WORK], 'or'))
             ->orderBy('name', 'asc')
             ->get(['id', 'name', 'code']);
 
@@ -237,6 +193,7 @@ class TimeOffController extends Controller
             ->join('event_types', 'events.event_type_id', '=', 'event_types.id')
             ->where('events.user_id', $user->id)
             ->whereNull('events.deleted_at')
+            ->where(fn ($q) => $q->whereNull('event_types.code')->orWhere('event_types.code', '<>', EventType::REMOTE_WORK))
             ->where(function ($q) use ($start, $end) {
                 $q->whereBetween('events.start_at', [$start->toDateTimeString(), $end->toDateTimeString()])
                     ->orWhereBetween('events.end_at', [$start->toDateTimeString(), $end->toDateTimeString()])
@@ -315,6 +272,17 @@ class TimeOffController extends Controller
             'vacation' => [
                 'event_type_id' => EventType::idFor(EventType::VACATION),
                 'limit' => (int) ($user->vacation_days_total ?? 0),
+                // new requests are charged to this year, up to max_date
+                'allowance_year' => $this->allowance->currentAllowanceYear(),
+                'max_date' => $this->allowance->maxRequestDate($user->company_id)->toDateString(),
+                'next_year_days' => $this->allowance->nextYearDays($user->company_id),
+                // days already charged to that year, per request (the front
+                // skips the request being edited, like the API does)
+                'used_by_event' => (object) $this->allowance->usedDatesByEvent(
+                    $user,
+                    $this->allowance->currentAllowanceYear(),
+                    $this->schedules->loadScheduleDaysForUser((int) $user->id),
+                ),
             ],
             'schedule' => [
                 'start_time' => isset($schedule->start_time) ? substr((string) $schedule->start_time, 0, 5) : null,
@@ -348,7 +316,7 @@ class TimeOffController extends Controller
             'color' => 'nullable|string|max:20',
         ]);
 
-        if ($typeError = $this->checkRequestType((int) $data['event_type_id'], $data['description'] ?? null)) {
+        if ($typeError = $this->checkRequestType((int) $data['event_type_id'], $data['description'] ?? null, $user)) {
             return response()->json(['message' => $typeError], 422);
         }
         $data['title'] = $this->eventTypeName((int) $data['event_type_id']);
@@ -398,19 +366,9 @@ class TimeOffController extends Controller
         $scheduleDays = $this->schedules->loadScheduleDaysForUser((int) $user->id);
         $workingDays = $this->schedules->calculateWorkingDays($start->copy()->startOfDay(), $end->copy()->startOfDay(), $scheduleDays);
 
-        if ((int) $data['event_type_id'] === EventType::idFor(EventType::VACATION)) {
-            $year = (int) $start->year;
-            $existingSet = $this->vacationWorkingDaysSetForYear((int) $user->id, $year, $scheduleDays, null);
-            $combinedSet = $this->appendWorkingRangeToSet($existingSet, $start, $end, $scheduleDays);
-            $requestedTotal = count($combinedSet);
-            $limit = (int) ($user->vacation_days_total ?? 0);
-            if ($requestedTotal > $limit) {
-                return response()->json([
-                    'message' => "No puedes solicitar más de {$limit} días de vacaciones al año",
-                    'requested_days' => $requestedTotal,
-                    'available_days' => max(0, $limit - count($existingSet)),
-                ], 422);
-            }
+        $isVacation = (int) $data['event_type_id'] === EventType::idFor(EventType::VACATION);
+        if ($isVacation && ($error = $this->checkVacation($user, $start, $end, $scheduleDays))) {
+            return $error;
         }
 
         $id = Event::table()->insertGetId([
@@ -420,6 +378,7 @@ class TimeOffController extends Controller
             'end_at' => $end->toDateTimeString(),
             'user_id' => $user->id,
             'event_type_id' => (int) $data['event_type_id'],
+            'allowance_year' => $isVacation ? $this->allowance->currentAllowanceYear() : null,
             'all_day' => $allDay,
             // each type has its own fixed colour
             'color' => EventType::colorFor(EventType::table()->where('id', (int) $data['event_type_id'])->value('code')),
@@ -509,11 +468,15 @@ class TimeOffController extends Controller
      * Rules of the request type: attendance requests ("Fichaje") are only made
      * from Reportes > Ausencias, and General / Permiso need a description.
      */
-    private function checkRequestType(int $typeId, ?string $description): ?string
+    private function checkRequestType(int $typeId, ?string $description, ?User $user = null): ?string
     {
         $code = EventType::table()->where('id', $typeId)->value('code');
         if ($code === EventType::ATTENDANCE_REQUEST) {
             return 'Los fichajes se solicitan desde Reportes > Ausencias.';
+        }
+        // own view, independent of the vacation days (RemoteWorkController)
+        if ($code === EventType::REMOTE_WORK) {
+            return 'El teletrabajo se solicita desde la sección Teletrabajo.';
         }
         if (in_array($code, EventType::DESCRIPTION_REQUIRED, true) && trim((string) $description) === '') {
             return 'La descripción es obligatoria para este tipo de evento.';
@@ -561,7 +524,7 @@ class TimeOffController extends Controller
             'color' => 'nullable|string|max:20',
         ]);
 
-        if ($typeError = $this->checkRequestType((int) $data['event_type_id'], $data['description'] ?? null)) {
+        if ($typeError = $this->checkRequestType((int) $data['event_type_id'], $data['description'] ?? null, $user)) {
             return response()->json(['message' => $typeError], 422);
         }
         $data['title'] = $this->eventTypeName((int) $data['event_type_id']);
@@ -611,19 +574,9 @@ class TimeOffController extends Controller
         $scheduleDays = $this->schedules->loadScheduleDaysForUser((int) $user->id);
         $workingDays = $this->schedules->calculateWorkingDays($start->copy()->startOfDay(), $end->copy()->startOfDay(), $scheduleDays);
 
-        if ((int) $data['event_type_id'] === EventType::idFor(EventType::VACATION)) {
-            $year = (int) $start->year;
-            $existingSet = $this->vacationWorkingDaysSetForYear((int) $user->id, $year, $scheduleDays, (int) $event->id);
-            $combinedSet = $this->appendWorkingRangeToSet($existingSet, $start, $end, $scheduleDays);
-            $requestedTotal = count($combinedSet);
-            $limit = (int) ($user->vacation_days_total ?? 0);
-            if ($requestedTotal > $limit) {
-                return response()->json([
-                    'message' => "No puedes solicitar más de {$limit} días de vacaciones al año",
-                    'requested_days' => $requestedTotal,
-                    'available_days' => max(0, $limit - count($existingSet)),
-                ], 422);
-            }
+        $isVacation = (int) $data['event_type_id'] === EventType::idFor(EventType::VACATION);
+        if ($isVacation && ($error = $this->checkVacation($user, $start, $end, $scheduleDays, (int) $event->id))) {
+            return $error;
         }
 
         Event::table()
@@ -634,6 +587,7 @@ class TimeOffController extends Controller
                 'start_at' => $start->toDateTimeString(),
                 'end_at' => $end->toDateTimeString(),
                 'event_type_id' => (int) $data['event_type_id'],
+                'allowance_year' => $isVacation ? $this->allowance->currentAllowanceYear() : null,
                 'all_day' => $allDay,
                 // each type has its own fixed colour
             'color' => EventType::colorFor(EventType::table()->where('id', (int) $data['event_type_id'])->value('code')),
@@ -792,6 +746,7 @@ class TimeOffController extends Controller
                 'events.end_at',
                 'events.event_type_id',
                 'event_types.name as event_type_name',
+                'event_types.code as event_type_code',
                 'events.request_days',
             ]);
 
@@ -822,6 +777,15 @@ class TimeOffController extends Controller
             }
         });
         event(new TimeOffRequestUpdated((int) $id, (int) $event->user_id, 'reviewed'));
+
+        // remote work / vacation decided: everybody's presence icons may change
+        if (in_array($event->event_type_code ?? null, [EventType::REMOTE_WORK, EventType::VACATION], true) && \App\Support\Tenancy\Tenant::id()) {
+            try {
+                event(new \App\Events\CompanyAttendanceChanged((int) \App\Support\Tenancy\Tenant::id()));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
 
         return response()->json([
             'status' => 'ok',

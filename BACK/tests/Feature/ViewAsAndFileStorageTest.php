@@ -98,7 +98,7 @@ class ViewAsAndFileStorageTest extends TestCase
     {
         Storage::fake('local');
         $this->employee->forceFill(['first_name' => 'Juan', 'last_name' => 'Pérez', 'dni' => '30111222'])->save();
-        $root = "companies/{$this->companyId}/nominas";
+        $root = "companies/acme/nominas";
         // by name (accents / case / separators don't matter) and by DNI
         Storage::disk('local')->put("{$root}/JUAN_PEREZ/nomina-2026-05.pdf", 'pdf');
         Storage::disk('local')->put("{$root}/30111222/nomina-2026-06.pdf", 'pdf');
@@ -118,6 +118,134 @@ class ViewAsAndFileStorageTest extends TestCase
             ->assertSuccessful();
     }
 
+    public function test_folders_are_created_by_company_name_with_one_payroll_folder_per_employee(): void
+    {
+        // two people with the same name: the DNI in the folder tells them apart
+        $this->employee->forceFill(['first_name' => 'Juan', 'last_name' => 'Pérez', 'dni' => '30111222'])->save();
+        $this->hr->forceFill(['first_name' => 'Juan', 'last_name' => 'Pérez', 'dni' => '40999888'])->save();
+
+        $this->artisan('files:folders')->assertSuccessful();
+
+        $disk = Storage::disk('local');
+        foreach (['documents', 'chat', 'nominas'] as $area) {
+            $this->assertTrue($disk->directoryExists("companies/acme/{$area}"));
+        }
+        $this->assertTrue(Storage::disk('public')->directoryExists('companies/acme/avatars'));
+        $this->assertTrue($disk->directoryExists('companies/acme/nominas/30111222'));
+        $this->assertTrue($disk->directoryExists('companies/acme/nominas/40999888'));
+
+        // running it again doesn't duplicate folders
+        $this->artisan('files:folders')->assertSuccessful();
+        $this->assertCount(3, $disk->directories('companies/acme/nominas')); // 2 Juan + the admin
+
+        // a payslip in each folder reaches the right person
+        $disk->put('companies/acme/nominas/30111222/mayo.pdf', 'pdf');
+        $disk->put('companies/acme/nominas/40999888/junio.pdf', 'pdf');
+        $this->artisan('nominas:sync')->assertSuccessful();
+
+        $names = fn (User $u) => Document::withoutGlobalScopes()->where('user_id', $u->id)->pluck('original_name')->all();
+        $this->assertSame(['mayo.pdf'], $names($this->employee));
+        $this->assertSame(['junio.pdf'], $names($this->hr));
+    }
+
+    public function test_new_payslip_notifies_the_employee_until_seen(): void
+    {
+        \Illuminate\Support\Facades\Event::fake([\App\Events\DocumentsUpdated::class]);
+        $this->employee->forceFill(['first_name' => 'Juan', 'last_name' => 'Pérez', 'dni' => '30111222'])->save();
+        Storage::disk('local')->put('companies/acme/nominas/Juan Pérez - 30111222/mayo.pdf', 'pdf');
+
+        // the scheduler registers it and pushes the badge in real time
+        $this->artisan('nominas:sync')->assertSuccessful();
+        \Illuminate\Support\Facades\Event::assertDispatched(
+            \App\Events\DocumentsUpdated::class,
+            fn ($e) => $e->userId === $this->employee->id && $e->unread === 1 && $e->created === 1,
+        );
+
+        $token = $this->employee->createToken('test')->plainTextToken;
+        $this->as($token)->getJson('/api/documents/unread')->assertOk()->assertJsonPath('unread', 1)->assertJsonPath('by_category.payroll', 1);
+        $this->as($token)->getJson('/api/documents/summary')->assertJsonPath('unread', 1);
+        $this->as($token)->getJson('/api/documents?category=payroll')->assertJsonPath('documents.0.read_at', null);
+
+        // opening Nóminas clears it (and tells the other tabs)
+        $this->as($token)->postJson('/api/documents/read', ['category' => 'payroll'])->assertOk()->assertJsonPath('unread', 0);
+        \Illuminate\Support\Facades\Event::assertDispatched(\App\Events\DocumentsUpdated::class, fn ($e) => $e->unread === 0);
+        $this->as($token)->getJson('/api/documents/unread')->assertJsonPath('unread', 0);
+
+        // own uploads never show as new
+        $this->as($token)->post('/api/documents/upload', [
+            'file' => UploadedFile::fake()->create('justificante.pdf', 20, 'application/pdf'),
+            'category' => 'medical',
+        ], ['Accept' => 'application/json'])->assertOk();
+        $this->as($token)->getJson('/api/documents/unread')->assertJsonPath('unread', 0);
+    }
+
+    public function test_payslip_removed_from_the_folder_disappears_from_documents(): void
+    {
+        $this->employee->forceFill(['first_name' => 'Juan', 'last_name' => 'Pérez', 'dni' => '30111222'])->save();
+        $path = 'companies/acme/nominas/Juan Pérez - 30111222/prueba.pdf';
+        Storage::disk('local')->put($path, 'pdf');
+        $this->artisan('nominas:sync')->assertSuccessful();
+
+        $token = $this->employee->createToken('test')->plainTextToken;
+        $this->as($token)->getJson('/api/documents/summary')->assertJsonPath('payroll', 1)->assertJsonPath('unread', 1);
+
+        // RRHH deletes the file: no ghost payslip, no badge
+        Storage::disk('local')->delete($path);
+        $this->as($token)->getJson('/api/documents?category=payroll')->assertJsonCount(0, 'documents');
+        $this->as($token)->getJson('/api/documents/summary')->assertJsonPath('payroll', 0)->assertJsonPath('unread', 0);
+
+        // but a missing nominas folder (storage not mounted) never wipes them
+        Storage::disk('local')->put($path, 'pdf');
+        $this->artisan('nominas:sync')->assertSuccessful();
+        Storage::disk('local')->deleteDirectory('companies/acme/nominas');
+        $this->artisan('nominas:sync')->assertSuccessful();
+        $this->assertSame(1, Document::withoutGlobalScopes()->where('user_id', $this->employee->id)->whereNull('deleted_at')->count());
+    }
+
+    public function test_new_company_gets_the_national_holidays_template(): void
+    {
+        \App\Models\NationalHoliday::withoutGlobalScopes()->create(['country_code' => 'ES', 'date' => '2020-12-25', 'name' => 'Navidad', 'recurring' => true]);
+
+        ['company' => $other] = app(CompanyProvisioner::class)
+            ->provision('Nano Tech', ['name' => 'Bea', 'email' => 'bea@nano.test', 'password' => 'Secreta123!']);
+
+        $this->assertSame('nano-tech', $other->slug);
+        $this->assertSame(1, \App\Models\NationalHoliday::withoutGlobalScopes()->where('company_id', $other->id)->count());
+        $this->assertTrue(Storage::disk('local')->directoryExists('companies/nano-tech/nominas'));
+    }
+
+    public function test_old_name_folders_move_into_the_dni_folder(): void
+    {
+        $this->employee->forceFill(['first_name' => 'Juan', 'last_name' => 'Pérez', 'dni' => '30.111.222-a'])->save();
+        $disk = Storage::disk('local');
+        $disk->put('companies/acme/nominas/Juan Pérez - 30111222A/vieja.pdf', 'pdf');
+        $this->artisan('nominas:sync')->assertSuccessful();
+
+        $this->artisan('files:folders')->assertSuccessful();
+
+        // same file, now under the DNI; the document follows it
+        $this->assertFalse($disk->directoryExists('companies/acme/nominas/Juan Pérez - 30111222A'));
+        $disk->assertExists('companies/acme/nominas/30111222A/vieja.pdf');
+        $this->assertSame(
+            'companies/acme/nominas/30111222A/vieja.pdf',
+            Document::withoutGlobalScopes()->where('user_id', $this->employee->id)->value('filename'),
+        );
+        $token = $this->employee->createToken('test')->plainTextToken;
+        $id = Document::withoutGlobalScopes()->where('user_id', $this->employee->id)->value('id');
+        $this->as($token)->get("/api/documents/{$id}/download")->assertOk();
+    }
+
+    public function test_new_employee_gets_a_payroll_folder(): void
+    {
+        $token = $this->admin->createToken('test')->plainTextToken;
+        $this->as($token)->postJson('/api/employees', [
+            'name' => 'Lucía Gómez', 'first_name' => 'Lucía', 'last_name' => 'Gómez', 'dni' => '25555666', 'social_security_number' => '280000000004',
+            'email' => 'lucia@acme.test', 'password' => 'Secreta123!', 'password_confirmation' => 'Secreta123!',
+        ])->assertSuccessful();
+
+        $this->assertTrue(Storage::disk('local')->directoryExists('companies/acme/nominas/25555666'));
+    }
+
     public function test_files_are_stored_per_company_on_the_configured_disk(): void
     {
         config(['filesystems.files_disk' => 'files_test']);
@@ -131,7 +259,7 @@ class ViewAsAndFileStorageTest extends TestCase
         ], ['Accept' => 'application/json'])->assertOk();
 
         $path = Document::withoutGlobalScopes()->value('filename');
-        $this->assertStringStartsWith("companies/{$this->companyId}/documents/{$this->admin->id}/", $path);
+        $this->assertStringStartsWith("companies/acme/documents/{$this->admin->id}/", $path);
         Storage::disk('files_test')->assertExists($path);
 
         // and it is served from that same disk

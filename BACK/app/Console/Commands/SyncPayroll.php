@@ -29,7 +29,7 @@ class SyncPayroll extends Command
 
         foreach ($companies as $company) {
             $result = Tenant::run($company->id, fn () => $sync->syncCompany($company->id));
-            $this->info("{$company->name}: {$result['created']} nómina(s) nuevas");
+            $this->info("{$company->name}: {$result['created']} nómina(s) nuevas, {$result['removed']} quitada(s) (el archivo ya no está en la carpeta)");
             foreach ($result['unmatched'] as $dir) {
                 $this->warn("  sin empleado: {$dir}");
             }

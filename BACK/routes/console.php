@@ -13,8 +13,9 @@ Artisan::command('holidays:good-friday {country=ES} {--years=5}', function (stri
     $country = strtoupper($country);
     $created = 0;
     foreach (range(now()->year, now()->year + (int) $this->option('years')) as $year) {
-        $holiday = \App\Models\NationalHoliday::firstOrCreate(
-            ['country_code' => $country, 'date' => \App\Support\Easter::goodFriday($year)->toDateString()],
+        $holiday = \App\Models\NationalHoliday::withoutGlobalScopes()->firstOrCreate(
+            // platform template (new companies copy it); each company edits its own copy
+            ['company_id' => null, 'country_code' => $country, 'date' => \App\Support\Easter::goodFriday($year)->toDateString()],
             ['name' => 'Viernes Santo', 'type' => 'national', 'recurring' => false],
         );
         $created += $holiday->wasRecentlyCreated ? 1 : 0;
@@ -63,3 +64,18 @@ Artisan::command('app:provision', function () {
 
     return 0;
 })->purpose('Migrate and initialise the database on production start-up');
+
+// Payslips dropped in companies/{slug}/nominas/{employee}/ are registered
+// every minute, so the employee gets the Documentos badge in real time
+// (DocumentsUpdated over WebSocket). Runs in the "scheduler" service.
+\Illuminate\Support\Facades\Schedule::command('nominas:sync')->everyMinute()->withoutOverlapping()->runInBackground();
+
+// Clock-ins of past days left open (forgot to clock out): closed at the end of
+// the employee's schedule with a note. Hourly, so it runs right after midnight.
+// Before the monthly summary, so the PDF never has an open day.
+\Illuminate\Support\Facades\Schedule::command('attendance:auto-close')->hourlyAt(1)->withoutOverlapping()->runInBackground();
+
+// Monthly attendance summary (PDF in Documentos > Asistencia + email) of the
+// month that just ended. Hourly but it only creates the missing ones: on the
+// 1st everybody gets theirs, and it catches up if the server was down.
+\Illuminate\Support\Facades\Schedule::command('attendance:summaries')->hourlyAt(10)->withoutOverlapping()->runInBackground();

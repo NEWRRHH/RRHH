@@ -20,9 +20,12 @@
       <div v-else>
         <div v-if="members && members.length" v-visible-rows="visibleRows" class="space-y-2 pr-1 team-scroll">
           <div v-for="m in members" :key="m.id" class="flex items-center gap-2 p-2 rounded-lg bg-gray-800/70">
-            <div class="w-8 h-8 rounded-full overflow-hidden bg-gray-700 flex items-center justify-center text-xs text-gray-300">
-              <img v-if="m.photo" :src="m.photo" class="w-full h-full object-cover" />
-              <span v-else>{{ (m.full_name || '?').charAt(0) }}</span>
+            <div class="relative shrink-0">
+              <div class="w-8 h-8 rounded-full overflow-hidden bg-gray-700 flex items-center justify-center text-xs text-gray-300">
+                <img v-if="m.photo" :src="m.photo" class="w-full h-full object-cover" />
+                <span v-else>{{ (m.full_name || '?').charAt(0) }}</span>
+              </div>
+              <PresenceBadge :user-id="m.id" size="xs" />
             </div>
             <span class="text-xs text-gray-200 truncate">{{ m.full_name }}</span>
           </div>

@@ -40,7 +40,19 @@ class AuthController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|email|max:255|unique:users,email',
             'password' => ['required', 'confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
+            // optional company logo as a data: URL (PNG/JPG/WebP, max 1 MB): sidebar + favicon
+            'logo' => 'nullable|string|max:1500000',
         ]);
+
+        $logoBytes = null;
+        if (! empty($data['logo'])) {
+            $logoBytes = FileStorage::decodeDataUrl($data['logo']);
+            try {
+                FileStorage::assertValidLogo((string) $logoBytes);
+            } catch (\InvalidArgumentException $e) {
+                return response()->json(['message' => $e->getMessage(), 'errors' => ['logo' => [$e->getMessage()]]], 422);
+            }
+        }
 
         ['company' => $company, 'admin' => $user] = $provisioner->provision($data['company_name'], [
             'name' => $data['name'],
@@ -48,9 +60,18 @@ class AuthController extends Controller
             'password' => $data['password'],
         ]);
 
+        if ($logoBytes !== null) {
+            try {
+                $company->forceFill(['logo' => FileStorage::storeCompanyLogo($logoBytes, $company->id)])->save();
+            } catch (\InvalidArgumentException $e) {
+                // the account is created anyway: the logo can be added later in Configuración
+                report($e);
+            }
+        }
+
         Audit::log('company.registered', $company, actor: $user);
 
-        $user->load(['role:id,name,is_admin', 'company:id,name,slug,status']);
+        $user->load(['role:id,name,is_admin', 'company:id,name,logo,slug,status']);
 
         $token = $user->createToken('api-token')->plainTextToken;
 
@@ -145,7 +166,7 @@ class AuthController extends Controller
             return response()->json(['message' => 'Unauthenticated'], 401);
         }
 
-        $user->loadMissing(['role:id,name,is_admin', 'company:id,name,slug,status']);
+        $user->loadMissing(['role:id,name,is_admin', 'company:id,name,logo,slug,status']);
 
         $payload = $user->toArray();
         $payload['permissions'] = $user->permissionCodes();
@@ -155,6 +176,7 @@ class AuthController extends Controller
         // "Ver como" session (read-only): who is looking and until when
         $payload['viewed_by'] = $this->viewAsViewer($request);
         $payload['can_view_as'] = $user->hasPermission('employees.view_as');
+        $payload['can_manage_payroll'] = $user->hasPermission('payroll.manage');
         $payload['is_admin'] = $user->isAdmin();
         // birthday / work anniversary today -> the frontend plays a celebration
         $payload['celebrations_today'] = app(CelebrationService::class)->todayFor($user);
@@ -176,10 +198,17 @@ class AuthController extends Controller
             || $user->hasPermission('schedules.manage')
             || $user->hasPermission('teams.manage')
             || $user->hasPermission('dashboard.manage')
-            || $user->hasPermission('holidays.manage');
+            || $user->hasPermission('holidays.manage')
+            || $user->hasPermission('policies.manage');
         $payload['can_view_vacations'] = $user->hasPermission('vacations.view');
         $payload['can_create_vacations'] = $user->hasPermission('vacations.create');
         $payload['can_edit_vacations'] = $user->hasPermission('vacations.edit');
+        // Teletrabajo view: only modalidad "a pedido" (work_mode null)
+        $payload['can_request_remote_work'] = $user->hasPermission('remote_work.view')
+            && \App\Http\Controllers\Api\RemoteWorkController::blockReason($user) === null;
+        // Reportes > Ausencias: ask RRHH to fix a clock-in
+        $payload['can_request_attendance'] = $user->hasPermission('attendance.request');
+        $payload['can_manage_policies'] = $user->hasPermission('policies.manage');
         $payload['can_view_requests'] = $user->hasPermission('requests.view');
         $payload['can_view_documents'] = $user->hasPermission('documents.view');
         $payload['can_upload_documents'] = $user->hasPermission('documents.upload');

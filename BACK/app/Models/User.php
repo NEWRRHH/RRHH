@@ -51,6 +51,13 @@ class User extends Authenticatable
     ];
 
     /**
+     * Modalidad de trabajo (users.work_mode). Null: office by default and
+     * remote work only on approved "Teletrabajo" days.
+     */
+    public const WORK_MODE_OFFICE = 'office';
+    public const WORK_MODE_REMOTE = 'remote';
+
+    /**
      * The attributes that should be hidden for serialization.
      *
      * @var array<int, string>

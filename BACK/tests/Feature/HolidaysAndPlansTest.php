@@ -195,7 +195,7 @@ class HolidaysAndPlansTest extends TestCase
         Plan::where('code', 'free')->update(['max_employees' => 2]);
         Sanctum::actingAs($this->admin);
 
-        $payload = fn ($n) => ['name' => "U{$n}", 'email' => "u{$n}@acme.test", 'password' => 'Secreta123!', 'password_confirmation' => 'Secreta123!'];
+        $payload = fn ($n) => ['name' => "U{$n}", 'dni' => "1000000{$n}X", 'social_security_number' => "28000000000{$n}", 'email' => "u{$n}@acme.test", 'password' => 'Secreta123!', 'password_confirmation' => 'Secreta123!'];
         $this->postJson('/api/employees', $payload(1))->assertCreated();
         $this->postJson('/api/employees', $payload(2))->assertStatus(422)->assertJsonFragment(['message' => 'Has alcanzado el límite de 2 empleados de tu plan. Contacta con el soporte para ampliarlo.']);
 

@@ -40,6 +40,7 @@ No hace falta instalar PHP, Node, MySQL ni npm en la máquina: todo corre dentro
                                                           └─► back_nginx ─► app   /storage/*
                                                                   app ◄──► back_db (MySQL)
                                                                   queue (jobs)
+                                                                  scheduler (tareas cada minuto)
 ```
 
 | Servicio | Qué hace |
@@ -49,6 +50,7 @@ No hace falta instalar PHP, Node, MySQL ni npm en la máquina: todo corre dentro
 | `back_db` | MySQL 8. Los datos viven en el volumen `back_dbdata`. |
 | `back_reverb` | WebSockets (notificaciones y mensajes en tiempo real). |
 | `queue` | Procesa los jobs en cola (mails, etc.). |
+| `scheduler` | Tareas programadas de Laravel (`php artisan schedule:work`). Cada minuto registra las nóminas nuevas de las carpetas y avisa al empleado en tiempo real. |
 | `front` | Nuxt. En desarrollo: servidor dev con recarga en caliente. En producción: build compilado. |
 | `gateway` | Punto de entrada único: une front + WebSocket + `/storage` en la misma URL (local: `http://localhost:8080`). |
 | `tunnel` / `tunnel-domain` | Cloudflare Tunnel: publica el `gateway` en internet sin abrir puertos del router. |
@@ -234,7 +236,7 @@ Orden en el que arranca todo:
 1. `env-check`: comprueba el `.env` (ahora sale `.env de produccion OK`).
 2. `back_db`: MySQL. La primera vez crea la base con tus contraseñas (tarda ~30 s).
 3. `migrate`: hace `composer install`, ejecuta las migraciones y, **solo la primera vez**, crea el super admin y los catálogos iniciales (festivos nacionales, tipos de documento). **Nunca carga datos demo.**
-4. `app`, `back_reverb`, `queue`, `front`, `gateway`, `tunnel`.
+4. `app`, `back_reverb`, `queue`, `scheduler`, `front`, `gateway`, `tunnel`.
 
 **6. Comprobar**
 
@@ -448,9 +450,13 @@ docker compose logs tunnel | Select-String trycloudflare   # URL del túnel ráp
 docker compose exec app php artisan <comando>
 docker compose exec app php artisan migrate:status
 
+# Carpetas por empresa (documents, chat, nominas/<empleado>, avatars); se puede repetir
+docker compose exec app php artisan files:folders
+docker compose exec app php artisan files:folders --company=nano-tech
+
 # Nóminas: registrar las subidas a las carpetas de cada empleado
 docker compose exec app php artisan nominas:sync
-docker compose exec app php artisan nominas:sync --company=1
+docker compose exec app php artisan nominas:sync --company=1    # id de la empresa
 
 # Archivos: reorganizar por empresa o mover a otro almacenamiento
 docker compose exec app php artisan files:move --dry-run
@@ -494,34 +500,49 @@ Get-Content backup.sql | docker compose exec -T back_db sh -c 'mysql -uroot -p"$
 
 ### Dónde se guardan
 
-Todo archivo se guarda **por empresa**:
+Todo archivo se guarda **por empresa, con el nombre de la empresa** (su slug, que se fija al crearla y no cambia; p. ej. "Nano Tech" → `nano-tech`):
 
 ```
-companies/{id empresa}/documents/{id empleado}/...     documentos subidos por el empleado
-companies/{id empresa}/nominas/{carpeta empleado}/...  nóminas (ver abajo)
-companies/{id empresa}/chat/{id remitente}/...         adjuntos del chat
-companies/{id empresa}/avatars/...                     fotos de perfil
+companies/nano-tech/documents/{id empleado}/...         documentos subidos por el empleado
+companies/nano-tech/nominas/30111222A/...              nóminas (una carpeta por empleado, con su DNI)
+companies/nano-tech/chat/{id remitente}/...             adjuntos del chat
+companies/nano-tech/avatars/...                         fotos de perfil
 ```
 
-- Con `FILES_DISK=local` los archivos privados están en `BACK/storage/app/private/`. Con `PUBLIC_FILES_DISK=public` las fotos están en `BACK/storage/app/public/`.
+- **No hace falta configurar nada en el `.env`**: por defecto (`FILES_DISK=local`, `PUBLIC_FILES_DISK=public`) los archivos privados están en `BACK/storage/app/private/companies/` y las fotos en `BACK/storage/app/public/companies/`.
+- **Las carpetas se crean solas** al crear una empresa o un empleado. Para las empresas y empleados que ya existían, una sola vez:
+  ```powershell
+  docker compose exec app php artisan files:folders
+  docker compose exec app php artisan files:folders --company=nano-tech   # solo una empresa
+  ```
+  Lista las carpetas creadas. Se puede repetir: solo agrega lo que falta.
 - **Copias de seguridad:** además de la base de datos, guarda la carpeta `BACK/storage/app/`. Si usas S3, el bucket.
 - Límite por archivo: **10 MB**. PHP acepta hasta 12 MB gracias a `BACK/docker/php/uploads.ini`, montado en el contenedor `app`.
 - El tamaño de documentos, nóminas y adjuntos cuenta para el almacenamiento del plan de la empresa.
 
 ### Nóminas
 
-RRHH, o el proveedor de nóminas, deja cada archivo en la carpeta del empleado:
+La gestoría calcula las nóminas; la app las reparte. Hay dos formas de cargarlas:
+
+**1. Módulo Nóminas (recomendado)** — menú **Nóminas**, para quien tenga el permiso "Gestionar nóminas" (RRHH y Admin por defecto):
+
+1. Elige el mes y sube la carpeta o los PDF que manda la gestoría, **nombrados con el DNI** de cada empleado: `30111222A.pdf`, `nomina_30111222A_2026-05.pdf`, etc. Se acepta también el DNI sin la letra.
+2. Cada PDF se asigna solo al empleado de ese DNI. Los que no coinciden quedan marcados para que elijas el empleado a mano. Ves también qué empleados se quedan sin nómina ese mes.
+3. Pulsa **Enviar**: cada nómina va a `companies/{empresa}/nominas/{DNI}/nomina-AAAA-MM.pdf` y al empleado le aparece en **Documentos → Nóminas** con un **globito en tiempo real**.
+4. Queda el historial de envíos por mes.
+
+Por eso el **DNI y el número de la Seguridad Social son obligatorios** al crear o editar un empleado, y el DNI no se puede repetir en la empresa.
+
+**2. Dejando el archivo en la carpeta del empleado** (p. ej. si la gestoría tiene acceso al almacenamiento):
 
 ```
-companies/{id empresa}/nominas/{carpeta empleado}/nomina-2026-05.pdf
+companies/nano-tech/nominas/30111222A/nomina-2026-05.pdf
 ```
 
-- La **carpeta del empleado** puede llamarse con su nombre completo, DNI, email, usuario o id.
-- No importan acentos, mayúsculas ni separadores: `Juan Pérez`, `JUAN_PEREZ` y `juan-perez` son la misma.
-- **Usa el DNI** si hay empleados con el mismo nombre: una carpeta que coincide con varias personas no se asigna a nadie.
-- La nómina aparece sola en **Documentos → Nóminas** del empleado la próxima vez que lo abre.
+- La carpeta se llama con el **DNI** (solo letras y números) y se crea sola al dar de alta al empleado o con `files:folders`. Las carpetas antiguas `Nombre Apellido - DNI` se mueven a la del DNI al ejecutar `files:folders` (las rutas se actualizan en la base).
+- **En menos de un minuto** el servicio `scheduler` la registra y al empleado le aparece el **globito**. Si el `scheduler` no corre, aparece cuando el empleado abre Documentos. Compruébalo con `docker compose ps scheduler`.
+- Si borras un archivo de la carpeta, desaparece también de la app.
 - `docker compose exec app php artisan nominas:sync` registra todas las empresas de una vez y lista las carpetas que no coinciden con ningún empleado.
-- Formatos: PDF, imágenes, Word y Excel.
 
 ### Pasar a S3 / Cloudflare R2 / MinIO / DigitalOcean Spaces
 

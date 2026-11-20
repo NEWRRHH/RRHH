@@ -120,14 +120,34 @@
                   Comentario RRHH: {{ item.approval_comment }}
                 </p>
 
-                <!-- multi-day attendance request: one line per day; RRHH ticks the ones it accepts -->
+                <!-- multi-day attendance request: one line per day; RRHH ticks the ones it accepts.
+                     Several days: collapsed, the header shows the summary -->
                 <div v-if="isMultiDay(item)" class="rounded-lg border border-gray-800 bg-gray-950/60 divide-y divide-gray-800">
-                  <div class="px-3 py-2 text-[11px] uppercase tracking-wide text-gray-500">
-                    Días solicitados
-                    <span v-if="item.approval_status === 'pending' && canReview" class="normal-case tracking-normal">· marca los que apruebas</span>
-                  </div>
+                  <button
+                    type="button"
+                    class="w-full flex items-center gap-2 px-3 py-2 text-left text-[11px] uppercase tracking-wide text-gray-500 hover:bg-gray-800/40"
+                    :aria-expanded="isDaysOpen(item)"
+                    :disabled="item.request_days.length < 2"
+                    @click="toggleDaysOpen(item)"
+                  >
+                    <span>
+                      {{ item.request_days.length }} {{ item.request_days.length === 1 ? 'día solicitado' : 'días solicitados' }}
+                      <span v-if="item.approval_status === 'pending' && canReview" class="normal-case tracking-normal">
+                        · {{ chosenDays(item).length }} de {{ pendingDays(item).length }} marcados para aprobar
+                      </span>
+                      <span v-else-if="!isDaysOpen(item)" class="normal-case tracking-normal">· {{ daysSummary(item) }}</span>
+                    </span>
+                    <svg
+                      v-if="item.request_days.length > 1"
+                      class="ml-auto w-4 h-4 shrink-0 text-gray-400 transition-transform"
+                      :class="{ 'rotate-180': isDaysOpen(item) }"
+                      viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"
+                    >
+                      <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06z" clip-rule="evenodd" />
+                    </svg>
+                  </button>
                   <label
-                    v-for="d in item.request_days"
+                    v-for="d in (isDaysOpen(item) ? item.request_days : [])"
                     :key="d.date"
                     class="!mb-0 !font-normal flex items-center gap-3 px-3 py-2 text-sm"
                     :class="item.approval_status === 'pending' && canReview && d.status === 'pending' ? 'cursor-pointer hover:bg-gray-800/40' : ''"
@@ -296,9 +316,11 @@ function statusBadgeClass(status: string): string {
   return 'border-gray-500/40 text-gray-200 bg-gray-500/20'
 }
 
-async function loadRequests() {
+// silent: background refresh (polling, realtime, after a review) -> the list
+// is replaced in place, without the skeleton (it looked like a page reload)
+async function loadRequests(silent = false) {
   if (!authenticated.value) return
-  loading.value = true
+  if (!silent) loading.value = true
   try {
     const res: any = await $fetch(`/api/timeoff/requests?status=${statusFilter.value}`, {
     })
@@ -308,8 +330,11 @@ async function loadRequests() {
       selectedRequesterId.value = null
     }
   } catch (e: any) {
-    canReview.value = false
-    requests.value = []
+    // a failed background refresh keeps what is on screen
+    if (!silent) {
+      canReview.value = false
+      requests.value = []
+    }
   } finally {
     loading.value = false
   }
@@ -319,7 +344,7 @@ async function handleRealtimeUpdate(payload?: any, source = 'unknown') {
   if (realtimeRefreshing.value) return
   realtimeRefreshing.value = true
   try {
-    await loadRequests()
+    await loadRequests(true)
   } finally {
     realtimeRefreshing.value = false
   }
@@ -395,6 +420,25 @@ function toggleDay(item: any, date: string) {
     [item.id]: current.includes(date) ? current.filter((d) => d !== date) : [...current, date],
   }
 }
+// Several days: the list starts collapsed (kept per request across reloads/polling)
+const openDays = ref<Record<number, boolean>>({})
+const isDaysOpen = (item: any) => (item?.request_days?.length || 0) < 2 || Boolean(openDays.value[item.id])
+function toggleDaysOpen(item: any) {
+  openDays.value = { ...openDays.value, [item.id]: !openDays.value[item.id] }
+}
+// collapsed header: "15/06 al 19/06" + how many approved / rejected
+function daysSummary(item: any): string {
+  const days: any[] = item?.request_days || []
+  if (!days.length) return ''
+  const dates = days.map((d) => d.date).sort()
+  const range = dates.length > 1 ? `${formatDay(dates[0])} al ${formatDay(dates[dates.length - 1])}` : formatDay(dates[0])
+  const approved = days.filter((d) => d.status === 'approved').length
+  const rejected = days.filter((d) => d.status === 'rejected').length
+  const parts = [range]
+  if (approved) parts.push(`${approved} aprobado${approved === 1 ? '' : 's'}`)
+  if (rejected) parts.push(`${rejected} rechazado${rejected === 1 ? '' : 's'}`)
+  return parts.join(' · ')
+}
 // "2026-06-15" -> "lun 15/06"
 const formatDay = (iso: string) => parseDate(iso)?.toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: '2-digit' }) ?? iso
 const dayKindLabel = (kind: string) => (kind === 'entry' ? 'Falta entrada' : kind === 'exit' ? 'Falta salida' : 'Entrada y salida')
@@ -424,7 +468,7 @@ async function review(id: number, decision: 'approved' | 'rejected', comment = '
     })
     delete dayChoices.value[id]
     closeReject()
-    await loadRequests()
+    await loadRequests(true)
   } catch (e: any) {
     actionError.value = e?.data?.message || 'No se pudo procesar la solicitud.'
   } finally {
@@ -460,7 +504,7 @@ onBeforeMount(async () => {
   await loadRequests()
   setupRealtimeListeners()
   pollingTimer = setInterval(() => {
-    void loadRequests()
+    void loadRequests(true)
   }, 12000)
 })
 

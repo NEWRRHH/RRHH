@@ -55,6 +55,29 @@
             <p class="mt-1 text-xs text-gray-500">Serás el administrador de la empresa y podrás crear los demás usuarios.</p>
           </div>
 
+          <!-- Company logo (optional): sidebar + browser tab icon -->
+          <div>
+            <span class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">Logo de la empresa <span class="normal-case text-gray-500">(opcional)</span></span>
+            <div class="flex items-center gap-3">
+              <div class="w-14 h-14 shrink-0 rounded-xl border border-gray-700 bg-gray-800 flex items-center justify-center overflow-hidden">
+                <img v-if="logoPreview" :src="logoPreview" alt="Vista previa del logo" class="w-full h-full object-contain" />
+                <svg v-else class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4-4a2 2 0 012.8 0l1.2 1.2a2 2 0 002.8 0L20 8M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+              </div>
+              <div class="min-w-0 flex-1">
+                <input ref="logoInput" id="company-logo" type="file" accept="image/png,image/jpeg,image/webp" class="hidden" @change="onLogoSelected" />
+                <div class="flex flex-wrap gap-2">
+                  <label for="company-logo" class="cursor-pointer px-3 py-1.5 rounded-lg border border-gray-700 text-sm text-gray-300 hover:bg-gray-800">
+                    {{ logoPreview ? 'Cambiar logo' : 'Subir logo' }}
+                  </label>
+                  <button v-if="logoPreview" type="button" class="px-3 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white" @click="clearLogo">Quitar</button>
+                </div>
+                <p class="mt-1 text-xs text-gray-500">PNG, JPG o WebP, máx. 1 MB. Mejor cuadrado: se usa como icono de la pestaña.</p>
+              </div>
+            </div>
+          </div>
+
           <!-- Name -->
           <div>
             <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">Tu nombre</label>
@@ -160,11 +183,38 @@ const form = ref({ company_name: '', name: '', email: '', password: '', password
 const errorMsg = ref('')
 const submitting = ref(false)
 
+// logo travels as a data: URL in the JSON body (validated again by the API)
+const logoInput = ref<HTMLInputElement | null>(null)
+const logoPreview = ref('')
+const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp']
+
+function clearLogo() {
+  logoPreview.value = ''
+  if (logoInput.value) logoInput.value.value = ''
+}
+
+function onLogoSelected(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  errorMsg.value = ''
+  if (!file) return
+  if (!LOGO_TYPES.includes(file.type)) {
+    errorMsg.value = 'El logo debe ser una imagen PNG, JPG o WebP.'
+    return clearLogo()
+  }
+  if (file.size > 1024 * 1024) {
+    errorMsg.value = 'El logo debe pesar como máximo 1 MB.'
+    return clearLogo()
+  }
+  const reader = new FileReader()
+  reader.onload = () => { logoPreview.value = String(reader.result || '') }
+  reader.readAsDataURL(file)
+}
+
 const onSubmit = async () => {
   errorMsg.value = ''
   submitting.value = true
   try {
-    await register(form.value)
+    await register({ ...form.value, logo: logoPreview.value || null })
     await router.push('/dashboard')
   } catch (err: any) {
     const data = err?.data

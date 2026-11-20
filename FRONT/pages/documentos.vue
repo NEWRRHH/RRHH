@@ -22,7 +22,14 @@
             <button v-for="tab in tabs" :key="tab.id" class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-2 rounded-lg text-sm transition"
               :class="activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'"
               @click="changeTab(tab.id)">
-              {{ tab.label }}
+              <span class="inline-flex items-center gap-1.5">
+                {{ tab.label }}
+                <span
+                  v-if="unreadByCategory[tab.id] > 0"
+                  class="min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-semibold leading-[18px] text-center"
+                  :aria-label="`${unreadByCategory[tab.id]} nuevo(s)`"
+                >{{ unreadByCategory[tab.id] }}</span>
+              </span>
             </button>
           </div>
 
@@ -76,6 +83,11 @@
                 </button>
               </div>
             </form>
+            <!-- monthly attendance summaries (PDF): generated automatically by the system -->
+            <div v-else-if="activeTab === 'attendance'" class="rounded-xl border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-sm text-blue-100">
+              Al terminar cada mes el sistema genera automáticamente tu resumen de asistencia en PDF (fichajes, horas
+              trabajadas frente a las teóricas, vacaciones, festivos y ausencias), lo deja aquí y te lo envía por email.
+            </div>
             <div v-else class="rounded-xl border border-amber-600/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
               {{ !canUploadDocs ? 'No tienes permisos para subir documentos.' : 'Las nóminas las carga RRHH y aparecen aquí automáticamente.' }}
             </div>
@@ -113,7 +125,10 @@
                   </svg>
                 </div>
                 <div class="min-w-0">
-                  <div class="truncate">{{ d.original_name || d.filename }}</div>
+                  <div class="flex items-center gap-2 min-w-0">
+                    <span class="truncate">{{ d.original_name || d.filename }}</span>
+                    <span v-if="!d.read_at" class="shrink-0 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-red-600 text-white">Nueva</span>
+                  </div>
                   <div class="text-xs text-gray-500 truncate">{{ d.description || '-' }}</div>
                   <div class="sm:hidden text-[11px] text-gray-500 truncate">{{ formatDate(d.created_at) }} · {{ formatSize(d.size) }}</div>
                 </div>
@@ -144,8 +159,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeMount, onBeforeUnmount, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onBeforeMount, onBeforeUnmount, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import AppSidebar from '../components/AppSidebar.vue'
 import AttendanceButton from '../components/AttendanceButton.vue'
@@ -156,18 +171,23 @@ definePageMeta({ auth: true })
 declare const $fetch: any
 declare const process: any
 
-const { authenticated, fetchUser, logout, apiBase, user } = useAuth()
+const { authenticated, fetchUser, logout, apiBase, user, unreadDocuments, lastDocumentsChange } = useAuth()
+// unseen documents per tab (red dot); pushed in real time (DocumentsUpdated)
+const unreadByCategory = ref<Record<string, number>>({})
 const router = useRouter()
+const route = useRoute()
 const sidebar = ref<{ open: boolean } | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 
 const loading = ref(true)
-const tabs: Array<{ id: 'medical' | 'receipt' | 'payroll'; label: string }> = [
-  { id: 'medical', label: 'Certificados medicos' },
+type DocTab = 'medical' | 'receipt' | 'payroll' | 'attendance'
+const tabs: Array<{ id: DocTab; label: string }> = [
+  { id: 'medical', label: 'Certificados médicos' },
   { id: 'receipt', label: 'Comprobantes' },
-  { id: 'payroll', label: 'Nominas' },
+  { id: 'payroll', label: 'Nóminas' },
+  { id: 'attendance', label: 'Asistencia' },
 ]
-const activeTab = ref<'medical' | 'receipt' | 'payroll'>('medical')
+const activeTab = ref<DocTab>('medical')
 const documents = ref<any[]>([])
 const downloadingId = ref<number | null>(null)
 const description = ref('')
@@ -176,7 +196,7 @@ const uploading = ref(false)
 
 const { $swal } = useNuxtApp()
 const currentTabTitle = computed(() => tabs.find((t) => t.id === activeTab.value)?.label || '')
-const canUploadInTab = computed(() => activeTab.value !== 'payroll')
+const canUploadInTab = computed(() => activeTab.value !== 'payroll' && activeTab.value !== 'attendance')
 const canUploadDocs = computed(() => {
   const currentUser: any = user.value || {}
   return Boolean(currentUser?.can_upload_documents) || (Array.isArray(currentUser?.permissions) && currentUser.permissions.includes('documents.upload'))
@@ -191,7 +211,7 @@ const onLogout = async () => {
   router.push('/login')
 }
 
-function changeTab(tabId: 'medical' | 'receipt' | 'payroll') {
+function changeTab(tabId: DocTab) {
   activeTab.value = tabId
   description.value = ''
   selectedFile.value = null
@@ -208,16 +228,46 @@ function onFileSelected(e: Event) {
   selectedFile.value = input.files?.[0] || null
 }
 
-async function loadDocuments() {
+async function loadUnreadByCategory() {
+  try {
+    const res: any = await $fetch('/api/documents/unread')
+    unreadByCategory.value = res?.by_category || {}
+    unreadDocuments.value = Number(res?.unread) || 0
+  } catch {
+    unreadByCategory.value = {}
+  }
+}
+
+async function markTabRead(category: string) {
+  try {
+    const res: any = await $fetch('/api/documents/read', { method: 'POST', body: { category } })
+    unreadDocuments.value = Number(res?.unread) || 0
+    unreadByCategory.value = { ...unreadByCategory.value, [category]: 0 }
+  } catch (e) {
+    console.error('mark documents read failed', e)
+  }
+}
+
+// a payslip / summary arrived while this page is open: update the dots and
+// the current tab in place (no skeleton, no tab switch)
+watch(lastDocumentsChange, async () => {
+  await loadUnreadByCategory()
+  await loadDocuments(true)
+})
+
+// silent: background refresh, the list is replaced without the skeleton
+async function loadDocuments(silent = false) {
   if (!authenticated.value) return
-  loading.value = true
+  if (!silent) loading.value = true
   try {
     const res: any = await $fetch(`/api/documents?category=${activeTab.value}`, {
     })
     documents.value = res?.documents || []
+    // opening the tab = seen; rows keep the "Nueva" tag until the next visit
+    if (documents.value.some((d: any) => !d.read_at)) void markTabRead(activeTab.value)
   } catch (e) {
     console.error('documents load failed', e)
-    documents.value = []
+    if (!silent) documents.value = []
   } finally {
     loading.value = false
   }
@@ -323,6 +373,11 @@ onBeforeMount(async () => {
     return router.push('/dashboard')
   }
 
+  // /documentos?tab=payroll (dashboard card / badge) opens that tab
+  const wanted = String(route.query.tab || '')
+  if (tabs.some((t) => t.id === wanted)) activeTab.value = wanted as DocTab
+
+  void loadUnreadByCategory()
   await loadDocuments()
 })
 

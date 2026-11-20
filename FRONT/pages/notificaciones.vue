@@ -49,12 +49,11 @@
               class="px-4 py-2 cursor-pointer hover:bg-gray-700 text-white flex items-center gap-2"
               :class="{ 'bg-gray-800': currentPartner && currentPartner.id === u.id }"
             >
-              <img
-                v-if="u.photo"
-                :src="u.photo"
-                class="w-6 h-6 rounded-full object-cover"
-                alt="avatar"
-              />
+              <span class="relative shrink-0">
+                <img v-if="u.photo" :src="u.photo" class="w-6 h-6 rounded-full object-cover" alt="" />
+                <span v-else class="w-6 h-6 rounded-full bg-gray-700 flex items-center justify-center text-[10px] font-semibold text-gray-200">{{ (u.name || '?').charAt(0).toUpperCase() }}</span>
+                <PresenceBadge :user-id="u.id" size="xs" corner="bottom-right" />
+              </span>
               <span>{{ u.name }}</span>
             </li>
             <li v-if="allUsers.length === 0" class="p-4 text-gray-400">No hay usuarios</li>
@@ -71,12 +70,11 @@
               :class="{ 'bg-gray-800': currentPartner && currentPartner.id === conv.user.id }"
             >
               <div class="flex items-center gap-2 truncate">
-                <img
-                  v-if="conv.user.photo"
-                  :src="conv.user.photo"
-                  class="w-6 h-6 rounded-full object-cover"
-                  alt="avatar"
-                />
+                <span class="relative shrink-0">
+                <img v-if="conv.user.photo" :src="conv.user.photo" class="w-6 h-6 rounded-full object-cover" alt="" />
+                <span v-else class="w-6 h-6 rounded-full bg-gray-700 flex items-center justify-center text-[10px] font-semibold text-gray-200">{{ (conv.user.name || '?').charAt(0).toUpperCase() }}</span>
+                <PresenceBadge :user-id="conv.user.id" size="xs" corner="bottom-right" />
+              </span>
                 <span class="truncate">{{ conv.user.name }}</span>
               </div>
               <span

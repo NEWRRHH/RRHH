@@ -16,8 +16,17 @@
   >
     <!-- Header -->
     <div class="h-16 shrink-0 flex items-center gap-2 px-4 border-b border-gray-800 overflow-hidden">
-      <div class="relative w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center shrink-0">
-        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <!-- logo -> dashboard -->
+      <NuxtLink
+        to="/dashboard"
+        class="relative w-7 h-7 rounded-lg flex items-center justify-center shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+        :class="companyLogo ? 'bg-white' : 'bg-blue-600'"
+        :title="compact ? 'Ir al dashboard' : undefined"
+        aria-label="Ir al dashboard"
+        @click="isMobile && (open = false)"
+      >
+        <img v-if="companyLogo" :src="companyLogo" :alt="companyName" class="w-full h-full rounded-lg object-contain" />
+        <svg v-else class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
         </svg>
         <!-- Clock-in status dot (compact mode); pulses while live updates are connected -->
@@ -26,9 +35,9 @@
           :class="['absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-gray-900 transition-colors duration-300', statusDotClass]"
           :title="statusDotTitle"
         />
-      </div>
+      </NuxtLink>
       <div v-if="!compact" class="flex items-center gap-2 min-w-0">
-        <span class="text-white font-bold text-base tracking-tight truncate">RRHH</span>
+        <NuxtLink to="/dashboard" class="text-white font-bold text-base tracking-tight truncate hover:text-blue-300" @click="isMobile && (open = false)">RRHH</NuxtLink>
         <span
           :class="['inline-block w-2 h-2 rounded-full shrink-0 transition-colors duration-300', statusDotClass]"
           :title="statusDotTitle"
@@ -77,9 +86,12 @@
         :class="compact ? 'justify-center' : ''"
         @click="goToProfile"
       >
-        <div class="w-7 h-7 rounded-full overflow-hidden bg-gray-700 flex items-center justify-center text-[11px] font-semibold shrink-0">
-          <img v-if="(user as any)?.photo || (user as any)?.profile_photo_path" :src="(user as any)?.photo || (user as any)?.profile_photo_path" class="w-full h-full object-cover" />
-          <span v-else>{{ userInitial }}</span>
+        <div class="relative shrink-0">
+          <div class="w-7 h-7 rounded-full overflow-hidden bg-gray-700 flex items-center justify-center text-[11px] font-semibold">
+            <img v-if="(user as any)?.photo || (user as any)?.profile_photo_path" :src="(user as any)?.photo || (user as any)?.profile_photo_path" class="w-full h-full object-cover" />
+            <span v-else>{{ userInitial }}</span>
+          </div>
+          <PresenceBadge :user-id="(user as any)?.id" size="xs" corner="bottom-right" />
         </div>
         <span v-if="!compact" class="truncate">Mi perfil</span>
       </button>
@@ -128,6 +140,7 @@ onMounted(async () => {
   try {
     await fetchUser()
     await fetchUnread()
+    await fetchUnreadDocuments()
     await fetchRequestsBadge()
     setupRequestsRealtime()
     requestsTimer = setInterval(() => {
@@ -140,7 +153,7 @@ onMounted(async () => {
 
 const route = useRoute()
 const router = useRouter()
-const { fetchUser, unreadNotifications, fetchUnread, user, authenticated, apiBase, realtimeInstance, realtimeConnected } = useAuth()
+const { fetchUser, unreadNotifications, fetchUnread, unreadDocuments, fetchUnreadDocuments, user, authenticated, apiBase, realtimeInstance, realtimeConnected } = useAuth()
 
 const unreadCount = computed(() => unreadNotifications.value || 0)
 
@@ -170,6 +183,13 @@ const canSeeVacations = computed(() => {
   const u: any = user.value || {}
   return Boolean(u?.can_view_vacations) || (Array.isArray(u?.permissions) && u.permissions.includes('vacations.view'))
 })
+const companyName = computed(() => String((user.value as any)?.company?.name || ''))
+const companyLogo = computed(() => {
+  const logo = String((user.value as any)?.company?.logo || '')
+  if (!logo) return ''
+  return logo.startsWith('/') ? `${apiBase}${logo}` : logo
+})
+const canRequestRemoteWork = computed(() => Boolean((user.value as any)?.can_request_remote_work))
 const canSeeRequests = computed(() => {
   const u: any = user.value || {}
   return Boolean(u?.can_view_requests) || (Array.isArray(u?.permissions) && u.permissions.includes('requests.view'))
@@ -177,6 +197,11 @@ const canSeeRequests = computed(() => {
 const canSeeDocuments = computed(() => {
   const u: any = user.value || {}
   return Boolean(u?.can_view_documents) || (Array.isArray(u?.permissions) && u.permissions.includes('documents.view'))
+})
+// Nóminas module: upload the gestoría payslips and send them (payroll.manage)
+const canManagePayroll = computed(() => {
+  const u: any = user.value || {}
+  return Boolean(u?.can_manage_payroll) || (Array.isArray(u?.permissions) && u.permissions.includes('payroll.manage'))
 })
 const canSeeReports = computed(() => {
   const u: any = user.value || {}
@@ -281,6 +306,15 @@ const navItems = computed(() => [
       <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3M4 11h16M6 5h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2z"/>
     </svg>`
   }] : []),
+  // only modalidad "a pedido" (fixed office / remote have nothing to request)
+  ...(canRequestRemoteWork.value ? [{
+    label: 'Teletrabajo',
+    to: '/teletrabajo',
+    active: route.path.startsWith('/teletrabajo'),
+    icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l9-8 9 8M5 10v10h5v-6h4v6h5V10"/>
+    </svg>`
+  }] : []),
   // Festivos: managed from Configuración > Festivos
   ...(canSeeRequests.value ? [{
     label: 'Solicitudes',
@@ -291,13 +325,23 @@ const navItems = computed(() => [
     </svg>`,
     badge: requestsCount
   }] : []),
+  ...(canManagePayroll.value ? [{
+    label: 'Nóminas',
+    to: '/nominas',
+    active: route.path.startsWith('/nominas'),
+    icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+    </svg>`
+  }] : []),
   ...(canSeeDocuments.value ? [{
     label: 'Documentos',
     to: '/documentos',
     active: route.path.startsWith('/documentos'),
     icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" d="M7 7V3h10v4m-9 4h8m-8 4h8m-9 6h10a2 2 0 002-2V7H5v12a2 2 0 002 2z"/>
-    </svg>`
+    </svg>`,
+    // new payslips / documents, updated in real time
+    badge: unreadDocuments
   }] : []),
   ...(canSeeReports.value ? [{
     label: 'Reportes',
