@@ -970,6 +970,9 @@ class AttendanceController extends Controller
     public function requestAttendanceDays(Request $request)
     {
         $user = $request->user();
+        if (! $user->hasPermission('attendance.request')) {
+            return response()->json(['message' => 'No tienes permiso para solicitar correcciones de fichaje.'], 403);
+        }
         $data = $request->validate([
             'dates' => 'required|array|min:1|max:62',
             'dates.*' => 'required|date_format:Y-m-d|distinct',
@@ -1068,6 +1071,9 @@ class AttendanceController extends Controller
         $user = $request->user();
         if (! $user) {
             return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+        if (! $user->hasPermission('attendance.request')) {
+            return response()->json(['message' => 'No tienes permiso para solicitar correcciones de fichaje.'], 403);
         }
 
         $data = $request->validate([

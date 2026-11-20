@@ -748,7 +748,12 @@ function workedColorClass(seconds?: number) {
 
 // ── Ausencias: ask RRHH to regularise several days in one request ──
 const selectedAbsenceDates = ref<string[]>([])
-const canSelectAbsence = (row: any) => isOwnSelectedUser.value && !row?.attendance_request_pending
+// attendance.request: ask RRHH to fix the clock-in of a day
+const canRequestAttendance = computed(() => {
+  const u: any = user.value || {}
+  return Boolean(u?.can_request_attendance) || (Array.isArray(u?.permissions) && u.permissions.includes('attendance.request'))
+})
+const canSelectAbsence = (row: any) => canRequestAttendance.value && isOwnSelectedUser.value && !row?.attendance_request_pending
 const requestableAbsences = computed(() => absencesRows.value.filter(canSelectAbsence))
 const allAbsencesSelected = computed(() =>
   requestableAbsences.value.length > 0 && selectedAbsenceDates.value.length === requestableAbsences.value.length,

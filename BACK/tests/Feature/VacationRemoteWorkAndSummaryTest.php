@@ -190,4 +190,35 @@ class VacationRemoteWorkAndSummaryTest extends TestCase
         ])->assertOk()->assertJsonPath('settings.vacation_next_year_days', 15);
         $this->getJson('/api/settings/policies')->assertJsonPath('settings.attendance_summary_email', false);
     }
+
+    public function test_remote_work_attendance_request_and_policies_permissions(): void
+    {
+        // the Empleado role starts with remote work and attendance requests, not policies
+        Sanctum::actingAs($this->employee);
+        $this->getJson('/api/user')
+            ->assertJsonPath('can_request_remote_work', true)
+            ->assertJsonPath('can_request_attendance', true)
+            ->assertJsonPath('can_manage_policies', false);
+
+        // RRHH takes them away from the role
+        $roleId = (int) $this->employee->role_id;
+        $codes = ['remote_work.view', 'remote_work.request', 'attendance.request'];
+        \Illuminate\Support\Facades\DB::table('role_permission')
+            ->where('role_id', $roleId)
+            ->whereIn('permission_id', \Illuminate\Support\Facades\DB::table('permissions')->whereIn('code', $codes)->pluck('id'))
+            ->delete();
+        $employee = User::withoutGlobalScopes()->findOrFail($this->employee->id); // fresh permission cache
+        Sanctum::actingAs($employee);
+
+        $this->getJson('/api/user')->assertJsonPath('can_request_remote_work', false)->assertJsonPath('can_request_attendance', false);
+        $this->getJson('/api/remote-work?year=2026')->assertForbidden();
+        $this->postJson('/api/remote-work', ['dates' => ['2026-11-23']])->assertForbidden();
+        $this->postJson('/api/attendance/requests/days', ['dates' => ['2026-11-17']])->assertForbidden();
+
+        // a role with policies.manage (not admin) can edit the policies
+        $policies = \Illuminate\Support\Facades\DB::table('permissions')->where('code', 'policies.manage')->value('id');
+        \Illuminate\Support\Facades\DB::table('role_permission')->insert(['role_id' => $roleId, 'permission_id' => $policies, 'created_at' => now(), 'updated_at' => now()]);
+        Sanctum::actingAs(User::withoutGlobalScopes()->findOrFail($this->employee->id));
+        $this->putJson('/api/settings/policies', ['vacation_next_year_days' => 5, 'attendance_summary_email' => true])->assertOk();
+    }
 }

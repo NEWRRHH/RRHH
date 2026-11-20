@@ -38,6 +38,10 @@ final class DefaultRoles
         'dashboard.manage',
         'employees.view_as',
         'payroll.manage',
+        'remote_work.view',
+        'remote_work.request',
+        'attendance.request',
+        'policies.manage',
     ];
 
     /** Self-service permissions of a regular employee. */
@@ -48,6 +52,9 @@ final class DefaultRoles
         'requests.view',
         'documents.view',
         'documents.upload',
+        'remote_work.view',
+        'remote_work.request',
+        'attendance.request',
     ];
 
     /**

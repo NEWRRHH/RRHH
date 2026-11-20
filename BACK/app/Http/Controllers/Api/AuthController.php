@@ -198,13 +198,17 @@ class AuthController extends Controller
             || $user->hasPermission('schedules.manage')
             || $user->hasPermission('teams.manage')
             || $user->hasPermission('dashboard.manage')
-            || $user->hasPermission('holidays.manage');
+            || $user->hasPermission('holidays.manage')
+            || $user->hasPermission('policies.manage');
         $payload['can_view_vacations'] = $user->hasPermission('vacations.view');
         $payload['can_create_vacations'] = $user->hasPermission('vacations.create');
         $payload['can_edit_vacations'] = $user->hasPermission('vacations.edit');
         // Teletrabajo view: only modalidad "a pedido" (work_mode null)
-        $payload['can_request_remote_work'] = $user->hasPermission('vacations.view')
+        $payload['can_request_remote_work'] = $user->hasPermission('remote_work.view')
             && \App\Http\Controllers\Api\RemoteWorkController::blockReason($user) === null;
+        // Reportes > Ausencias: ask RRHH to fix a clock-in
+        $payload['can_request_attendance'] = $user->hasPermission('attendance.request');
+        $payload['can_manage_policies'] = $user->hasPermission('policies.manage');
         $payload['can_view_requests'] = $user->hasPermission('requests.view');
         $payload['can_view_documents'] = $user->hasPermission('documents.view');
         $payload['can_upload_documents'] = $user->hasPermission('documents.upload');

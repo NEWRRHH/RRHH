@@ -828,6 +828,13 @@ const canManageHolidays = computed(() => {
   return permissions.includes('holidays.manage')
 })
 
+const canManagePolicies = computed(() => {
+  const currentUser: any = user.value || {}
+  if (currentUser?.can_manage_policies) return true
+  const permissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : []
+  return permissions.includes('policies.manage')
+})
+
 const tabs = computed(() => {
   if (isAdminUser.value) {
     return [
@@ -852,8 +859,8 @@ const tabs = computed(() => {
   if (canManageTeams.value) list.push({ id: 'equipos', label: 'Equipos' })
   // company holidays: RRHH and admins (holidays.manage)
   if (canManageHolidays.value) list.push({ id: 'holidays', label: 'Festivos' })
-  // vacation window + attendance summary (same people as holidays: RRHH)
-  if (canManageHolidays.value) list.push({ id: 'policies', label: 'Políticas' })
+  // vacation window + summary email (policies.manage)
+  if (canManagePolicies.value) list.push({ id: 'policies', label: 'Empresa y políticas' })
   return list
 })
 
@@ -896,6 +903,11 @@ const GROUP_LABELS: Record<string, string> = {
   schedules: 'Jornadas',
   teams: 'Equipos',
   announcements: 'Comunicados',
+  remote_work: 'Teletrabajo',
+  holidays: 'Festivos',
+  dashboard: 'Dashboard',
+  payroll: 'Nóminas',
+  policies: 'Empresa y políticas',
 }
 
 const permissionGroups = computed(() => {

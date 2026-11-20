@@ -32,8 +32,8 @@ class RemoteWorkController extends Controller
     /** Why the user can't request remote work, or null when they can. */
     public static function blockReason(User $user): ?string
     {
-        if (! $user->hasPermission('vacations.create')) {
-            return 'No tienes permisos para crear solicitudes.';
+        if (! $user->hasPermission('remote_work.request')) {
+            return 'No tienes permiso para solicitar teletrabajo.';
         }
         if ($user->work_mode === User::WORK_MODE_OFFICE) {
             return 'Tu modalidad de trabajo es solo oficina: no puedes solicitar teletrabajo.';
@@ -51,7 +51,7 @@ class RemoteWorkController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        if (! $user->hasPermission('vacations.view')) {
+        if (! $user->hasPermission('remote_work.view')) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
@@ -119,7 +119,7 @@ class RemoteWorkController extends Controller
     {
         $user = $request->user();
         if ($reason = self::blockReason($user)) {
-            return response()->json(['message' => $reason], $user->hasPermission('vacations.create') ? 422 : 403);
+            return response()->json(['message' => $reason], $user->hasPermission('remote_work.request') ? 422 : 403);
         }
 
         $data = $request->validate([
@@ -212,6 +212,9 @@ class RemoteWorkController extends Controller
     public function destroy(Request $request, int $id)
     {
         $user = $request->user();
+        if (! $user->hasPermission('remote_work.request')) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
         $row = Event::table()
             ->join('event_types', 'events.event_type_id', '=', 'event_types.id')
             ->where('events.id', $id)

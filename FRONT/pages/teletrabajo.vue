@@ -381,7 +381,7 @@ const openSidebar = () => {
 onMounted(async () => {
   await fetchUser()
   const u: any = user.value || {}
-  const canView = Boolean(u?.can_view_vacations) || (Array.isArray(u?.permissions) && u.permissions.includes('vacations.view'))
+  const canView = Array.isArray(u?.permissions) && u.permissions.includes('remote_work.view')
   if (!canView) {
     router.push('/dashboard')
     return

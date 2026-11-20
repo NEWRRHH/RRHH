@@ -18,7 +18,7 @@ class HrPolicyController extends Controller
 {
     private function canManage(User $user): bool
     {
-        return $user->isAdmin() || $user->hasPermission('holidays.manage');
+        return $user->hasPermission('policies.manage'); // admins always
     }
 
     public function show(Request $request)
