@@ -28,6 +28,8 @@ final class FileStorage
     public const AVATARS = 'avatars';
     /** payslips dropped per employee: companies/{id}/nominas/{employee}/ (see PayrollSync) */
     public const PAYROLL = 'nominas';
+    /** monthly attendance summaries (PDF): companies/{slug}/asistencia/{employee}/ */
+    public const ATTENDANCE = 'asistencia';
 
     public static function diskName(): string
     {
@@ -94,6 +96,70 @@ final class FileStorage
         $path = $file->storePublicly(self::folder($companyId, self::AVATARS), self::publicDiskName());
 
         return self::avatarUrl($path);
+    }
+
+    /** company logo (sidebar + favicon), public: companies/{slug}/branding/ */
+    public const BRANDING = 'branding';
+
+    public const LOGO_MIMES = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp'];
+    public const LOGO_MAX_BYTES = 1024 * 1024;
+
+    /**
+     * Validates and stores a company logo (raw bytes, from an upload or a
+     * data: URL) and returns its public URL. SVG is not accepted: served
+     * from our domain it could carry scripts.
+     *
+     * @throws \InvalidArgumentException with a message for the user
+     */
+    public static function storeCompanyLogo(string $bytes, int $companyId): string
+    {
+        $mime = self::assertValidLogo($bytes);
+        $path = self::folder($companyId, self::BRANDING) . '/logo-' . Str::random(12) . '.' . self::LOGO_MIMES[$mime];
+        self::publicDisk()->put($path, $bytes, 'public');
+
+        return self::avatarUrl($path);
+    }
+
+    /**
+     * @return string the mime type
+     * @throws \InvalidArgumentException
+     */
+    public static function assertValidLogo(string $bytes): string
+    {
+        if ($bytes === '' || strlen($bytes) > self::LOGO_MAX_BYTES) {
+            throw new \InvalidArgumentException('El logo debe pesar como máximo 1 MB.');
+        }
+        $mime = (new \finfo(FILEINFO_MIME_TYPE))->buffer($bytes) ?: '';
+        if (! isset(self::LOGO_MIMES[$mime]) || @getimagesizefromstring($bytes) === false) {
+            throw new \InvalidArgumentException('El logo debe ser una imagen PNG, JPG o WebP.');
+        }
+
+        return $mime;
+    }
+
+    /** "data:image/png;base64,...." -> raw bytes (null when it isn't one). */
+    public static function decodeDataUrl(string $value): ?string
+    {
+        if (! preg_match('#^data:image/[a-z0-9.+-]+;base64,(.+)$#i', trim($value), $m)) {
+            return null;
+        }
+        $bytes = base64_decode($m[1], true);
+
+        return $bytes === false ? null : $bytes;
+    }
+
+    /** Removes a logo stored by storeCompanyLogo (given its URL). */
+    public static function deleteCompanyLogo(?string $url): void
+    {
+        if (! $url) {
+            return;
+        }
+        $path = self::publicDiskName() === 'public'
+            ? ltrim(Str::after($url, '/storage/'), '/')
+            : ltrim((string) parse_url($url, PHP_URL_PATH), '/');
+        if (str_contains($path, '/' . self::BRANDING . '/')) {
+            self::publicDisk()->delete($path);
+        }
     }
 
     public static function avatarUrl(string $path): string

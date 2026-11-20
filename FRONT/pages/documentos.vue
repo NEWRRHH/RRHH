@@ -83,6 +83,11 @@
                 </button>
               </div>
             </form>
+            <!-- monthly attendance summaries (PDF): generated automatically by the system -->
+            <div v-else-if="activeTab === 'attendance'" class="rounded-xl border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-sm text-blue-100">
+              Al terminar cada mes el sistema genera automáticamente tu resumen de asistencia en PDF (fichajes, horas
+              trabajadas frente a las teóricas, vacaciones, festivos y ausencias), lo deja aquí y te lo envía por email.
+            </div>
             <div v-else class="rounded-xl border border-amber-600/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
               {{ !canUploadDocs ? 'No tienes permisos para subir documentos.' : 'Las nóminas las carga RRHH y aparecen aquí automáticamente.' }}
             </div>
@@ -174,12 +179,14 @@ const sidebar = ref<{ open: boolean } | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 
 const loading = ref(true)
-const tabs: Array<{ id: 'medical' | 'receipt' | 'payroll'; label: string }> = [
+type DocTab = 'medical' | 'receipt' | 'payroll' | 'attendance'
+const tabs: Array<{ id: DocTab; label: string }> = [
   { id: 'medical', label: 'Certificados médicos' },
   { id: 'receipt', label: 'Comprobantes' },
   { id: 'payroll', label: 'Nóminas' },
+  { id: 'attendance', label: 'Asistencia' },
 ]
-const activeTab = ref<'medical' | 'receipt' | 'payroll'>('medical')
+const activeTab = ref<DocTab>('medical')
 const documents = ref<any[]>([])
 const downloadingId = ref<number | null>(null)
 const description = ref('')
@@ -188,7 +195,7 @@ const uploading = ref(false)
 
 const { $swal } = useNuxtApp()
 const currentTabTitle = computed(() => tabs.find((t) => t.id === activeTab.value)?.label || '')
-const canUploadInTab = computed(() => activeTab.value !== 'payroll')
+const canUploadInTab = computed(() => activeTab.value !== 'payroll' && activeTab.value !== 'attendance')
 const canUploadDocs = computed(() => {
   const currentUser: any = user.value || {}
   return Boolean(currentUser?.can_upload_documents) || (Array.isArray(currentUser?.permissions) && currentUser.permissions.includes('documents.upload'))
@@ -203,7 +210,7 @@ const onLogout = async () => {
   router.push('/login')
 }
 
-function changeTab(tabId: 'medical' | 'receipt' | 'payroll') {
+function changeTab(tabId: DocTab) {
   activeTab.value = tabId
   description.value = ''
   selectedFile.value = null

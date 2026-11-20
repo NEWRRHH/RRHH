@@ -12,6 +12,8 @@ use App\Http\Controllers\Admin\PermissionCatalogController as AdminPermissionCat
 use App\Http\Controllers\Admin\PlanController as AdminPlans;
 use App\Http\Controllers\Admin\UserController as AdminUsers;
 use App\Http\Controllers\Api\AttendanceController;
+use App\Http\Controllers\Api\HrPolicyController;
+use App\Http\Controllers\Api\RemoteWorkController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\TimeOffController;
@@ -80,6 +82,9 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::post('/attendance/pause', [AttendanceController::class, 'pauseAttendance']);
     Route::post('/attendance/resume', [AttendanceController::class, 'resumeAttendance']);
     Route::get('/attendance/status', [AttendanceController::class, 'attendanceStatus']);
+    // clock-ins closed by the system (forgot to clock out): dashboard notice
+    Route::get('/attendance/auto-closed', [AttendanceController::class, 'autoClosed']);
+    Route::post('/attendance/auto-closed/seen', [AttendanceController::class, 'autoClosedSeen']);
     Route::get('/attendance/current', [AttendanceController::class, 'currentAttendance']);
     Route::post('/attendance/stop', [AttendanceController::class, 'stopAttendance']);
     Route::get('/attendance/info', [AttendanceController::class, 'attendanceInfo']);
@@ -145,6 +150,17 @@ Route::middleware(\App\Http\Middleware\Cors::class)->group(function () {
     Route::put('/timeoff/events/{id}', [TimeOffController::class, 'update']);
     Route::get('/timeoff/requests', [TimeOffController::class, 'requests']);
     Route::post('/timeoff/requests/{id}/review', [TimeOffController::class, 'review']);
+    // Teletrabajo: own view, independent of the vacation days
+    Route::get('/remote-work', [RemoteWorkController::class, 'index']);
+    Route::post('/remote-work', [RemoteWorkController::class, 'store']);
+    Route::delete('/remote-work/{id}', [RemoteWorkController::class, 'destroy'])->whereNumber('id');
+
+    // company HR policies (the monthly attendance summary itself is automatic: attendance:summaries)
+    Route::get('/settings/policies', [HrPolicyController::class, 'show']);
+    Route::put('/settings/policies', [HrPolicyController::class, 'update']);
+    // company logo (sidebar + favicon), company admin
+    Route::post('/settings/company-logo', [HrPolicyController::class, 'uploadLogo']);
+    Route::delete('/settings/company-logo', [HrPolicyController::class, 'deleteLogo']);
 
     // documents center
     Route::get('/documents', [DocumentController::class, 'index']);

@@ -18,7 +18,10 @@ class Company extends Model
     public const STATUS_ACTIVE = 'active';
     public const STATUS_SUSPENDED = 'suspended';
 
-    protected $fillable = ['name', 'slug', 'status', 'plan', 'country_code'];
+    protected $fillable = ['name', 'logo', 'slug', 'status', 'plan', 'country_code', 'settings'];
+
+    /** HR policies (see App\Support\CompanySettings for keys and defaults) */
+    protected $casts = ['settings' => 'array'];
 
     /** companies.plan stores the plan code */
     public function planModel(): BelongsTo

@@ -59,10 +59,13 @@ class PresenceTest extends TestCase
     private function requestAndApprove(User $who, string $code): void
     {
         Sanctum::actingAs($who);
-        $id = $this->postJson('/api/timeoff/events', [
-            'event_type_id' => $this->type($code),
-            'start_date' => '2026-06-17', 'end_date' => '2026-06-17', 'all_day' => true,
-        ])->assertOk()->json('event_id');
+        // remote work has its own view (Teletrabajo), the rest goes through Vacaciones
+        $id = $code === EventType::REMOTE_WORK
+            ? $this->postJson('/api/remote-work', ['dates' => ['2026-06-17']])->assertOk()->json('event_ids.0')
+            : $this->postJson('/api/timeoff/events', [
+                'event_type_id' => $this->type($code),
+                'start_date' => '2026-06-17', 'end_date' => '2026-06-17', 'all_day' => true,
+            ])->assertOk()->json('event_id');
 
         Sanctum::actingAs($this->admin);
         $this->postJson("/api/timeoff/requests/{$id}/review", ['decision' => 'approved'])->assertOk();
@@ -76,18 +79,12 @@ class PresenceTest extends TestCase
         $this->onVacation->forceFill(['work_mode' => User::WORK_MODE_OFFICE])->save();
 
         Sanctum::actingAs($this->remote);
-        $types = collect($this->getJson('/api/timeoff/calendar?year=2026')->json('event_types'))->pluck('code');
-        $this->assertNotContains(EventType::REMOTE_WORK, $types);
-        $this->postJson('/api/timeoff/events', [
-            'event_type_id' => $this->type(EventType::REMOTE_WORK),
-            'start_date' => '2026-06-18', 'end_date' => '2026-06-18', 'all_day' => true,
-        ])->assertStatus(422);
+        $this->getJson('/api/user')->assertJsonPath('can_request_remote_work', false);
+        $this->postJson('/api/remote-work', ['dates' => ['2026-06-18']])->assertStatus(422);
 
         Sanctum::actingAs($this->onVacation);
-        $this->postJson('/api/timeoff/events', [
-            'event_type_id' => $this->type(EventType::REMOTE_WORK),
-            'start_date' => '2026-06-18', 'end_date' => '2026-06-18', 'all_day' => true,
-        ])->assertStatus(422)->assertJsonPath('message', 'Tu modalidad de trabajo es solo oficina: no puedes solicitar teletrabajo.');
+        $this->postJson('/api/remote-work', ['dates' => ['2026-06-18']])
+            ->assertStatus(422)->assertJsonPath('message', 'Tu modalidad de trabajo es solo oficina: no puedes solicitar teletrabajo.');
         $this->postJson('/api/attendance/start')->assertOk();
 
         $presence = $this->getJson('/api/presence/today')->assertOk();
@@ -101,10 +98,11 @@ class PresenceTest extends TestCase
 
     public function test_remote_work_vacation_and_office_presence(): void
     {
-        // "Teletrabajo" is a request type of the Vacaciones screen (title = type)
+        // "Teletrabajo" has its own view: not a type of the Vacaciones screen
         Sanctum::actingAs($this->remote);
         $types = collect($this->getJson('/api/timeoff/calendar?year=2026')->json('event_types'))->pluck('code');
-        $this->assertContains(EventType::REMOTE_WORK, $types);
+        $this->assertNotContains(EventType::REMOTE_WORK, $types);
+        $this->getJson('/api/user')->assertJsonPath('can_request_remote_work', true);
 
         $this->requestAndApprove($this->remote, EventType::REMOTE_WORK);
         $this->requestAndApprove($this->onVacation, EventType::VACATION);

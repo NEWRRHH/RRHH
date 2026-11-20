@@ -69,3 +69,13 @@ Artisan::command('app:provision', function () {
 // every minute, so the employee gets the Documentos badge in real time
 // (DocumentsUpdated over WebSocket). Runs in the "scheduler" service.
 \Illuminate\Support\Facades\Schedule::command('nominas:sync')->everyMinute()->withoutOverlapping()->runInBackground();
+
+// Clock-ins of past days left open (forgot to clock out): closed at the end of
+// the employee's schedule with a note. Hourly, so it runs right after midnight.
+// Before the monthly summary, so the PDF never has an open day.
+\Illuminate\Support\Facades\Schedule::command('attendance:auto-close')->hourlyAt(1)->withoutOverlapping()->runInBackground();
+
+// Monthly attendance summary (PDF in Documentos > Asistencia + email) of the
+// month that just ended. Hourly but it only creates the missing ones: on the
+// 1st everybody gets theirs, and it catches up if the server was down.
+\Illuminate\Support\Facades\Schedule::command('attendance:summaries')->hourlyAt(10)->withoutOverlapping()->runInBackground();

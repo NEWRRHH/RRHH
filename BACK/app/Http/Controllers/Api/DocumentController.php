@@ -16,7 +16,8 @@ class DocumentController extends Controller
 {
     private function allowedCategories(): array
     {
-        return ['medical', 'receipt', 'payroll'];
+        // attendance: monthly attendance summaries (AttendanceSummaryPublisher), never uploaded by hand
+        return ['medical', 'receipt', 'payroll', 'attendance'];
     }
 
     public function index(Request $request)

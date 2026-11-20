@@ -26,6 +26,7 @@
       </header>
 
       <main ref="boardRoot" class="relative z-10 flex-1 p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-auto">
+        <AutoClosedNotice />
         <div class="flex flex-wrap items-center gap-3">
           <div class="bg-white/5 border border-white/5 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm">
             <div class="text-2xl text-blue-300 font-semibold">{{ data.stats?.users_count ?? 0 }}</div>
@@ -224,6 +225,7 @@ import HolidaysCard from '../components/HolidaysCard.vue'
 import AnnouncementsCard from '../components/AnnouncementsCard.vue'
 import DocumentsSummaryCard from '../components/DocumentsSummaryCard.vue'
 import AttendanceButton from '../components/AttendanceButton.vue'
+import AutoClosedNotice from '../components/AutoClosedNotice.vue'
 import UserMenu from '../components/UserMenu.vue'
 
 

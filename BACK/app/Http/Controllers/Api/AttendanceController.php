@@ -118,6 +118,12 @@ class AttendanceController extends Controller
             $user->save();
         }
 
+        // a clock-in of a past day left open is closed first (end of schedule +
+        // note), so today starts a new record instead of continuing yesterday's
+        if ($user->company_id) {
+            app(\App\Services\AttendanceAutoClose::class)->closeCompany((int) $user->company_id, (int) $user->id);
+        }
+
         // update or create an attendance record
         $open = Attendance::table()
             ->where('user_id', $user->id)
@@ -146,6 +152,43 @@ class AttendanceController extends Controller
         }
 
         $this->broadcastStatus((int) $user->id, AttendanceStatusChanged::WORKING, true);
+
+        return response()->json(['status' => 'ok']);
+    }
+
+    /**
+     * Clock-ins the system closed for the user (forgot to clock out) that
+     * they have not acknowledged yet: notice on the dashboard.
+     */
+    public function autoClosed(Request $request)
+    {
+        $rows = Attendance::table()
+            ->where('user_id', $request->user()->id)
+            ->whereNotNull('auto_closed_at')
+            ->whereNull('auto_close_seen_at')
+            ->orderBy('date', 'desc')
+            ->limit(31)
+            ->get(['id', 'date', 'start_time', 'end_time', 'hours_worked', 'note'])
+            ->map(fn ($r) => [
+                'id' => (int) $r->id,
+                'date' => Carbon::parse($r->date)->toDateString(),
+                'start_time' => $r->start_time ? substr((string) $r->start_time, 0, 5) : null,
+                'end_time' => $r->end_time ? substr((string) $r->end_time, 0, 5) : null,
+                'hours_worked' => $r->hours_worked ? substr((string) $r->hours_worked, 0, 5) : null,
+                'note' => $r->note,
+            ]);
+
+        return response()->json(['records' => $rows]);
+    }
+
+    /** The user dismissed the notice. */
+    public function autoClosedSeen(Request $request)
+    {
+        Attendance::table()
+            ->where('user_id', $request->user()->id)
+            ->whereNotNull('auto_closed_at')
+            ->whereNull('auto_close_seen_at')
+            ->update(['auto_close_seen_at' => now()]);
 
         return response()->json(['status' => 'ok']);
     }
@@ -537,6 +580,8 @@ class AttendanceController extends Controller
                 'end_time',
                 'hours_worked',
                 'status',
+                'auto_closed_at',
+                'note',
                 'created_at',
             ]);
 
@@ -701,6 +746,9 @@ class AttendanceController extends Controller
                     'end_time' => $att->end_time ?? null,
                     'hours_worked' => $att->hours_worked ?? null,
                     'status' => $att->status ?? null,
+                    // closed by the system (forgot to clock out)
+                    'auto_closed' => ! empty($att->auto_closed_at),
+                    'note' => $att->note ?? null,
                     'is_working_day' => $isWorkingDay,
                     'holiday' => $holidayInfo['name'] ?? null,
                     'holiday_working' => (bool) ($holidayInfo['working'] ?? false),
