@@ -316,9 +316,11 @@ function statusBadgeClass(status: string): string {
   return 'border-gray-500/40 text-gray-200 bg-gray-500/20'
 }
 
-async function loadRequests() {
+// silent: background refresh (polling, realtime, after a review) -> the list
+// is replaced in place, without the skeleton (it looked like a page reload)
+async function loadRequests(silent = false) {
   if (!authenticated.value) return
-  loading.value = true
+  if (!silent) loading.value = true
   try {
     const res: any = await $fetch(`/api/timeoff/requests?status=${statusFilter.value}`, {
     })
@@ -328,8 +330,11 @@ async function loadRequests() {
       selectedRequesterId.value = null
     }
   } catch (e: any) {
-    canReview.value = false
-    requests.value = []
+    // a failed background refresh keeps what is on screen
+    if (!silent) {
+      canReview.value = false
+      requests.value = []
+    }
   } finally {
     loading.value = false
   }
@@ -339,7 +344,7 @@ async function handleRealtimeUpdate(payload?: any, source = 'unknown') {
   if (realtimeRefreshing.value) return
   realtimeRefreshing.value = true
   try {
-    await loadRequests()
+    await loadRequests(true)
   } finally {
     realtimeRefreshing.value = false
   }
@@ -463,7 +468,7 @@ async function review(id: number, decision: 'approved' | 'rejected', comment = '
     })
     delete dayChoices.value[id]
     closeReject()
-    await loadRequests()
+    await loadRequests(true)
   } catch (e: any) {
     actionError.value = e?.data?.message || 'No se pudo procesar la solicitud.'
   } finally {
@@ -499,7 +504,7 @@ onBeforeMount(async () => {
   await loadRequests()
   setupRealtimeListeners()
   pollingTimer = setInterval(() => {
-    void loadRequests()
+    void loadRequests(true)
   }, 12000)
 })
 

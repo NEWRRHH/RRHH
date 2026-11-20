@@ -160,7 +160,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeMount, onBeforeUnmount, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import AppSidebar from '../components/AppSidebar.vue'
 import AttendanceButton from '../components/AttendanceButton.vue'
@@ -175,6 +175,7 @@ const { authenticated, fetchUser, logout, apiBase, user, unreadDocuments, lastDo
 // unseen documents per tab (red dot); pushed in real time (DocumentsUpdated)
 const unreadByCategory = ref<Record<string, number>>({})
 const router = useRouter()
+const route = useRoute()
 const sidebar = ref<{ open: boolean } | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 
@@ -247,20 +248,17 @@ async function markTabRead(category: string) {
   }
 }
 
-// a payslip arrived while this page is open: show it and update the dots
+// a payslip / summary arrived while this page is open: update the dots and
+// the current tab in place (no skeleton, no tab switch)
 watch(lastDocumentsChange, async () => {
   await loadUnreadByCategory()
-  // /documentos?tab=payroll (dashboard card / badge)
-  const wanted = String(useRoute().query.tab || '')
-  if (tabs.some((t) => t.id === wanted)) activeTab.value = wanted as any
-
-  await loadUnreadByCategory()
-  await loadDocuments()
+  await loadDocuments(true)
 })
 
-async function loadDocuments() {
+// silent: background refresh, the list is replaced without the skeleton
+async function loadDocuments(silent = false) {
   if (!authenticated.value) return
-  loading.value = true
+  if (!silent) loading.value = true
   try {
     const res: any = await $fetch(`/api/documents?category=${activeTab.value}`, {
     })
@@ -269,7 +267,7 @@ async function loadDocuments() {
     if (documents.value.some((d: any) => !d.read_at)) void markTabRead(activeTab.value)
   } catch (e) {
     console.error('documents load failed', e)
-    documents.value = []
+    if (!silent) documents.value = []
   } finally {
     loading.value = false
   }
@@ -375,6 +373,11 @@ onBeforeMount(async () => {
     return router.push('/dashboard')
   }
 
+  // /documentos?tab=payroll (dashboard card / badge) opens that tab
+  const wanted = String(route.query.tab || '')
+  if (tabs.some((t) => t.id === wanted)) activeTab.value = wanted as DocTab
+
+  void loadUnreadByCategory()
   await loadDocuments()
 })
 

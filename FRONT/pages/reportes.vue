@@ -498,7 +498,7 @@
             <aside class="min-w-0 bg-gray-900 border border-gray-800 rounded-3xl p-3 sm:p-5 flex flex-col xl:min-h-0 shadow-sm">
               <div class="flex items-center justify-between mb-4">
                 <h3 class="text-sm font-semibold text-white">Detalle de fichajes</h3>
-                <button class="text-xs text-gray-300 border border-gray-700 rounded-lg px-2.5 py-1.5 hover:bg-gray-800" @click="loadWhoIsInData">
+                <button class="text-xs text-gray-300 border border-gray-700 rounded-lg px-2.5 py-1.5 hover:bg-gray-800" @click="loadWhoIsInData()">
                   Actualizar
                 </button>
               </div>
@@ -807,9 +807,11 @@ async function loadMonthData() {
   selectedMonth.value = res?.month || selectedMonth.value
 }
 
-async function loadWhoIsInData() {
+// silent: the 30 s auto refresh updates the list in place, without the
+// skeleton (it looked like a page reload)
+async function loadWhoIsInData(silent = false) {
   if (!authenticated.value) return
-  whoIsInLoading.value = true
+  if (!silent) whoIsInLoading.value = true
   try {
     const params = new URLSearchParams()
     if (whoIsInTeamFilter.value) params.set('team_id', whoIsInTeamFilter.value)
@@ -825,8 +827,10 @@ async function loadWhoIsInData() {
     whoIsInWorkingCount.value = Number(res?.working_count || 0)
   } catch (e) {
     console.error('who-is-in load failed', e)
-    whoIsInRows.value = []
-    whoIsInWorkingCount.value = 0
+    if (!silent) {
+      whoIsInRows.value = []
+      whoIsInWorkingCount.value = 0
+    }
   } finally {
     whoIsInLoading.value = false
   }
@@ -882,7 +886,7 @@ onBeforeMount(async () => {
 
   whoIsInInterval = setInterval(() => {
     if (activeTab.value !== 'who_is_in') return
-    loadWhoIsInData()
+    void loadWhoIsInData(true)
   }, 30000)
 })
 
