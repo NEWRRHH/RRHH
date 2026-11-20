@@ -236,6 +236,13 @@ services:
       - front
       - back_reverb
       - back_nginx
+    # "proxy" es la red del tunnel común (/home/nano/servidor/cloudflared).
+    # En Cloudflare: rrhh.fhnano.com -> http://rrhh-gateway:80
+    networks:
+      default:
+        aliases: [rrhh-gateway]
+      proxy:
+        aliases: [rrhh-gateway]
 
   # --- Cloudflare tunnel (se activa con COMPOSE_PROFILES en el .env raíz) ---
   # Quick tunnel: sin cuenta ni dominio, URL aleatoria *.trycloudflare.com
@@ -263,6 +270,10 @@ services:
       - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}
     depends_on:
       - gateway
+
+networks:
+  proxy:
+    external: true
 
 volumes:
   back_vendor:
